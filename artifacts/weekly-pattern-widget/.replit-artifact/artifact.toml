@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Weekly Pattern Widget"
+version = "1.0.0"
+id = "artifacts/weekly-pattern-widget"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21446
+
+[services.development]
+run = "pnpm --filter @workspace/weekly-pattern-widget run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/weekly-pattern-widget", "run", "build" ]
+publicDir = "artifacts/weekly-pattern-widget/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21446"
+BASE_PATH = "/"
