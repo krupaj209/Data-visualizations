@@ -9,32 +9,38 @@ import { DonutBreakdownChart } from "./DonutBreakdownChart";
 import { SeasonalCurveChart } from "./SeasonalCurveChart";
 import { TicketLadderChart } from "./TicketLadderChart";
 import { BRAND } from "@/lib/brand";
+import { toSentenceCase } from "@/lib/text";
 
 interface Props {
   spec: ChartSpec;
-  header: ChartHeader;
+  header?: ChartHeader;
+  /** CE name (or other proper nouns) preserved during sentence-casing. */
+  preserve?: string;
 }
 
-export function ChartRenderer({ spec, header }: Props) {
+export function ChartRenderer({ spec, header, preserve }: Props) {
+  const context = header?.subtitle
+    ? toSentenceCase(header.subtitle, { preserve })
+    : undefined;
   switch (spec.type) {
     case "weekly_pattern":
-      return <WeeklyPatternChart spec={spec} header={header} />;
+      return <WeeklyPatternChart spec={spec} context={context} />;
     case "hourly_heatmap":
-      return <HourlyHeatmapChart spec={spec} header={header} />;
+      return <HourlyHeatmapChart spec={spec} context={context} />;
     case "month_calendar":
-      return <MonthCalendarChart spec={spec} header={header} />;
+      return <MonthCalendarChart spec={spec} context={context} />;
     case "booking_window":
-      return <BookingWindowChart spec={spec} header={header} />;
+      return <BookingWindowChart spec={spec} context={context} />;
     case "stat_grid":
-      return <StatGridChart spec={spec} header={header} />;
+      return <StatGridChart spec={spec} context={context} />;
     case "compare_zones":
-      return <CompareZonesChart spec={spec} header={header} />;
+      return <CompareZonesChart spec={spec} context={context} />;
     case "donut_breakdown":
-      return <DonutBreakdownChart spec={spec} header={header} />;
+      return <DonutBreakdownChart spec={spec} context={context} />;
     case "seasonal_curve":
-      return <SeasonalCurveChart spec={spec} header={header} />;
+      return <SeasonalCurveChart spec={spec} context={context} />;
     case "ticket_ladder":
-      return <TicketLadderChart spec={spec} header={header} />;
+      return <TicketLadderChart spec={spec} context={context} />;
     default: {
       const exhaustive: never = spec;
       void exhaustive;

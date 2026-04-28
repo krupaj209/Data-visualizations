@@ -21,6 +21,7 @@ import { BRAND } from "@/lib/brand";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer, CHART_TYPE_META } from "@/components/charts";
 import { type ChartSpec } from "@/lib/chart-spec";
+import { toSentenceCase } from "@/lib/text";
 
 const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -181,7 +182,7 @@ export default function CeDetail() {
 
         <div className="flex flex-col gap-12">
           {charts.map((chart) => (
-            <ChartRow key={chart.id} chart={chart} />
+            <ChartRow key={chart.id} chart={chart} ceName={ce.name} />
           ))}
         </div>
       </main>
@@ -189,12 +190,15 @@ export default function CeDetail() {
   );
 }
 
-function ChartRow({ chart }: { chart: Chart }) {
+function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
   const spec = chart.spec as unknown as ChartSpec;
   const meta = CHART_TYPE_META[spec.type] ?? {
     label: spec.type,
     emoji: "📈",
   };
+  const opts = { preserve: ceName };
+  const headline = toSentenceCase(chart.question || chart.title, opts);
+  const insightText = chart.insight ? toSentenceCase(chart.insight, opts) : null;
 
   return (
     <section>
@@ -223,30 +227,83 @@ function ChartRow({ chart }: { chart: Chart }) {
               maxWidth: 720,
             }}
           >
-            {chart.question}
+            {headline}
           </h3>
         </div>
         <EmbedActions chartId={chart.id} />
       </div>
 
-      <div
-        className="rounded-3xl overflow-hidden"
-        style={{
-          background: BRAND.slate100,
-          padding: 0,
-        }}
-      >
-        <div className="aspect-1610 w-full">
-          <ChartRenderer
-            spec={spec}
-            header={{
-              title: chart.title,
-              subtitle: chart.subtitle || undefined,
-              question: chart.question,
-              insight: chart.insight || undefined,
-            }}
-          />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start">
+        <div
+          className="rounded-3xl overflow-hidden"
+          style={{
+            background: BRAND.slate100,
+            padding: 0,
+          }}
+        >
+          <div className="aspect-1610 w-full">
+            <ChartRenderer
+              spec={spec}
+              preserve={ceName}
+              header={{
+                title: chart.title,
+                subtitle: chart.subtitle || undefined,
+                question: chart.question,
+                insight: chart.insight || undefined,
+              }}
+            />
+          </div>
         </div>
+        <aside className="flex flex-col gap-3">
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: BRAND.slate500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            CMS preview
+          </div>
+          {insightText && (
+            <div className="flex items-start gap-2">
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  minWidth: 6,
+                  borderRadius: 999,
+                  background: BRAND.purps,
+                  marginTop: 7,
+                }}
+              />
+              <p
+                style={{
+                  color: BRAND.slate900,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}
+              >
+                {insightText}
+              </p>
+            </div>
+          )}
+          {chart.subtitle && (
+            <p
+              style={{
+                color: BRAND.slate500,
+                fontSize: 11,
+                fontWeight: 600,
+                lineHeight: 1.4,
+                marginTop: 2,
+              }}
+            >
+              Block subtitle: {toSentenceCase(chart.subtitle, opts)}
+            </p>
+          )}
+        </aside>
       </div>
     </section>
   );

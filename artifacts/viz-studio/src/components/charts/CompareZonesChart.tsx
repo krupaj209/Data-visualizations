@@ -1,40 +1,20 @@
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND, ZONE_FILL, ZONE_LABEL, ZONE_SOFT } from "@/lib/brand";
-import { type ChartHeader, type CompareZonesSpec } from "@/lib/chart-spec";
+import { type CompareZonesSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: CompareZonesSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
-export function CompareZonesChart({ spec, header }: Props) {
+export function CompareZonesChart({ spec, context }: Props) {
   const zones = spec.zones.slice(0, 5);
   const maxWait = Math.max(...zones.map((z) => z.wait_max), 30);
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? spec.metric_label}>
       <div className="flex-1 flex flex-col min-h-0 gap-2">
-        <div
-          className="flex items-center justify-between"
-          style={{ marginBottom: 4 }}
-        >
-          <span
-            style={{
-              fontSize: "clamp(9px, 1cqi, 11px)",
-              color: BRAND.slate700,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            {spec.metric_label}
-          </span>
-        </div>
         <div className="flex-1 flex flex-col gap-2 min-h-0 justify-center">
           {zones.map((z, i) => {
             const widthPct = Math.min(100, ((z.wait_max + 5) / (maxWait + 5)) * 100);

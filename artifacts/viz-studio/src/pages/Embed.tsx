@@ -31,8 +31,9 @@ export default function Embed() {
     return <FullCenter>Chart not found.</FullCenter>;
   }
 
-  const { chart } = data;
+  const { chart, ce } = data;
   const spec = chart.spec as unknown as ChartSpec;
+  const ceName = ce?.name;
 
   return (
     <div
@@ -57,6 +58,7 @@ export default function Embed() {
       >
         <ChartRenderer
           spec={spec}
+          preserve={ceName}
           header={{
             title: chart.title,
             subtitle: chart.subtitle || undefined,

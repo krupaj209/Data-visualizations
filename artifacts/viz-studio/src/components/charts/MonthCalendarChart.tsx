@@ -1,10 +1,10 @@
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND, SEASON_DOT, SEASON_FILL, SEASON_LABEL, type SeasonKey } from "@/lib/brand";
-import { type ChartHeader, type MonthCalendarSpec } from "@/lib/chart-spec";
+import { type MonthCalendarSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: MonthCalendarSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
 function monthName(d: Date) {
@@ -17,7 +17,7 @@ function dayOfWeekIdx(d: Date) {
   return (js + 6) % 7;
 }
 
-export function MonthCalendarChart({ spec, header }: Props) {
+export function MonthCalendarChart({ spec, context }: Props) {
   const dayMap = new Map<string, MonthCalendarSpec["days"][number]>(
     spec.days.map((d) => [d.date, d]),
   );
@@ -35,11 +35,7 @@ export function MonthCalendarChart({ spec, header }: Props) {
   const visible = monthKeys.slice(0, 3);
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? "Next 90 days"}>
       <div className="flex-1 flex gap-3 min-h-0">
         {visible.map((mkey) => {
           const dates = months.get(mkey)!;

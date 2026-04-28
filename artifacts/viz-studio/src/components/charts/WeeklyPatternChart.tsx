@@ -4,16 +4,15 @@ import { BRAND, LEVEL_FILL, LEVEL_LABEL, type LevelKey } from "@/lib/brand";
 import {
   DAY_LABELS,
   DAY_ORDER,
-  type ChartHeader,
   type WeeklyPatternSpec,
 } from "@/lib/chart-spec";
 
 interface Props {
   spec: WeeklyPatternSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
-export function WeeklyPatternChart({ spec, header }: Props) {
+export function WeeklyPatternChart({ spec, context }: Props) {
   const byDay = new Map(spec.days.map((d) => [d.day, d]));
   const ordered = DAY_ORDER.map(
     (code) =>
@@ -25,11 +24,7 @@ export function WeeklyPatternChart({ spec, header }: Props) {
   );
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? "Crowd level by day"}>
       <div className="flex-1 grid grid-cols-7 gap-2 items-end pt-6">
         {ordered.map((d, i) => {
           const isClosed = d.level === "closed";
@@ -43,14 +38,14 @@ export function WeeklyPatternChart({ spec, header }: Props) {
               {(d.level === "busiest" || d.level === "quietest") && (
                 <div
                   className="absolute left-1/2 -translate-x-1/2 z-10 flex flex-col items-center pointer-events-none"
-                  style={{ bottom: `calc(${heightPct}% + 8px)` }}
+                  style={{ bottom: `calc(${heightPct}% + 6px)` }}
                 >
                   <div
                     style={{
                       backgroundColor:
                         d.level === "busiest" ? BRAND.candySoft : BRAND.bgMint,
                       color: d.level === "busiest" ? BRAND.candy : "#0E8F4E",
-                      padding: "4px 10px",
+                      padding: "3px 9px",
                       borderRadius: 999,
                       fontSize: "clamp(9px, 1cqi, 11px)",
                       fontWeight: 800,
@@ -78,7 +73,10 @@ export function WeeklyPatternChart({ spec, header }: Props) {
                     ? "repeating-linear-gradient(135deg, #F0F0F0 0 6px, transparent 6px 12px)"
                     : "none",
                   border: isClosed ? `2px dashed ${BRAND.slate300}` : "none",
-                  borderRadius: 16,
+                  borderTopLeftRadius: 12,
+                  borderTopRightRadius: 12,
+                  borderBottomLeftRadius: 4,
+                  borderBottomRightRadius: 4,
                 }}
               />
             </div>
@@ -88,7 +86,7 @@ export function WeeklyPatternChart({ spec, header }: Props) {
 
       <div
         className="mt-3 grid grid-cols-7 gap-2"
-        style={{ borderTop: `1px solid ${BRAND.slate200}`, paddingTop: 10 }}
+        style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 8 }}
       >
         {ordered.map((d) => (
           <div key={d.day} className="text-center">
@@ -123,7 +121,7 @@ export function WeeklyPatternChart({ spec, header }: Props) {
               style={{
                 width: 10,
                 height: 10,
-                borderRadius: 4,
+                borderRadius: 3,
                 background: LEVEL_FILL[lvl],
               }}
             />

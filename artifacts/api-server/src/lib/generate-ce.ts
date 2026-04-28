@@ -72,10 +72,11 @@ CHART TYPE MENU AND EXACT SCHEMAS — every required field MUST be present:
 OUTPUT RULES:
 
 - Every chart must have a unique slug (kebab-case) and a unique chart type within the CE.
-- "question" is the visitor's question in plain English, no jargon. Max 12 words.
-- "title" is 2-5 words, headline-cased.
-- "subtitle" is one short clarifying line.
-- "insight" is the single most useful one-sentence takeaway, written like a recommendation.
+- ALL copy ("question", "title", "subtitle", "insight", chart "label"/"note"/"reason"/"tip"/"message" fields, ticket tier names, zone names) MUST be in sentence case. Capitalize only the first word and proper nouns. Examples: "When are crowds quietest?" not "When Are Crowds Quietest?", "Skip the line entry" not "Skip The Line Entry", "Best balance of weather and crowds" not "Best Balance Of Weather And Crowds". This is a strict Headout brand rule.
+- "question" is the visitor's question in plain English, no jargon. Max 12 words. The chart will be embedded UNDER an H2 in our CMS, so the question should read naturally as a sub-headline.
+- "title" is 2-5 words, used internally only — keep it sentence case as well.
+- "subtitle" is one VERY short clarifying line (e.g. "Crowd level by month") — sentence case.
+- "insight" is the single most useful one-sentence takeaway. It will be shown as a bullet point NEXT TO the chart, NOT inside it, so do not duplicate what the chart already shows visually. Sentence case.
 - Day codes are lowercase: mon tue wed thu fri sat sun.
 - Month codes are lowercase 3-letter: jan feb mar apr may jun jul aug sep oct nov dec.
 - Calendar dates are ISO YYYY-MM-DD.

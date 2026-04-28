@@ -1,10 +1,10 @@
 import { ChartCard } from "@/components/ChartCard";
 import { ACCENT_FILL, ACCENT_SOFT, BRAND, type AccentKey } from "@/lib/brand";
-import { type ChartHeader, type StatGridSpec } from "@/lib/chart-spec";
+import { type StatGridSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: StatGridSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
 function Sparkline({ values, color }: { values: number[]; color: string }) {
@@ -35,15 +35,11 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
   );
 }
 
-export function StatGridChart({ spec, header }: Props) {
+export function StatGridChart({ spec, context }: Props) {
   const stats = spec.stats.slice(0, 6);
   const cols = stats.length <= 2 ? 2 : stats.length <= 4 ? 2 : 3;
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? "Key numbers"}>
       <div
         className="flex-1 grid gap-3 min-h-0"
         style={{

@@ -1,117 +1,219 @@
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ReferenceArea,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
-import { type ChartHeader, type BookingWindowSpec } from "@/lib/chart-spec";
+import { type BookingWindowSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: BookingWindowSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
-export function BookingWindowChart({ spec, header }: Props) {
-  const data = [...spec.curve].sort((a, b) => b.days_before - a.days_before);
+interface Bucket {
+  label: string;
+  share: number;
+  inSweet: boolean;
+  rangeMin: number;
+  rangeMax: number;
+}
+
+function bucketize(spec: BookingWindowSpec): Bucket[] {
+  const ranges: { label: string; min: number; max: number }[] = [
+    { label: "Same day", min: 0, max: 0 },
+    { label: "1–3 days", min: 1, max: 3 },
+    { label: "4–7 days", min: 4, max: 7 },
+    { label: "1–2 weeks", min: 8, max: 14 },
+    { label: "2–4 weeks", min: 15, max: 30 },
+    { label: "1–2 months", min: 31, max: 60 },
+    { label: "2+ months", min: 61, max: 9999 },
+  ];
   const sweetMin = spec.sweet_spot.days_before_min;
   const sweetMax = spec.sweet_spot.days_before_max;
+  return ranges.map((r) => {
+    const inRange = spec.curve.filter(
+      (p) => p.days_before >= r.min && p.days_before <= r.max,
+    );
+    const share = inRange.reduce((s, p) => s + p.share, 0);
+    const overlapsSweet = !(r.max < sweetMin || r.min > sweetMax);
+    return {
+      label: r.label,
+      share,
+      inSweet: overlapsSweet,
+      rangeMin: r.min,
+      rangeMax: r.max,
+    };
+  });
+}
+
+export function BookingWindowChart({ spec, context }: Props) {
+  const buckets = bucketize(spec);
+  const hasData = buckets.some((b) => b.share > 0);
+  const maxShare = Math.max(...buckets.map((b) => b.share), 1);
+  const sweetIdxs = buckets
+    .map((b, i) => (b.inSweet && b.share > 0 ? i : -1))
+    .filter((i) => i >= 0);
+  const peakSweetIdx = sweetIdxs.length
+    ? sweetIdxs.reduce((best, i) =>
+        buckets[i].share > buckets[best].share ? i : best,
+      sweetIdxs[0])
+    : -1;
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex flex-wrap gap-3 mb-3">
+    <ChartCard context={context ?? "Booking lead time"}>
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-end justify-between mb-2">
           <div
             style={{
-              background: BRAND.bgMint,
-              color: "#0E8F4E",
-              padding: "6px 12px",
+              fontSize: "clamp(11px, 1.25cqi, 13px)",
+              color: BRAND.slate700,
+              fontWeight: 700,
+            }}
+          >
+            % of bookings
+          </div>
+          <div
+            style={{
+              background: BRAND.purpsSoft,
+              color: BRAND.purps,
+              padding: "4px 10px",
               borderRadius: 999,
               fontSize: "clamp(10px, 1.1cqi, 12px)",
               fontWeight: 800,
             }}
           >
-            ⭐ Sweet spot · {sweetMax}–{sweetMin} days before · {spec.sweet_spot.label}
+            Sweet spot · {spec.sweet_spot.label}
           </div>
-          {spec.sold_out_risk && (
+        </div>
+
+        <div
+          className="flex-1 grid items-end min-h-0"
+          style={{
+            gridTemplateColumns: `repeat(${buckets.length}, minmax(0, 1fr))`,
+            columnGap: "clamp(6px, 0.8cqi, 12px)",
+            paddingTop: 22,
+          }}
+        >
+          {buckets.map((b, i) => {
+            const heightPct = hasData
+              ? Math.max((b.share / maxShare) * 100, b.share > 0 ? 4 : 0)
+              : 0;
+            const isPeakSweet = i === peakSweetIdx;
+            const fill = isPeakSweet
+              ? BRAND.purps
+              : b.inSweet
+                ? BRAND.purpsSoft
+                : "#F3F0FA";
+            const labelColor = isPeakSweet ? "white" : BRAND.purps;
+            return (
+              <div
+                key={i}
+                className="relative h-full flex flex-col items-center justify-end"
+              >
+                {isPeakSweet && b.share > 0 && (
+                  <div
+                    className="absolute z-10 left-1/2 -translate-x-1/2 pointer-events-none"
+                    style={{ bottom: `calc(${heightPct}% + 6px)` }}
+                  >
+                    <div
+                      style={{
+                        background: BRAND.purps,
+                        color: "white",
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        fontSize: "clamp(9px, 1cqi, 11px)",
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Sweet spot
+                    </div>
+                  </div>
+                )}
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: `${heightPct}%` }}
+                  transition={{
+                    duration: 0.8,
+                    delay: 0.05 + i * 0.04,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="relative w-full flex items-start justify-center"
+                  style={{
+                    background: fill,
+                    borderTopLeftRadius: 12,
+                    borderTopRightRadius: 12,
+                    borderBottomLeftRadius: 4,
+                    borderBottomRightRadius: 4,
+                    minHeight: b.share > 0 ? 4 : 0,
+                  }}
+                >
+                  {b.share >= Math.max(maxShare * 0.18, 4) && (
+                    <span
+                      style={{
+                        marginTop: 6,
+                        color: labelColor,
+                        fontWeight: 800,
+                        fontSize: "clamp(10px, 1.2cqi, 13px)",
+                      }}
+                    >
+                      {Math.round(b.share)}%
+                    </span>
+                  )}
+                </motion.div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          className="grid mt-2"
+          style={{
+            gridTemplateColumns: `repeat(${buckets.length}, minmax(0, 1fr))`,
+            columnGap: "clamp(6px, 0.8cqi, 12px)",
+            borderTop: `1px solid ${BRAND.slate100}`,
+            paddingTop: 8,
+          }}
+        >
+          {buckets.map((b, i) => (
             <div
+              key={i}
+              className="text-center"
+              style={{
+                fontSize: "clamp(9px, 1cqi, 11px)",
+                fontWeight: 700,
+                color: b.inSweet ? BRAND.purps : BRAND.slate700,
+                lineHeight: 1.15,
+              }}
+            >
+              {b.label}
+            </div>
+          ))}
+        </div>
+
+        {spec.sold_out_risk && (
+          <div className="mt-3 flex items-center gap-2">
+            <span
               style={{
                 background: BRAND.candySoft,
                 color: BRAND.candy,
-                padding: "6px 12px",
+                padding: "3px 9px",
                 borderRadius: 999,
-                fontSize: "clamp(10px, 1.1cqi, 12px)",
+                fontSize: "clamp(9px, 1cqi, 11px)",
                 fontWeight: 800,
               }}
             >
-              ⚠ {spec.sold_out_risk.message}
-            </div>
-          )}
-        </div>
-        <div className="flex-1 min-h-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 6, left: -16, right: 12, bottom: 4 }}>
-              <defs>
-                <linearGradient id="bw-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.55} />
-                  <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={BRAND.slate100} vertical={false} />
-              <ReferenceArea
-                x1={sweetMax}
-                x2={sweetMin}
-                fill={BRAND.bgMint}
-                fillOpacity={0.6}
-              />
-              <XAxis
-                dataKey="days_before"
-                reversed
-                stroke={BRAND.slate500}
-                tick={{ fontSize: 11, fontWeight: 700, fill: BRAND.slate700 }}
-                tickFormatter={(v) => (v === 0 ? "Today" : `${v}d`)}
-                axisLine={{ stroke: BRAND.slate200 }}
-                tickLine={false}
-              />
-              <YAxis
-                stroke={BRAND.slate500}
-                tick={{ fontSize: 11, fontWeight: 700, fill: BRAND.slate700 }}
-                tickFormatter={(v) => `${v}%`}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: BRAND.slate950,
-                  border: "none",
-                  borderRadius: 12,
-                  color: "white",
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-                labelStyle={{ color: BRAND.slate500, fontSize: 11 }}
-                labelFormatter={(v) => `${v} days before`}
-                formatter={(v: number) => [`${v.toFixed(0)}% of bookings`, ""]}
-              />
-              <Area
-                type="monotone"
-                dataKey="share"
-                stroke={BRAND.purps}
-                strokeWidth={3}
-                fill="url(#bw-fill)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+              Sells out
+            </span>
+            <span
+              style={{
+                fontSize: "clamp(10px, 1.1cqi, 12px)",
+                color: BRAND.slate700,
+                fontWeight: 600,
+              }}
+            >
+              {spec.sold_out_risk.message}
+            </span>
+          </div>
+        )}
       </div>
     </ChartCard>
   );

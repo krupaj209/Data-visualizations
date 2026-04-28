@@ -1,11 +1,11 @@
 import { Check, Star } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
-import { type ChartHeader, type TicketLadderSpec } from "@/lib/chart-spec";
+import { type TicketLadderSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: TicketLadderSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = {
@@ -18,16 +18,12 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   CAD: "C$",
 };
 
-export function TicketLadderChart({ spec, header }: Props) {
+export function TicketLadderChart({ spec, context }: Props) {
   const tiers = spec.tiers.slice(0, 4);
   const symbol = CURRENCY_SYMBOL[spec.currency] ?? spec.currency;
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? "Ticket options"}>
       <div
         className="flex-1 grid gap-3 min-h-0 items-stretch"
         style={{

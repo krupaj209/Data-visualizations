@@ -1,15 +1,15 @@
 import { ChartCard } from "@/components/ChartCard";
 import { ACCENT_FILL, BRAND, type AccentKey } from "@/lib/brand";
-import { type ChartHeader, type DonutBreakdownSpec } from "@/lib/chart-spec";
+import { type DonutBreakdownSpec } from "@/lib/chart-spec";
 
 interface Props {
   spec: DonutBreakdownSpec;
-  header: ChartHeader;
+  context?: string;
 }
 
 const DEFAULT_ACCENTS: AccentKey[] = ["purps", "candy", "hola", "okay", "slate"];
 
-export function DonutBreakdownChart({ spec, header }: Props) {
+export function DonutBreakdownChart({ spec, context }: Props) {
   const segs = spec.segments.slice(0, 6);
   const total = segs.reduce((s, x) => s + x.value, 0) || 1;
 
@@ -29,11 +29,7 @@ export function DonutBreakdownChart({ spec, header }: Props) {
   });
 
   return (
-    <ChartCard
-      title={header.title}
-      subtitle={header.subtitle}
-      insight={header.insight}
-    >
+    <ChartCard context={context ?? "Breakdown"}>
       <div className="flex-1 flex items-stretch gap-4 min-h-0">
         <div
           className="relative flex items-center justify-center"
