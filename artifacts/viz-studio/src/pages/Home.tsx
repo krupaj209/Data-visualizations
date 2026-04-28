@@ -10,6 +10,7 @@ import {
   type Ce,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import { HeadoutLogo } from "@/components/HeadoutLogo";
 
 const QUICK_PICKS = [
   { name: "Vatican Museums", city: "Vatican City", country: "Vatican City" },
@@ -95,29 +96,23 @@ export default function Home() {
           borderBottom: `1px solid ${BRAND.slate100}`,
         }}
       >
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+          <HeadoutLogo height={22} />
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: BRAND.purps,
-              color: "white",
-              display: "grid",
-              placeItems: "center",
-              fontWeight: 800,
-              letterSpacing: "-0.05em",
+              width: 1,
+              height: 26,
+              background: BRAND.slate200,
             }}
-          >
-            H
-          </div>
-          <div className="flex-1">
+          />
+          <div className="flex-1 min-w-0">
             <div
               style={{
                 fontWeight: 800,
                 color: BRAND.slate950,
                 letterSpacing: "-0.01em",
-                fontSize: 17,
+                fontSize: 16,
+                lineHeight: 1.1,
               }}
             >
               Viz Studio
@@ -127,12 +122,26 @@ export default function Home() {
                 fontSize: 11,
                 color: BRAND.slate700,
                 fontWeight: 600,
-                marginTop: -2,
+                marginTop: 2,
               }}
             >
-              AI-generated visuals for Headout listings
+              AI-generated visuals for listing pages
             </div>
           </div>
+          <span
+            style={{
+              background: BRAND.purpsSoft,
+              color: BRAND.purps,
+              padding: "5px 10px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Internal
+          </span>
         </div>
       </header>
 

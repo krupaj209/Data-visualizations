@@ -18,6 +18,7 @@ import {
   type Chart,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer, CHART_TYPE_META } from "@/components/charts";
 import { type ChartSpec } from "@/lib/chart-spec";
 
@@ -69,6 +70,18 @@ export default function CeDetail() {
         }}
       >
         <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center gap-3">
+          <Link
+            href="/"
+            style={{
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <HeadoutLogo height={20} />
+          </Link>
+          <span style={{ color: BRAND.slate300 }}>/</span>
           <Link
             href="/"
             style={{
