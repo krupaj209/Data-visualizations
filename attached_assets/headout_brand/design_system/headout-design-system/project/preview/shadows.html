@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Shadows</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-2);}
+  .wrap{padding:28px 24px;display:grid;grid-template-columns:repeat(5,1fr);gap:20px;}
+  .card{background:#fff;border-radius:12px;height:90px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;}
+  .name{font-family:var(--font-mono);font-size:11px;color:var(--fg-2);font-weight:700;}
+  .sub{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);}
+  .s-xs{box-shadow:var(--shadow-xs);}
+  .s-sm{box-shadow:var(--shadow-sm);}
+  .s-md{box-shadow:var(--shadow-md);}
+  .s-lg{box-shadow:var(--shadow-lg);}
+  .s-xl{box-shadow:var(--shadow-xl);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card s-xs"><div class="name">xs</div><div class="sub">hairline</div></div>
+    <div class="card s-sm"><div class="name">sm</div><div class="sub">card rest</div></div>
+    <div class="card s-md"><div class="name">md</div><div class="sub">card hover</div></div>
+    <div class="card s-lg"><div class="name">lg</div><div class="sub">popover</div></div>
+    <div class="card s-xl"><div class="name">xl</div><div class="sub">modal</div></div>
+  </div>
+</body>
+</html>

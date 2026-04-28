@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Brand Core</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:20px 24px;display:flex;gap:14px;align-items:stretch;}
+  .swatch{flex:1;border-radius:var(--radius-lg);padding:16px;display:flex;flex-direction:column;justify-content:space-between;min-height:108px;border:1px solid var(--border-1);}
+  .swatch .name{font-weight:800;font-size:15px;letter-spacing:-0.01em;}
+  .swatch .hex{font-family:var(--font-mono);font-size:12px;opacity:.85;}
+  .purps{background:var(--color-purps);color:#fff;border-color:transparent;}
+  .candy{background:var(--color-candy);color:#fff;border-color:transparent;}
+  .slate{background:var(--color-slate-black);color:#fff;border-color:transparent;}
+  .white{background:#fff;color:var(--fg-1);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="swatch purps"><div class="name">Purps</div><div class="hex">#8000FF</div></div>
+    <div class="swatch candy"><div class="name">Candy</div><div class="hex">#FF0076</div></div>
+    <div class="swatch slate"><div class="name">Slate Black</div><div class="hex">#000000</div></div>
+    <div class="swatch white"><div class="name">White</div><div class="hex">#FFFFFF</div></div>
+  </div>
+</body>
+</html>

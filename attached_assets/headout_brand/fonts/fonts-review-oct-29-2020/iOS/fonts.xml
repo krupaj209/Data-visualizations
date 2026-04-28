@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<string>Gotham-Bold.otf</string>
+	<string>Graphik-Bold.otf</string>
+	<string>Graphik-Regular.otf</string>
+	<string>Graphik-Medium.otf</string>
+	<string>Gotham-BoldItalic.otf</string>
+	<string>Gotham-Book.otf</string>
+	<string>Gotham-BookItalic.otf</string>
+	<string>Gotham-Light.otf</string>
+	<string>Gotham-LightItalic.otf</string>
+	<string>Gotham-Medium.otf</string>
+	<string>Gotham-MediumItalic.otf</string>
+	<string>icomoon.ttf</string>
+	<string>avenir-black.ttf</string>
+	<string>avenir-light.ttf</string>
+	<string>avenir-medium.ttf</string>
+	<string>avenir-roman.ttf</string>
+	<string>graphik-bold.otf</string>
+	<string>graphik-light.otf</string>
+	<string>graphik-regular.otf</string>
+	<string>graphik-semibold.otf</string>
+	<string>Avenir.ttc</string>
+	<string>Graphik-Black.otf</string>
+	<string>Graphik-BlackItalic.otf</string>
+	<string>Graphik-BoldItalic.otf</string>
+	<string>Graphik-Extralight.otf</string>
+	<string>Graphik-ExtralightItalic.otf</string>
+	<string>Graphik-Light.otf</string>
+	<string>Graphik-LightItalic.otf</string>
+	<string>Graphik-MediumItalic.otf</string>
+	<string>Graphik-RegularItalic.otf</string>
+	<string>Graphik-Semibold.otf</string>
+	<string>Graphik-SemiboldItalic.otf</string>
+	<string>Graphik-Super.otf</string>
+	<string>Graphik-SuperItalic.otf</string>
+	<string>Graphik-Thin.otf</string>
+	<string>Graphik-ThinItalic.otf</string>
+	<string>Avenir-Book.ttf</string>
+	<string>Avenir-Light.ttf</string>
+	<string>Avenir-Roman.ttf</string>
+</array>
+</plist>
+

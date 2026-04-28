@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Logo</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:28px 32px;display:flex;gap:24px;align-items:center;}
+  .light,.dark{flex:1;border-radius:16px;padding:22px 24px;display:flex;align-items:center;justify-content:center;min-height:90px;}
+  .light{background:#fff;border:1px solid var(--border-1);}
+  .dark{background:var(--color-slate-black);}
+  .light img{height:28px;}
+  .dark img{height:28px;filter:brightness(0) invert(1);}
+  .meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);text-align:center;margin-top:10px;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="light"><img src="../assets/logos/headout-purps.svg" alt="Headout"/></div>
+      <div class="meta">wordmark + blimp on white</div>
+    </div>
+    <div>
+      <div class="dark"><img src="../assets/logos/headout-purps.svg" alt="Headout"/></div>
+      <div class="meta">derived via CSS invert — flag as approximation</div>
+    </div>
+  </div>
+</body>
+</html>

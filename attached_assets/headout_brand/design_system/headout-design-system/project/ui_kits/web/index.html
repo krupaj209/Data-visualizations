@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Headout — The world's best experiences</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="../../assets/logos/headout-purps.svg" />
+</head>
+<body data-screen-label="01 Home">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="components.jsx"></script>
+
+<script type="text/babel">
+  const { useState, useEffect } = React;
+
+  function App() {
+    const [favs, setFavs] = useState(new Set());
+    const [open, setOpen] = useState(null);
+    const [toast, setToast] = useState('');
+
+    const onFav = (id) => {
+      setFavs(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else { next.add(id); setToast('Saved to wishlist'); }
+        return next;
+      });
+    };
+    const onSearch = (q) => { if (q) setToast(`Searching for "${q}"…`); };
+    const onBook = (item) => { setToast(`Redirecting to checkout for ${item.title.slice(0, 30)}…`); setOpen(null); };
+
+    useEffect(() => {
+      if (!toast) return;
+      const t = setTimeout(() => setToast(''), 2400);
+      return () => clearTimeout(t);
+    }, [toast]);
+
+    return (<>
+      <TopNav />
+      <Hero onSearch={onSearch} />
+      <ValueProps />
+      <CityRow onPick={(c) => setToast(`Exploring ${c.name}…`)} />
+      <TopRecs favs={favs} onFav={onFav} onOpen={setOpen} />
+      <Promo />
+      <TopWorldwide onOpen={() => setToast('Browsing category…')} />
+      <Themes />
+      <MoreExp favs={favs} onFav={onFav} onOpen={setOpen} />
+      <Trust />
+      <Footer />
+      <ExpDetail item={open} onClose={() => setOpen(null)} onBook={onBook} />
+      <Toast msg={toast} />
+    </>);
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

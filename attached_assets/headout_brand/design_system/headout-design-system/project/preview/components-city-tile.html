@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — City Tile</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:22px 24px;display:flex;gap:14px;}
+  .tile{flex:1;border-radius:16px;overflow:hidden;position:relative;aspect-ratio:1/1;background-size:cover;background-position:center;cursor:pointer;transition:transform var(--dur) var(--ease-out);}
+  .tile:hover{transform:scale(1.01);}
+  .tile::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,0.7) 100%);}
+  .label{position:absolute;left:14px;bottom:12px;color:#fff;z-index:2;}
+  .name{font-family:var(--font-display);font-weight:700;font-size:18px;line-height:1.2;letter-spacing:-0.01em;margin-bottom:2px;}
+  .country{font-size:12px;opacity:0.9;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="tile" style="background-image:url('../assets/images/city-newyork.jpg')"><div class="label"><div class="name">New York</div><div class="country">United States</div></div></div>
+    <div class="tile" style="background-image:url('../assets/images/city-paris.jpg')"><div class="label"><div class="name">Paris</div><div class="country">France</div></div></div>
+    <div class="tile" style="background-image:url('../assets/images/city-rome.jpg')"><div class="label"><div class="name">Rome</div><div class="country">Italy</div></div></div>
+    <div class="tile" style="background-image:url('../assets/images/city-dubai.jpg')"><div class="label"><div class="name">Dubai</div><div class="country">United Arab Emirates</div></div></div>
+  </div>
+</body>
+</html>

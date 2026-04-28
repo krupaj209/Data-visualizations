@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Buttons</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:22px 26px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .btn{font-family:var(--font-display);font-weight:700;font-size:14px;padding:11px 20px;border-radius:999px;border:none;cursor:pointer;transition:background var(--dur) var(--ease-out),transform var(--dur) var(--ease-out);letter-spacing:-0.005em;}
+  .primary{background:var(--color-purps);color:#fff;}
+  .primary:hover{background:var(--color-purps-hover);}
+  .accent{background:var(--color-candy);color:#fff;}
+  .secondary{background:#fff;color:var(--fg-1);border:1.5px solid var(--border-2);}
+  .ghost{background:transparent;color:var(--color-purps);padding:11px 16px;}
+  .dark{background:var(--color-slate-black);color:#fff;}
+  .sm{font-size:13px;padding:8px 16px;}
+  .lg{font-size:15px;padding:14px 28px;}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);width:80px;flex-shrink:0;text-transform:uppercase;letter-spacing:0.04em;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row"><div class="lbl">primary</div><button class="btn primary sm">Book now</button><button class="btn primary">Book now</button><button class="btn primary lg">Book now</button></div>
+    <div class="row"><div class="lbl">accent</div><button class="btn accent">Get 20% off</button><button class="btn dark">Sign in</button></div>
+    <div class="row"><div class="lbl">secondary</div><button class="btn secondary">See details</button><button class="btn ghost">See all →</button></div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Inputs</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:22px 26px;display:flex;flex-direction:column;gap:12px;}
+  .input{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border-1);border-radius:12px;padding:10px 14px;font-family:var(--font-text);font-size:15px;color:var(--fg-1);width:280px;}
+  .input.focus{border-color:var(--color-purps);box-shadow:var(--shadow-focus);}
+  .input input{border:none;outline:none;background:transparent;flex:1;font:inherit;color:inherit;}
+  .input input::placeholder{color:var(--fg-3);}
+  svg{flex-shrink:0;color:var(--fg-3);}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;}
+  .search{background:var(--color-slate-50);border-color:transparent;border-radius:999px;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="lbl">Search field</div>
+      <div class="input search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Search for experiences and cities" />
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Default</div>
+      <div class="input"><input value="jane@headout.com" /></div>
+    </div>
+    <div>
+      <div class="lbl">Focused</div>
+      <div class="input focus"><input value="Paris" /></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Semantic Colors</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);font-family:var(--font-text);}
+  .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+  .row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;border:1px solid var(--border-1);}
+  .dot{width:28px;height:28px;border-radius:999px;flex-shrink:0;}
+  .lbl{font-weight:700;font-size:13px;}
+  .role{font-size:12px;color:var(--fg-3);}
+  .grow{flex:1;}
+  .hex{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row"><div class="dot" style="background:var(--color-purps)"></div><div class="grow"><div class="lbl">Brand / Link</div><div class="role">--fg-brand, --fg-link</div></div><div class="hex">#8000FF</div></div>
+    <div class="row"><div class="dot" style="background:var(--color-candy)"></div><div class="grow"><div class="lbl">Accent</div><div class="role">--fg-accent — promo, discount</div></div><div class="hex">#FF0076</div></div>
+    <div class="row"><div class="dot" style="background:var(--color-okay-green)"></div><div class="grow"><div class="lbl">Success</div><div class="role">--fg-success</div></div><div class="hex">#15D876</div></div>
+    <div class="row"><div class="dot" style="background:var(--color-joy-mustard)"></div><div class="grow"><div class="lbl">Warning</div><div class="role">--fg-warning</div></div><div class="hex">#FFBC00</div></div>
+    <div class="row"><div class="dot" style="background:var(--color-candy)"></div><div class="grow"><div class="lbl">Danger</div><div class="role">--fg-danger — reuses candy</div></div><div class="hex">#FF0076</div></div>
+    <div class="row"><div class="dot" style="background:var(--color-slate-900);border:1px solid var(--border-1);"></div><div class="grow"><div class="lbl">Text / FG-1</div><div class="role">--fg-1</div></div><div class="hex">#222222</div></div>
+  </div>
+</body>
+</html>
