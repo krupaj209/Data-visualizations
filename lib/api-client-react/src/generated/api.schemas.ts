@@ -8,3 +8,56 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ApiError {
+  error: string;
+}
+
+export interface Ce {
+  id: number;
+  slug: string;
+  name: string;
+  city: string;
+  country: string;
+  category: string;
+  summary: string;
+  emoji: string;
+  status: string;
+  chartCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChartSpec = { [key: string]: unknown };
+
+export interface Chart {
+  id: number;
+  ceId: number;
+  slug: string;
+  question: string;
+  title: string;
+  subtitle: string;
+  insight: string;
+  chartType: string;
+  spec: ChartSpec;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChartWithCe {
+  chart: Chart;
+  ce: Ce;
+}
+
+export interface CeWithCharts {
+  ce: Ce;
+  charts: Chart[];
+}
+
+export interface CeInput {
+  name: string;
+  city: string;
+  country: string;
+  category?: string;
+}

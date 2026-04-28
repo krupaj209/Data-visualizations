@@ -14,3 +14,157 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List all CEs
+ */
+export const ListCesResponseItem = zod.object({
+  id: zod.number(),
+  slug: zod.string(),
+  name: zod.string(),
+  city: zod.string(),
+  country: zod.string(),
+  category: zod.string(),
+  summary: zod.string(),
+  emoji: zod.string(),
+  status: zod.string(),
+  chartCount: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListCesResponse = zod.array(ListCesResponseItem);
+
+/**
+ * @summary Create a CE and generate its chart suite
+ */
+export const CreateCeBody = zod.object({
+  name: zod.string(),
+  city: zod.string(),
+  country: zod.string(),
+  category: zod.string().optional(),
+});
+
+/**
+ * @summary Get a CE with its charts
+ */
+export const GetCeParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const GetCeResponse = zod.object({
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  charts: zod.array(
+    zod.object({
+      id: zod.number(),
+      ceId: zod.number(),
+      slug: zod.string(),
+      question: zod.string(),
+      title: zod.string(),
+      subtitle: zod.string(),
+      insight: zod.string(),
+      chartType: zod.string(),
+      spec: zod.record(zod.string(), zod.unknown()),
+      sortOrder: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete a CE and its charts
+ */
+export const DeleteCeParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+/**
+ * @summary Replace this CE's charts with a freshly generated set
+ */
+export const RegenerateCeParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const RegenerateCeResponse = zod.object({
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  charts: zod.array(
+    zod.object({
+      id: zod.number(),
+      ceId: zod.number(),
+      slug: zod.string(),
+      question: zod.string(),
+      title: zod.string(),
+      subtitle: zod.string(),
+      insight: zod.string(),
+      chartType: zod.string(),
+      spec: zod.record(zod.string(), zod.unknown()),
+      sortOrder: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get a single chart
+ */
+export const GetChartParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetChartResponse = zod.object({
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    sortOrder: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});

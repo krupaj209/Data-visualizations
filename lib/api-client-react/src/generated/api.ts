@@ -5,18 +5,28 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ApiError,
+  Ce,
+  CeInput,
+  CeWithCharts,
+  ChartWithCe,
+  HealthStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +102,485 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all CEs
+ */
+export const getListCesUrl = () => {
+  return `/api/ces`;
+};
+
+export const listCes = async (options?: RequestInit): Promise<Ce[]> => {
+  return customFetch<Ce[]>(getListCesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCesQueryKey = () => {
+  return [`/api/ces`] as const;
+};
+
+export const getListCesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCes>>> = ({
+    signal,
+  }) => listCes({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCes>>
+>;
+export type ListCesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all CEs
+ */
+
+export function useListCes<
+  TData = Awaited<ReturnType<typeof listCes>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a CE and generate its chart suite
+ */
+export const getCreateCeUrl = () => {
+  return `/api/ces`;
+};
+
+export const createCe = async (
+  ceInput: CeInput,
+  options?: RequestInit,
+): Promise<CeWithCharts> => {
+  return customFetch<CeWithCharts>(getCreateCeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ceInput),
+  });
+};
+
+export const getCreateCeMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCe>>,
+    TError,
+    { data: BodyType<CeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCe>>,
+  TError,
+  { data: BodyType<CeInput> },
+  TContext
+> => {
+  const mutationKey = ["createCe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCe>>,
+    { data: BodyType<CeInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCe(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCe>>
+>;
+export type CreateCeMutationBody = BodyType<CeInput>;
+export type CreateCeMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Create a CE and generate its chart suite
+ */
+export const useCreateCe = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCe>>,
+    TError,
+    { data: BodyType<CeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCe>>,
+  TError,
+  { data: BodyType<CeInput> },
+  TContext
+> => {
+  return useMutation(getCreateCeMutationOptions(options));
+};
+
+/**
+ * @summary Get a CE with its charts
+ */
+export const getGetCeUrl = (slug: string) => {
+  return `/api/ces/${slug}`;
+};
+
+export const getCe = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<CeWithCharts> => {
+  return customFetch<CeWithCharts>(getGetCeUrl(slug), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCeQueryKey = (slug: string) => {
+  return [`/api/ces/${slug}`] as const;
+};
+
+export const getGetCeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCe>>,
+  TError = ErrorType<ApiError>,
+>(
+  slug: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getCe>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCeQueryKey(slug);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCe>>> = ({
+    signal,
+  }) => getCe(slug, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!slug,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getCe>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetCeQueryResult = NonNullable<Awaited<ReturnType<typeof getCe>>>;
+export type GetCeQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get a CE with its charts
+ */
+
+export function useGetCe<
+  TData = Awaited<ReturnType<typeof getCe>>,
+  TError = ErrorType<ApiError>,
+>(
+  slug: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getCe>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCeQueryOptions(slug, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Delete a CE and its charts
+ */
+export const getDeleteCeUrl = (slug: string) => {
+  return `/api/ces/${slug}`;
+};
+
+export const deleteCe = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteCeUrl(slug), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCeMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["deleteCe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCe>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return deleteCe(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCe>>
+>;
+
+export type DeleteCeMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Delete a CE and its charts
+ */
+export const useDeleteCe = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getDeleteCeMutationOptions(options));
+};
+
+/**
+ * @summary Replace this CE's charts with a freshly generated set
+ */
+export const getRegenerateCeUrl = (slug: string) => {
+  return `/api/ces/${slug}/regenerate`;
+};
+
+export const regenerateCe = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<CeWithCharts> => {
+  return customFetch<CeWithCharts>(getRegenerateCeUrl(slug), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRegenerateCeMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof regenerateCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["regenerateCe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof regenerateCe>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return regenerateCe(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegenerateCeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof regenerateCe>>
+>;
+
+export type RegenerateCeMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Replace this CE's charts with a freshly generated set
+ */
+export const useRegenerateCe = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof regenerateCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getRegenerateCeMutationOptions(options));
+};
+
+/**
+ * @summary Get a single chart
+ */
+export const getGetChartUrl = (id: number) => {
+  return `/api/charts/${id}`;
+};
+
+export const getChart = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChartWithCe> => {
+  return customFetch<ChartWithCe>(getGetChartUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetChartQueryKey = (id: number) => {
+  return [`/api/charts/${id}`] as const;
+};
+
+export const getGetChartQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChart>>,
+  TError = ErrorType<ApiError>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetChartQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getChart>>> = ({
+    signal,
+  }) => getChart(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getChart>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetChartQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChart>>
+>;
+export type GetChartQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get a single chart
+ */
+
+export function useGetChart<
+  TData = Awaited<ReturnType<typeof getChart>>,
+  TError = ErrorType<ApiError>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChartQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

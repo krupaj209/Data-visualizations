@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: ces
+    description: Combined Entity (attraction/experience) operations
+  - name: charts
+    description: Chart operations
 paths:
   /healthz:
     get:
@@ -24,6 +28,146 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /ces:
+    get:
+      operationId: listCes
+      tags: [ces]
+      summary: List all CEs
+      responses:
+        "200":
+          description: List of CEs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ce"
+    post:
+      operationId: createCe
+      tags: [ces]
+      summary: Create a CE and generate its chart suite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeWithCharts"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: AI generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}:
+    get:
+      operationId: getCe
+      tags: [ces]
+      summary: Get a CE with its charts
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CE with charts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeWithCharts"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteCe
+      tags: [ces]
+      summary: Delete a CE and its charts
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/regenerate:
+    post:
+      operationId: regenerateCe
+      tags: [ces]
+      summary: Replace this CE's charts with a freshly generated set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Regenerated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeWithCharts"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: AI generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}:
+    get:
+      operationId: getChart
+      tags: [charts]
+      summary: Get a single chart
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartWithCe"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +177,128 @@ components:
           type: string
       required:
         - status
-
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    Ce:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        category:
+          type: string
+        summary:
+          type: string
+        emoji:
+          type: string
+        status:
+          type: string
+        chartCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - slug
+        - name
+        - city
+        - country
+        - category
+        - summary
+        - emoji
+        - status
+        - chartCount
+        - createdAt
+        - updatedAt
+    Chart:
+      type: object
+      properties:
+        id:
+          type: integer
+        ceId:
+          type: integer
+        slug:
+          type: string
+        question:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        insight:
+          type: string
+        chartType:
+          type: string
+        spec:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - ceId
+        - slug
+        - question
+        - title
+        - subtitle
+        - insight
+        - chartType
+        - spec
+        - sortOrder
+        - createdAt
+        - updatedAt
+    ChartWithCe:
+      type: object
+      properties:
+        chart:
+          $ref: "#/components/schemas/Chart"
+        ce:
+          $ref: "#/components/schemas/Ce"
+      required:
+        - chart
+        - ce
+    CeWithCharts:
+      type: object
+      properties:
+        ce:
+          $ref: "#/components/schemas/Ce"
+        charts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chart"
+      required:
+        - ce
+        - charts
+    CeInput:
+      type: object
+      properties:
+        name:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        category:
+          type: string
+      required:
+        - name
+        - city
+        - country
