@@ -273,12 +273,6 @@ export interface DurationProfilesSpec {
     note?: string;
     /** Highlight as the recommended/most-common profile. */
     highlight?: boolean;
-    /** Longer description shown when this row is locked/expanded. */
-    description?: string;
-    /** Comma-separated list of what this persona typically skips. */
-    skips?: string;
-    /** Recommended entrance lane label for this persona. */
-    lane?: string;
   }[];
   /** Optional candy-pill tip at the bottom. */
   tip?: string;

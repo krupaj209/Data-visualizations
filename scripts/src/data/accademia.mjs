@@ -245,10 +245,6 @@ export const charts = [
           range_min: 30,
           range_max: 45,
           note: "David + quick Prisoners look",
-          description:
-            "Walk straight to the Tribune for David, glance at the Prisoners on the way back. Best if you're combining with the Uffizi the same day.",
-          skips: "Musical Instruments, plaster casts, paintings",
-          lane: "Reserved",
         },
         {
           name: "Core highlights",
@@ -256,10 +252,6 @@ export const charts = [
           range_min: 45,
           range_max: 60,
           note: "Add Hall of the Colossus",
-          description:
-            "David, the Prisoners, and a circuit of the Hall of the Colossus. The most common short loop for first-time visitors.",
-          skips: "Musical Instruments, plaster casts wing",
-          lane: "Reserved",
         },
         {
           name: "Most visitors",
@@ -268,10 +260,6 @@ export const charts = [
           range_max: 90,
           note: "Add Musical Instruments",
           highlight: true,
-          description:
-            "The full headline tour: David, Prisoners, Hall of the Colossus, Musical Instruments room, and a quick swing through the painting galleries.",
-          skips: "Detailed plaster-cast wing",
-          lane: "Reserved",
         },
         {
           name: "Deep visit",
@@ -279,10 +267,6 @@ export const charts = [
           range_min: 90,
           range_max: 120,
           note: "Add plaster casts + paintings",
-          description:
-            "All of the above plus the plaster-cast Gipsoteca and a slower pass through the Gothic and Renaissance painting rooms.",
-          skips: "Nothing — full circuit",
-          lane: "Reserved or Guided",
         },
         {
           name: "Art enthusiast",
@@ -290,10 +274,6 @@ export const charts = [
           range_min: 120,
           range_max: 120,
           note: "Full collection + more David time",
-          description:
-            "Two-hour deep dive: long sit with David, full Gipsoteca, every painting room, and Musical Instruments with the audio guide.",
-          skips: "Nothing",
-          lane: "Reserved · early slot",
         },
       ],
       tip: "save 15–20 minutes for the Tribune with David.",
