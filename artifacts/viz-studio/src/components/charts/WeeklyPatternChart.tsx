@@ -12,6 +12,15 @@ interface Props {
   context?: string;
 }
 
+const DAY_NOTE_TONE: Record<
+  "closed" | "free" | "info",
+  { bg: string; fg: string }
+> = {
+  closed: { bg: BRAND.slate100 as string, fg: BRAND.slate700 as string },
+  free: { bg: BRAND.bgMint as string, fg: "#0E8F4E" },
+  info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
+};
+
 export function WeeklyPatternChart({ spec, context }: Props) {
   const byDay = new Map(spec.days.map((d) => [d.day, d]));
   const ordered = DAY_ORDER.map(
@@ -137,6 +146,30 @@ export function WeeklyPatternChart({ spec, context }: Props) {
           </div>
         ))}
       </div>
+
+      {spec.day_notes && spec.day_notes.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {spec.day_notes.map((note, i) => {
+            const tone = DAY_NOTE_TONE[note.kind];
+            return (
+              <span
+                key={`${note.label}-${i}`}
+                style={{
+                  background: tone.bg,
+                  color: tone.fg,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: "clamp(9px, 0.95cqi, 11px)",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {note.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </ChartCard>
   );
 }

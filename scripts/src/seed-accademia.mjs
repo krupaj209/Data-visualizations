@@ -188,7 +188,7 @@ const charts = [
     title: "Weekly crowd pattern",
     subtitle: "Typical weekly pattern",
     insight:
-      "Wednesday and Thursday are the calmest. Tuesday and Sunday are the busiest. Monday is closed.",
+      "Wednesday and Thursday are the calmest. Tuesday spikes from the Monday-closed backlog and the first Sunday of the month draws huge free-entry queues.",
     chart_type: "weekly_pattern",
     spec: {
       type: "weekly_pattern",
@@ -200,6 +200,11 @@ const charts = [
         { day: "fri", level: "quiet", score: 55 },
         { day: "sat", level: "busy", score: 78 },
         { day: "sun", level: "busiest", score: 92 },
+      ],
+      day_notes: [
+        { label: "Mon closed", kind: "closed" },
+        { label: "Tue spikes from Monday backlog", kind: "info" },
+        { label: "First Sun free — expect doubled lines", kind: "free" },
       ],
     },
   },

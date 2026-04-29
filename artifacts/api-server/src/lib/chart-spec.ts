@@ -40,6 +40,16 @@ export const weeklyPatternSpec = z.object({
       }),
     )
     .length(7),
+  /** Optional day-of-week facts shown as chips below the chart. */
+  day_notes: z
+    .array(
+      z.object({
+        label: z.string().max(60),
+        kind: z.enum(["closed", "free", "info"]),
+      }),
+    )
+    .max(6)
+    .optional(),
 });
 
 export const hourlyHeatmapSpec = z.object({

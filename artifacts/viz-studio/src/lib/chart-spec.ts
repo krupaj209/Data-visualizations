@@ -83,6 +83,8 @@ export const MONTH_ORDER: MonthCode[] = [
 export interface WeeklyPatternSpec {
   type: "weekly_pattern";
   days: { day: DayCode; level: LevelKey; score: number; note?: string }[];
+  /** Optional day-of-week chips rendered under the chart. */
+  day_notes?: { label: string; kind: "closed" | "free" | "info" }[];
 }
 
 export interface HourlyHeatmapSpec {
