@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND, CHART_TOKENS } from "@/lib/brand";
 import { type TribuneDensitySpec } from "@/lib/chart-spec";
+import { ChipButton } from "./interactions/ChipButton";
 
 interface Props {
   spec: TribuneDensitySpec;
@@ -13,11 +14,23 @@ interface Props {
 
 const ZONE_TONES: Record<
   TribuneDensitySpec["zones"][number]["tone"],
-  { bg: string; label: string }
+  { bg: string; bgActive: string; label: string }
 > = {
-  quiet: { bg: "rgba(21, 216, 118, 0.10)", label: "#0E8F4E" },
-  packed: { bg: "rgba(255, 0, 118, 0.10)", label: BRAND.candy },
-  second_window: { bg: "rgba(21, 216, 118, 0.10)", label: "#0E8F4E" },
+  quiet: {
+    bg: "rgba(21, 216, 118, 0.10)",
+    bgActive: "rgba(21, 216, 118, 0.22)",
+    label: "#0E8F4E",
+  },
+  packed: {
+    bg: "rgba(255, 0, 118, 0.10)",
+    bgActive: "rgba(255, 0, 118, 0.22)",
+    label: BRAND.candy,
+  },
+  second_window: {
+    bg: "rgba(21, 216, 118, 0.10)",
+    bgActive: "rgba(21, 216, 118, 0.22)",
+    label: "#0E8F4E",
+  },
 };
 
 const PILL_TONES: Record<
@@ -40,10 +53,50 @@ const ICON_FOR: Record<
   clock: Clock,
 };
 
-/** "HH:MM" → minutes from start. */
 function toMin(t: string) {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + (m || 0);
+}
+
+function fmtClock(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  const hh = h % 12 || 12;
+  const mm = m ? `:${String(m).padStart(2, "0")}` : "";
+  const ap = h < 12 ? "am" : "pm";
+  return `${hh}${mm}${ap}`;
+}
+
+function fmtMin(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins - h * 60);
+  return fmtClock(`${h}:${String(m).padStart(2, "0")}`);
+}
+
+/**
+ * Selection types for the Tribune chart. A user can lock the focus from a
+ * pill or a zone band. Only one selection lives at a time; selecting again
+ * clears it (Esc also clears).
+ */
+type Selection =
+  | { kind: "pill"; idx: number; at?: number; range?: [number, number] }
+  | { kind: "zone"; idx: number; range: [number, number] };
+
+function selectionRange(
+  s: Selection | null,
+): [number, number] | null {
+  if (!s) return null;
+  if (s.kind === "pill") {
+    if (s.range) return s.range;
+    if (s.at !== undefined) return [s.at, s.at];
+    return null;
+  }
+  return s.range;
+}
+
+function selectionFocusAt(s: Selection | null): number | null {
+  if (!s) return null;
+  if (s.kind === "pill" && s.at !== undefined) return s.at;
+  return null;
 }
 
 export function TribuneDensityChart({
@@ -53,29 +106,22 @@ export function TribuneDensityChart({
 }: Props) {
   const { points, zones, arrow_callout, context_pills, scope, y_label } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
 
-  // The plot area is split into three vertical strips:
-  //   • HEADER  — zone band labels + the "Tour groups arrive" callout pill
-  //   • plot    — the curve, dots, value labels, gridlines
-  //   • X_AXIS  — bottom row of clock labels
-  // Reserving the header strip explicitly is what stops the topmost dot value
-  // labels (e.g. the "10"s) and the callout pill from being clipped above the
-  // card edge.
   const HEADER = compact ? 28 : 56;
   const X_AXIS = CHART_TOKENS.xAxisStripPx;
   const Y_TICK_W = compact ? 16 : 22;
 
-  const { xs, dMin, range, yMax } = useMemo(() => {
+  const { xs, dMin, dMax, range, yMax } = useMemo(() => {
     const xsLocal = points.map((p) => toMin(p.time));
     const dMinLocal = Math.min(...xsLocal);
     const dMaxLocal = Math.max(...xsLocal);
-    // Cap the y-scale ABOVE the highest density so the topmost dot doesn't
-    // sit flush with the top edge — gives ~16% headroom inside the plot.
     const peak = Math.max(...points.map((p) => p.density), 1);
     const yMaxLocal = Math.max(peak + 2, 12);
     return {
       xs: xsLocal,
       dMin: dMinLocal,
+      dMax: dMaxLocal,
       range: Math.max(dMaxLocal - dMinLocal, 1),
       yMax: yMaxLocal,
     };
@@ -84,8 +130,6 @@ export function TribuneDensityChart({
   const xPct = (mins: number) => ((mins - dMin) / range) * 100;
   const yPct = (v: number) => 100 - (v / yMax) * 100;
 
-  // Cardinal-spline curve through every point so the line and area are one
-  // continuous piece of geometry.
   const { linePath, areaPath, coords } = useMemo(() => {
     const cs = points.map((p, i) => ({
       x: xPct(xs[i]),
@@ -117,7 +161,6 @@ export function TribuneDensityChart({
     ? points.find((p) => p.time === arrow_callout.at)
     : undefined;
 
-  // Y ticks — sample whole-number ticks up to a sensible max so they stay readable.
   const yTicks = useMemo(() => {
     const top = Math.min(yMax, 12);
     const stepGuess = Math.ceil(top / 6);
@@ -125,6 +168,67 @@ export function TribuneDensityChart({
     for (let v = stepGuess; v <= 10; v += stepGuess) out.push(v);
     return out;
   }, [yMax]);
+
+  // Linear interpolation between adjacent points so focused-pill density returns a
+  // continuous density value, not a stepped one snapped to the nearest dot.
+  const densityAt = useCallback(
+    (mins: number) => {
+      if (points.length === 0) return 0;
+      if (mins <= xs[0]) return points[0].density;
+      if (mins >= xs[xs.length - 1]) return points[points.length - 1].density;
+      for (let i = 0; i < xs.length - 1; i++) {
+        if (mins >= xs[i] && mins <= xs[i + 1]) {
+          const t = (mins - xs[i]) / (xs[i + 1] - xs[i] || 1);
+          return points[i].density + t * (points[i + 1].density - points[i].density);
+        }
+      }
+      return 0;
+    },
+    [points, xs],
+  );
+
+  const focusAt = selectionFocusAt(selection);
+  const focusRange = selectionRange(selection);
+  const isDimmed = (mins: number) => {
+    if (!focusRange) return false;
+    return mins < focusRange[0] || mins > focusRange[1];
+  };
+
+  function togglePill(i: number) {
+    const pill = context_pills[i];
+    const f = pill.focus;
+    setSelection((prev) => {
+      if (prev?.kind === "pill" && prev.idx === i) return null;
+      const next: Selection = {
+        kind: "pill",
+        idx: i,
+        at: f?.at ? toMin(f.at) : undefined,
+        range:
+          f?.start && f?.end
+            ? [toMin(f.start), toMin(f.end)]
+            : undefined,
+      };
+      return next;
+    });
+  }
+
+  function toggleZone(i: number) {
+    const z = zones[i];
+    setSelection((prev) => {
+      if (prev?.kind === "zone" && prev.idx === i) return null;
+      return { kind: "zone", idx: i, range: [toMin(z.start), toMin(z.end)] };
+    });
+  }
+
+  // Esc anywhere clears the lock.
+  useEffect(() => {
+    if (!selection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selection]);
 
   return (
     <ChartCard
@@ -134,10 +238,6 @@ export function TribuneDensityChart({
       compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Header row hidden in compact mode (saves vertical space for the
-            embed). When visible, shows the y_label on the left and an inline
-            helper sentence on the right — keeping the helper out of the plot
-            area where it used to overlay the curve. */}
         {!compact && (
           <div
             className="flex items-baseline justify-between gap-3"
@@ -211,7 +311,8 @@ export function TribuneDensityChart({
             ))}
           </div>
 
-          {/* Zone backgrounds + zone band labels live in the header strip. */}
+          {/* Zone bands — now interactive buttons. Active zone gets a deeper
+              fill; non-active dim slightly when something else is selected. */}
           <div
             className="absolute"
             style={{
@@ -219,26 +320,51 @@ export function TribuneDensityChart({
               bottom: X_AXIS,
               left: Y_TICK_W,
               right: CHART_TOKENS.plotInsetX,
-              pointerEvents: "none",
             }}
           >
             {zones.map((z, i) => {
               const left = xPct(toMin(z.start));
               const right = xPct(toMin(z.end));
               const tone = ZONE_TONES[z.tone];
+              const isActive =
+                selection?.kind === "zone" && selection.idx === i;
+              const dimOthers =
+                selection !== null && !isActive;
               return (
-                <div
+                <button
                   key={i}
-                  className="absolute top-0 bottom-0"
+                  type="button"
+                  onClick={() => toggleZone(i)}
+                  aria-label={`Lock zone ${z.label}`}
+                  aria-pressed={isActive}
                   style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
                     left: `${left}%`,
                     width: `${right - left}%`,
-                    background: tone.bg,
+                    background: isActive ? tone.bgActive : tone.bg,
+                    opacity: dimOthers ? 0.5 : 1,
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    outline: "none",
+                    transition:
+                      "background .2s ease, opacity .2s ease, box-shadow .2s ease",
+                    boxShadow: isActive
+                      ? `inset 0 0 0 2px ${tone.label}`
+                      : undefined,
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleZone(i);
+                    }
                   }}
                 >
                   <div
-                    className="absolute"
                     style={{
+                      position: "absolute",
                       top: 6,
                       left: "50%",
                       transform: "translateX(-50%)",
@@ -246,11 +372,12 @@ export function TribuneDensityChart({
                       fontSize: CHART_TOKENS.zoneLabel.fontSize,
                       fontWeight: CHART_TOKENS.zoneLabel.fontWeight,
                       whiteSpace: "nowrap",
+                      pointerEvents: "none",
                     }}
                   >
                     {z.label}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -276,10 +403,6 @@ export function TribuneDensityChart({
                 <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.18} />
                 <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0.0} />
               </linearGradient>
-              {/* Reveal mask — left-to-right wipe. Avoids the dashed-stroke
-                  artifact framer-motion's pathLength animation produces when
-                  combined with vector-effect: non-scaling-stroke and a
-                  stretched viewBox. */}
               <clipPath id="tribuneReveal" clipPathUnits="objectBoundingBox">
                 <motion.rect
                   x={0}
@@ -308,8 +431,10 @@ export function TribuneDensityChart({
                 d={areaPath}
                 fill="url(#tribuneFill)"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
+                animate={{
+                  opacity: focusRange ? 0.55 : 1,
+                }}
+                transition={{ duration: 0.4 }}
               />
             )}
             {linePath && (
@@ -322,6 +447,21 @@ export function TribuneDensityChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 clipPath="url(#tribuneReveal)"
+                style={{
+                  opacity: focusRange ? 0.45 : 1,
+                  transition: "opacity .25s ease",
+                }}
+              />
+            )}
+            {/* Highlighted curve segment for the focused range. */}
+            {focusRange && focusRange[0] !== focusRange[1] && (
+              <FocusedSegment
+                xs={xs}
+                points={points}
+                xPct={xPct}
+                yPct={yPct}
+                from={focusRange[0]}
+                to={focusRange[1]}
               />
             )}
           </svg>
@@ -341,6 +481,9 @@ export function TribuneDensityChart({
               if (!c) return null;
               const isHovered = hovered === i;
               const isCallout = arrow_callout?.at === p.time;
+              const mins = xs[i];
+              const dim = isDimmed(mins);
+              const isFocusAt = focusAt !== null && Math.abs(focusAt - mins) < 1;
               return (
                 <div
                   key={i}
@@ -351,6 +494,8 @@ export function TribuneDensityChart({
                     transform: "translate(-50%, -50%)",
                     width: 16,
                     height: 16,
+                    opacity: dim ? 0.3 : 1,
+                    transition: "opacity .25s ease",
                   }}
                   onMouseEnter={() => setHovered(i)}
                   onMouseLeave={() => setHovered(null)}
@@ -360,18 +505,22 @@ export function TribuneDensityChart({
                     animate={{ scale: 1 }}
                     transition={{ delay: 1.1 + i * 0.04, duration: 0.3 }}
                     style={{
-                      width: isCallout ? 10 : 7,
-                      height: isCallout ? 10 : 7,
+                      width: isFocusAt ? 12 : isCallout ? 10 : 7,
+                      height: isFocusAt ? 12 : isCallout ? 10 : 7,
                       borderRadius: "50%",
                       background: BRAND.purps,
-                      border: isCallout
-                        ? `2px solid ${BRAND.purps}`
-                        : "2px solid white",
-                      boxShadow: isCallout
-                        ? `0 0 0 2px white`
-                        : isHovered
-                          ? `0 0 0 4px ${BRAND.purpsSoft}`
-                          : "none",
+                      border: isFocusAt
+                        ? `2px solid white`
+                        : isCallout
+                          ? `2px solid ${BRAND.purps}`
+                          : "2px solid white",
+                      boxShadow: isFocusAt
+                        ? `0 0 0 4px ${BRAND.purps}40`
+                        : isCallout
+                          ? `0 0 0 2px white`
+                          : isHovered
+                            ? `0 0 0 4px ${BRAND.purpsSoft}`
+                            : "none",
                       position: "absolute",
                       top: "50%",
                       left: "50%",
@@ -414,11 +563,27 @@ export function TribuneDensityChart({
                 </div>
               );
             })}
+
+            {/* Focus marker for "at" selections (pill with .at). */}
+            {focusAt !== null && (
+              <FocusMarker
+                xPct={xPct}
+                yPct={yPct}
+                at={focusAt}
+                density={densityAt(focusAt)}
+                onDataPoint={points.some(
+                  (p) => Math.abs(toMin(p.time) - focusAt) < 1,
+                )}
+                pillLabel={
+                  selection?.kind === "pill"
+                    ? context_pills[selection.idx].title
+                    : undefined
+                }
+              />
+            )}
           </div>
 
-          {/* Callout pill — anchored INSIDE the reserved header strip so it
-              never gets clipped above the card edge. The arrow tip is the
-              little triangle drawn just below it. */}
+          {/* Callout pill */}
           {arrow_callout && calloutPoint && (
             <div
               className="absolute"
@@ -436,6 +601,8 @@ export function TribuneDensityChart({
                   left: `${xPct(toMin(arrow_callout.at))}%`,
                   top: HEADER - 26,
                   transform: "translateX(-50%)",
+                  opacity: focusRange ? 0.4 : 1,
+                  transition: "opacity .25s ease",
                 }}
               >
                 <div
@@ -453,7 +620,6 @@ export function TribuneDensityChart({
                 >
                   {arrow_callout.label}
                 </div>
-                {/* Tiny downward arrow indicator */}
                 <div
                   style={{
                     position: "absolute",
@@ -471,7 +637,7 @@ export function TribuneDensityChart({
             </div>
           )}
 
-          {/* X-axis labels — sparser sample in compact to avoid collisions */}
+          {/* X-axis labels */}
           <div
             className="absolute flex justify-between"
             style={{
@@ -507,7 +673,8 @@ export function TribuneDensityChart({
           </div>
         </div>
 
-        {/* Context pills — hidden in compact (host supplies its own copy) */}
+        {/* Context pills — clickable. Selecting one drives the focus on the
+            curve. Re-clicking or pressing Esc clears. */}
         {!compact && context_pills.length > 0 && (
           <div
             className="grid mt-3"
@@ -519,15 +686,27 @@ export function TribuneDensityChart({
             {context_pills.map((p, i) => {
               const Icon = ICON_FOR[p.icon];
               const tone = PILL_TONES[p.tone];
+              const isActive =
+                selection?.kind === "pill" && selection.idx === i;
+              const dimOthers =
+                selection !== null && !isActive;
               return (
-                <div
+                <ChipButton
                   key={i}
-                  className="flex items-center gap-2"
+                  active={isActive}
+                  dim={dimOthers}
+                  onClick={() => togglePill(i)}
+                  bg={tone.bg}
+                  fg={tone.fg}
+                  ariaPressed={isActive}
+                  ariaLabel={`Highlight ${p.title} on chart`}
                   style={{
-                    background: tone.bg,
-                    border: `1px solid ${tone.fg}25`,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding:
+                      "clamp(6px, 0.9cqi, 10px) clamp(8px, 1.1cqi, 12px)",
                     borderRadius: 10,
-                    padding: "clamp(6px, 0.9cqi, 10px) clamp(8px, 1.1cqi, 12px)",
                     minWidth: 0,
                   }}
                 >
@@ -571,7 +750,7 @@ export function TribuneDensityChart({
                       {p.subtitle}
                     </div>
                   </div>
-                </div>
+                </ChipButton>
               );
             })}
           </div>
@@ -581,10 +760,116 @@ export function TribuneDensityChart({
   );
 }
 
-function fmtClock(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  const hh = h % 12 || 12;
-  const mm = m ? `:${String(m).padStart(2, "0")}` : "";
-  const ap = h < 12 ? "am" : "pm";
-  return `${hh}${mm}${ap}`;
+function FocusMarker({
+  xPct,
+  yPct,
+  at,
+  density,
+  onDataPoint,
+  pillLabel,
+}: {
+  xPct: (mins: number) => number;
+  yPct: (v: number) => number;
+  at: number;
+  density: number;
+  onDataPoint: boolean;
+  pillLabel?: string;
+}) {
+  const x = xPct(at);
+  // Clamp tooltip horizontally so it doesn't overflow the plot area.
+  let tipLeft = "50%";
+  let tipTransform = "translateX(-50%)";
+  if (x < 12) {
+    tipLeft = "0%";
+    tipTransform = "translateX(0)";
+  } else if (x > 88) {
+    tipLeft = "100%";
+    tipTransform = "translateX(-100%)";
+  }
+  return (
+    <div
+      className="absolute pointer-events-none"
+      style={{
+        left: `${x}%`,
+        top: `${yPct(density)}%`,
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      {!onDataPoint && (
+        <div
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: BRAND.purps,
+            border: "3px solid white",
+            boxShadow: `0 0 0 3px ${BRAND.purps}30`,
+          }}
+        />
+      )}
+      <div
+        className="absolute"
+        style={{
+          left: tipLeft,
+          top: -36,
+          transform: tipTransform,
+          background: BRAND.slate900,
+          color: "white",
+          padding: "5px 10px",
+          borderRadius: 8,
+          fontSize: "clamp(9px, 1cqi, 11px)",
+          fontWeight: 800,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {pillLabel ? `${pillLabel} · ` : ""}
+        {fmtMin(at)} · {Math.round(density)}/10
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Re-draws the curve segment between `from` and `to` minutes in solid Purps
+ * over the dimmed full curve. We rebuild the geometry rather than masking so
+ * the highlighted portion gets crisp endpoints exactly at the focus range.
+ */
+function FocusedSegment({
+  xs,
+  points,
+  xPct,
+  yPct,
+  from,
+  to,
+}: {
+  xs: number[];
+  points: TribuneDensitySpec["points"];
+  xPct: (mins: number) => number;
+  yPct: (v: number) => number;
+  from: number;
+  to: number;
+}) {
+  const inRange = points
+    .map((p, i) => ({ p, i }))
+    .filter(({ i }) => xs[i] >= from && xs[i] <= to);
+  if (inRange.length < 2) return null;
+  const cs = inRange.map(({ p, i }) => ({
+    x: xPct(xs[i]),
+    y: yPct(p.density),
+  }));
+  const cmds: string[] = [`M ${cs[0].x.toFixed(3)} ${cs[0].y.toFixed(3)}`];
+  for (let i = 1; i < cs.length; i++) {
+    cmds.push(`L ${cs[i].x.toFixed(3)} ${cs[i].y.toFixed(3)}`);
+  }
+  return (
+    <path
+      d={cmds.join(" ")}
+      fill="none"
+      stroke={BRAND.purps}
+      strokeWidth={3}
+      vectorEffect="non-scaling-stroke"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
 }

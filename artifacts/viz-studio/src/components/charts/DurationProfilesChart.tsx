@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, Timer } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
@@ -11,19 +11,14 @@ interface Props {
   compact?: boolean;
 }
 
-/** Lucide doesn't have all of these as semantic icons — use small inline SVGs. */
 const ICONS: Record<DurationProfilesSpec["profiles"][number]["icon"], string> = {
   stopwatch:
     "M12 14v-4M9 2h6M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z",
-  // simple head with crown — use head-style profile circle
   head: "M12 6a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM6 20c0-3.3 2.7-6 6-6s6 2.7 6 6",
   column:
     "M6 4h12M6 20h12M8 4v16M16 4v16M5 4l-1 2h16l-1-2M5 20l-1-2h16l-1 2",
-  // lyre / harp
   lyre: "M8 4c-2 4-2 12 0 16M16 4c2 4 2 12 0 16M8 8h8M8 12h8M8 16h8",
-  // bust statue
   bust: "M12 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM7 20c0-3 2-6 5-6s5 3 5 6M5 20h14",
-  // bench
   bench: "M3 12h18M5 12v8M19 12v8M3 12l3-4h12l3 4",
 };
 
@@ -44,14 +39,6 @@ function fmtRange(min: number, max: number) {
   return `${min}–${max} min`;
 }
 
-/** Compact-mode short forms for scale tick labels: "30 min" → "30m", "1 hr" → "1h". */
-function shortLabel(label: string): string {
-  return label
-    .replace(/(\d+)\s*min/g, "$1m")
-    .replace(/(\d+)\s*hr/g, "$1h")
-    .replace(/\s+/g, "");
-}
-
 export function DurationProfilesChart({
   spec,
   context,
@@ -60,6 +47,18 @@ export function DurationProfilesChart({
   const { headline, scale_min, profiles, tip } = spec;
   const maxScale = Math.max(...scale_min.map((s) => s.minutes), 1);
   const [hovered, setHovered] = useState<number | null>(null);
+  const [lockedIdx, setLockedIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (lockedIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLockedIdx(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lockedIdx]);
+
+  const locked = lockedIdx !== null ? profiles[lockedIdx] : null;
 
   return (
     <ChartCard
@@ -68,7 +67,6 @@ export function DurationProfilesChart({
       compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Headline strip — hidden in compact (host supplies its own copy) */}
         {!compact && (
           <div className="flex items-center gap-3 mb-3">
             <span
@@ -98,16 +96,12 @@ export function DurationProfilesChart({
           </div>
         )}
 
-        {/* Profile rows + scale */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div
-            className="grid items-center"
+            className="flex flex-col"
             style={{
-              gridTemplateColumns: "44px minmax(0, 110px) 1fr",
-              columnGap: 12,
-              rowGap: "clamp(6px, 0.9cqi, 12px)",
+              gap: "clamp(6px, 0.9cqi, 12px)",
               flex: 1,
-              alignContent: "stretch",
             }}
           >
             {profiles.map((p, i) => {
@@ -119,8 +113,10 @@ export function DurationProfilesChart({
               const fill = isHi ? BRAND.purps : BRAND.purpsSoft;
               const labelColor = isHi ? "white" : BRAND.purps;
               const isHovered = hovered === i;
+              const isLocked = lockedIdx === i;
+              const dim = lockedIdx !== null && !isLocked;
               return (
-                <RowFragment
+                <ProfileRow
                   key={i}
                   index={i}
                   profile={p}
@@ -129,16 +125,18 @@ export function DurationProfilesChart({
                   widthPct={widthPct}
                   isHi={isHi}
                   isHovered={isHovered}
+                  isLocked={isLocked}
+                  dim={dim}
                   onEnter={() => setHovered(i)}
                   onLeave={() => setHovered(null)}
+                  onToggle={() =>
+                    setLockedIdx((prev) => (prev === i ? null : i))
+                  }
                 />
               );
             })}
           </div>
 
-          {/* Scale ticks — hidden in compact (each bar self-labels its value
-              range, so a separate axis adds no info but crowds at narrow
-              widths). */}
           {!compact && (
             <div
               className="grid mt-2"
@@ -200,8 +198,107 @@ export function DurationProfilesChart({
           )}
         </div>
 
-        {/* Tip footer — hidden in compact (host supplies its own copy) */}
-        {!compact && tip && (
+        {!compact && locked && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            style={{ overflow: "hidden", marginTop: 10 }}
+            role="region"
+            aria-label={`${locked.name} profile detail`}
+          >
+            <div
+              style={{
+                padding: "10px 12px",
+                background: BRAND.purpsSoft,
+                borderRadius: 10,
+                border: `1px solid ${BRAND.purps}25`,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 4,
+                }}
+              >
+                <div
+                  style={{
+                    color: BRAND.purps,
+                    fontWeight: 800,
+                    fontSize: "clamp(12px, 1.35cqi, 14px)",
+                  }}
+                >
+                  {locked.name} · {fmtRange(locked.range_min, locked.range_max)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLockedIdx(null)}
+                  aria-label="Close detail"
+                  style={{
+                    background: "white",
+                    color: BRAND.purps,
+                    border: `1px solid ${BRAND.purps}25`,
+                    padding: "2px 9px",
+                    borderRadius: 999,
+                    fontSize: "clamp(9px, 1cqi, 11px)",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    outline: "none",
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              {locked.description && (
+                <div
+                  style={{
+                    color: BRAND.slate900,
+                    fontSize: "clamp(10px, 1.1cqi, 12px)",
+                    fontWeight: 600,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {locked.description}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {locked.skips && (
+                  <span
+                    style={{
+                      background: "white",
+                      color: BRAND.slate700,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      fontSize: "clamp(9px, 1cqi, 11px)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Skips: {locked.skips}
+                  </span>
+                )}
+                {locked.lane && (
+                  <span
+                    style={{
+                      background: BRAND.purps,
+                      color: "white",
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      fontSize: "clamp(9px, 1cqi, 11px)",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Lane: {locked.lane}
+                  </span>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {!compact && tip && !locked && (
           <div className="flex items-center gap-2 mt-3">
             <span
               className="flex items-center justify-center shrink-0"
@@ -228,7 +325,7 @@ export function DurationProfilesChart({
   );
 }
 
-function RowFragment({
+function ProfileRow({
   index,
   profile,
   fill,
@@ -236,8 +333,11 @@ function RowFragment({
   widthPct,
   isHi,
   isHovered,
+  isLocked,
+  dim,
   onEnter,
   onLeave,
+  onToggle,
 }: {
   index: number;
   profile: DurationProfilesSpec["profiles"][number];
@@ -246,12 +346,50 @@ function RowFragment({
   widthPct: number;
   isHi: boolean;
   isHovered: boolean;
+  isLocked: boolean;
+  dim: boolean;
   onEnter: () => void;
   onLeave: () => void;
+  onToggle: () => void;
 }) {
   return (
-    <>
-      {/* Icon */}
+    <button
+      type="button"
+      onClick={onToggle}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onFocus={onEnter}
+      onBlur={onLeave}
+      aria-label={`Toggle ${profile.name} detail (${fmtRange(profile.range_min, profile.range_max)})`}
+      aria-pressed={isLocked}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "44px minmax(0, 110px) 1fr",
+        columnGap: 12,
+        alignItems: "center",
+        background: "transparent",
+        border: "none",
+        padding: 4,
+        margin: -4,
+        cursor: "pointer",
+        textAlign: "left",
+        opacity: dim ? 0.4 : 1,
+        transition: "opacity .2s ease",
+        outline: "none",
+        borderRadius: 10,
+        boxShadow: isLocked
+          ? `0 0 0 2px ${BRAND.purps}`
+          : isHovered
+            ? `0 0 0 2px ${BRAND.purps}33`
+            : "none",
+      }}
+    >
       <div className="flex items-center justify-center">
         <div
           className="flex items-center justify-center"
@@ -275,11 +413,14 @@ function RowFragment({
         </div>
       </div>
 
-      {/* Label */}
       <div className="min-w-0">
         <div
           style={{
-            color: isHi ? BRAND.purps : BRAND.slate900,
+            color: isLocked
+              ? BRAND.purps
+              : isHi
+                ? BRAND.purps
+                : BRAND.slate900,
             fontWeight: 800,
             fontSize: "clamp(11px, 1.3cqi, 14px)",
             lineHeight: 1.15,
@@ -302,12 +443,9 @@ function RowFragment({
         )}
       </div>
 
-      {/* Bar */}
       <div
         className="relative"
         style={{ height: "clamp(28px, 3.4cqi, 40px)" }}
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
       >
         <motion.div
           initial={{ width: 0 }}
@@ -317,12 +455,10 @@ function RowFragment({
             delay: 0.15 + index * 0.08,
             ease: [0.22, 1, 0.36, 1],
           }}
-          className="h-full flex items-center justify-end pr-3 cursor-default"
+          className="h-full flex items-center justify-end pr-3"
           style={{
             background: fill,
             borderRadius: 8,
-            boxShadow: isHovered ? `0 0 0 2px ${BRAND.purps}40` : "none",
-            transition: "box-shadow .15s ease",
           }}
         >
           <span
@@ -336,7 +472,7 @@ function RowFragment({
             {fmtRange(profile.range_min, profile.range_max)}
           </span>
         </motion.div>
-        {isHovered && (
+        {isHovered && !isLocked && (
           <div
             className="absolute z-30 pointer-events-none"
             style={{
@@ -356,6 +492,6 @@ function RowFragment({
           </div>
         )}
       </div>
-    </>
+    </button>
   );
 }

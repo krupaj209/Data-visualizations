@@ -49,10 +49,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
   const { points, zones, caption } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
-  // The plot area carries a reserved top header strip for zone pills and a
-  // bottom strip for x-axis ticks. The SVG + dot wrappers map their 0–100
-  // local coords into this inner band so the highest point gets ~15% headroom
-  // and the lowest dot doesn't kiss the x-axis row.
   const HEADER = compact ? 24 : CHART_TOKENS.headerStripPx;
   const X_AXIS = CHART_TOKENS.xAxisStripPx;
 
@@ -60,7 +56,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
     const xsLocal = points.map((p) => toMin(p.time));
     const dMinLocal = Math.min(...xsLocal);
     const dMaxLocal = Math.max(...xsLocal);
-    // Add ~15% headroom above the peak so the curve never kisses the top edge.
     const peak = Math.max(...points.map((p) => p.crowd), 1);
     const yMaxLocal = Math.max(Math.ceil(peak * 1.18), peak + 1, 10);
     return {
@@ -74,10 +69,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
   const xPct = (mins: number) => ((mins - dMin) / range) * 100;
   const yPct = (v: number) => 100 - (v / yMax) * 100;
 
-  // Build a smooth path through every point. We use a Catmull-Rom-style
-  // cardinal spline so the curve genuinely passes through each data point and
-  // a single continuous d="…" string carries the whole dataset (so framer
-  // motion's pathLength animation reveals one unbroken curve, not segments).
   const { linePath, areaPath, coords } = useMemo(() => {
     const cs = points.map((p, i) => ({
       x: xPct(xs[i]),
@@ -104,7 +95,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
       );
     }
     const line = cmds.join(" ");
-    // Close the area path back to the bottom.
     const last = cs[cs.length - 1];
     const area = `${line} L ${last.x.toFixed(3)} 100 L ${cs[0].x.toFixed(3)} 100 Z`;
     return { linePath: line, areaPath: area, coords: cs };
@@ -122,10 +112,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             paddingRight: CHART_TOKENS.plotInsetX,
           }}
         >
-          {/* Zone backgrounds + pills. Wrapper occupies the exact plot area so
-              0–100% maps cleanly onto the SVG/dot coords. The zone pill sits
-              inside the reserved header strip so it can never collide with
-              the curve or the top edge. */}
           <div
             className="absolute"
             style={{
@@ -178,8 +164,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             })}
           </div>
 
-          {/* SVG curve — explicit width:100% guards against SVG falling back to
-              its 300px intrinsic width when only inset-x-0 is applied. */}
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -200,10 +184,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                 <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.22} />
                 <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0} />
               </linearGradient>
-              {/* Reveal mask — animates from left to right to draw the curve in.
-                  Using a clip rect avoids the dashed-stroke artifact you get
-                  when framer-motion's pathLength animation is combined with
-                  vector-effect: non-scaling-stroke and a stretched viewBox. */}
               <clipPath id="dailyReveal" clipPathUnits="objectBoundingBox">
                 <motion.rect
                   x={0}
@@ -221,7 +201,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                 fill="url(#dailyFill)"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
+                transition={{ duration: 0.35 }}
               />
             )}
             {linePath && (
@@ -302,7 +282,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {fmtClock(p.time)} · {p.crowd}/{Math.max(...points.map((pt) => pt.crowd))}
+                      {fmtClock(p.time)} · {p.crowd}/
+                      {Math.max(...points.map((pt) => pt.crowd))}
                     </div>
                   )}
                 </div>
@@ -321,8 +302,6 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             }}
           >
             {points.map((p, i) => {
-              // Show first, last, and every nth label to avoid crowding.
-              // Sparser sampling in compact mode (~5 labels) to fit narrow widths.
               const step = Math.max(
                 1,
                 Math.floor(points.length / (compact ? 5 : 9)),
@@ -346,7 +325,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
           </div>
         </div>
 
-        {/* Caption pill — hidden in compact (host supplies its own copy) */}
+        {/* Caption pill */}
         {!compact && caption && (caption.opens || caption.last_entry) && (
           <div className="flex justify-center mt-2">
             <div
@@ -375,7 +354,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
               </span>
               {caption.opens && (
                 <span>
-                  Opens <strong style={{ fontWeight: 800 }}>{caption.opens}</strong>
+                  Opens{" "}
+                  <strong style={{ fontWeight: 800 }}>{caption.opens}</strong>
                 </span>
               )}
               {caption.opens && caption.last_entry && (
@@ -384,7 +364,9 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
               {caption.last_entry && (
                 <span>
                   Last entry{" "}
-                  <strong style={{ fontWeight: 800 }}>{caption.last_entry}</strong>
+                  <strong style={{ fontWeight: 800 }}>
+                    {caption.last_entry}
+                  </strong>
                 </span>
               )}
             </div>

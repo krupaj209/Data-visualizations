@@ -17,12 +17,6 @@ import {
 interface Props {
   spec: SeasonalCurveSpec;
   context?: string;
-  /**
-   * Embed compact mode: drop the metric_insights paragraph, calendar_notes
-   * chip rail, and fallback legend so the chart visualization fills the
-   * card. Hosts typically render the equivalent copy as bullet points
-   * outside the iframe.
-   */
   compact?: boolean;
 }
 
@@ -35,6 +29,7 @@ interface MonthDatum {
   status: SeasonKey;
   weather: number | null;
   price: number | null;
+  note: string | null;
 }
 
 const METRIC_LABEL: Record<MetricKey, string> = {
@@ -43,13 +38,11 @@ const METRIC_LABEL: Record<MetricKey, string> = {
   price: "Price",
 };
 
-/** Solid bar fill for non-crowd metrics. */
 const METRIC_FILL: Record<Exclude<MetricKey, "crowd">, string> = {
   weather: BRAND.bgCool,
   price: BRAND.bgBlush,
 };
 
-/** Highlighted (best) bar fill for non-crowd metrics. */
 const METRIC_BEST_FILL: Record<Exclude<MetricKey, "crowd">, string> = {
   weather: BRAND.okayGreen,
   price: BRAND.candy,
@@ -77,6 +70,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
         weather:
           typeof row?.weather_score === "number" ? row.weather_score : null,
         price: typeof row?.price_score === "number" ? row.price_score : null,
+        note: row?.note ?? null,
       };
     });
   }, [spec.months]);
@@ -94,14 +88,12 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
 
   const [metric, setMetric] = useState<MetricKey>("crowd");
 
-  // Open months — exclude closed-status months from peak/quietest computations.
   const openIdxs = useMemo(
     () =>
       data.map((d, i) => ({ d, i })).filter(({ d }) => d.status !== "closed"),
     [data],
   );
 
-  // Crowd-view annotations (Peak / Quietest / Best balance) — preserved.
   const peakIdx =
     openIdxs.length > 0
       ? openIdxs.reduce(
@@ -120,7 +112,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
     (d, i) => d.status === "moderate" && i !== peakIdx && i !== quietestIdx,
   );
 
-  // Best month per active metric.
   const bestIdx = useMemo(() => {
     if (openIdxs.length === 0) return -1;
     if (metric === "crowd") return quietestIdx;
@@ -133,7 +124,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
         candidates[0],
       ).i;
     }
-    // price
     const candidates = openIdxs.filter(({ d }) => d.price !== null);
     if (candidates.length === 0) return -1;
     return candidates.reduce(
@@ -143,7 +133,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
     ).i;
   }, [metric, openIdxs, quietestIdx]);
 
-  // Per-bar value & fill driven by active metric.
   const bars = useMemo(() => {
     return data.map((d, i) => {
       let value: number;
@@ -188,9 +177,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
             const fill = bars[i].fill;
             const heightPct = Math.max((value / maxValue) * 100, 4);
 
-            // Crowd view: preserve the legacy Quietest / Peak / Best balance
-            // soft-pill annotations exactly as before (rendered for both
-            // fallback and upgrade modes, so fallback === legacy chart).
             let crowdLabel: string | null = null;
             let crowdFg: string = BRAND.purps;
             let crowdBg: string = BRAND.purpsSoft;
@@ -210,10 +196,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
               }
             }
 
-            // Upgrade-only primary "Best month" pill for weather / price
-            // metrics. In crowd-upgrade mode, the legacy Quietest pill IS
-            // the primary callout, so no extra label is rendered — but the
-            // bar gets the ring (below) to visually distinguish it.
             let primaryLabel: string | null = null;
             let primaryBg: string = BRAND.purps;
             if (hasUpgrade && i === bestIdx) {
@@ -226,8 +208,6 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
               }
             }
 
-            // Bar ring: visual primary-highlight on the best bar — only in
-            // upgrade mode (fallback chart stays identical to legacy).
             const ringColor =
               hasUpgrade && i === bestIdx
                 ? metric === "price"
@@ -338,23 +318,25 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
           ))}
         </div>
 
-        {!compact && hasUpgrade && spec.metric_insights?.[metric] && (
-          <motion.p
-            key={metric}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-2"
-            style={{
-              fontSize: "clamp(10px, 1.05cqi, 12px)",
-              color: BRAND.slate900,
-              fontWeight: 600,
-              lineHeight: 1.4,
-            }}
-          >
-            {spec.metric_insights[metric]}
-          </motion.p>
-        )}
+        {!compact &&
+          hasUpgrade &&
+          spec.metric_insights?.[metric] && (
+            <motion.p
+              key={metric}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-2"
+              style={{
+                fontSize: "clamp(10px, 1.05cqi, 12px)",
+                color: BRAND.slate900,
+                fontWeight: 600,
+                lineHeight: 1.4,
+              }}
+            >
+              {spec.metric_insights[metric]}
+            </motion.p>
+          )}
 
         {!compact &&
           hasUpgrade &&

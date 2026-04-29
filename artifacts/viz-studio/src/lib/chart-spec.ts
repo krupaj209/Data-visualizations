@@ -82,7 +82,16 @@ export const MONTH_ORDER: MonthCode[] = [
 
 export interface WeeklyPatternSpec {
   type: "weekly_pattern";
-  days: { day: DayCode; level: LevelKey; score: number; note?: string }[];
+  days: {
+    day: DayCode;
+    level: LevelKey;
+    score: number;
+    /**
+     * Optional short label shown when the day is selected/locked, e.g.
+     * "Closed", "Quietest open day", "Tour-group heavy".
+     */
+    note?: string;
+  }[];
   /** Optional day-of-week chips rendered under the chart. */
   day_notes?: { label: string; kind: "closed" | "free" | "info" }[];
 }
@@ -240,6 +249,11 @@ export interface TribuneDensitySpec {
     title: string;
     subtitle: string;
     tone: "candy" | "okay" | "purps";
+    /**
+     * Optional focus target — when provided, clicking this pill locks the
+     * matching time (or time range) on the curve. Times are "HH:MM" 24h.
+     */
+    focus?: { at?: string; start?: string; end?: string };
   }[];
 }
 
@@ -259,6 +273,12 @@ export interface DurationProfilesSpec {
     note?: string;
     /** Highlight as the recommended/most-common profile. */
     highlight?: boolean;
+    /** Longer description shown when this row is locked/expanded. */
+    description?: string;
+    /** Comma-separated list of what this persona typically skips. */
+    skips?: string;
+    /** Recommended entrance lane label for this persona. */
+    lane?: string;
   }[];
   /** Optional candy-pill tip at the bottom. */
   tip?: string;
@@ -280,6 +300,14 @@ export interface EntranceLanesSpec {
     dots: number;
     /** Whether the box should have a dashed (vs solid) border. */
     dashed?: boolean;
+    /** Who this lane is for. Shown when the lane is locked/expanded. */
+    who?: string;
+    /** Typical peak-season wait shown in the expanded detail. */
+    wait_peak?: string;
+    /** Typical off-peak wait shown in the expanded detail. */
+    wait_off_peak?: string;
+    /** What to book or where to queue, shown in the expanded detail. */
+    how?: string;
   }[];
 }
 
@@ -300,6 +328,12 @@ export interface CoBookingsSpec {
       | "building"
       | "trees"
       | "gem";
+    /** Pairing logic, e.g. "Same day · 8 min walk". Shown when row is locked. */
+    pairing?: string;
+    /** Walking distance / minutes from the host venue. */
+    walk?: string;
+    /** Whether this venue is also in the curated library. */
+    on_library?: boolean;
   }[];
   /** How many top items to highlight in solid Purps (rest stay pale). */
   highlight_top?: number;

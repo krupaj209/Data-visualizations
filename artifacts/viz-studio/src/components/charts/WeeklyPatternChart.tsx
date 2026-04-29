@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import {
@@ -28,11 +29,7 @@ const DAY_NOTE_TONE: Record<
   info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
 };
 
-/** Headroom strip above the bars so the "Busiest"/"Quietest" pills always sit
- *  clearly above the bar tops without colliding with the card edge. */
 const PILL_HEADROOM = 26;
-/** Cap how much of the bar row's vertical space the tallest bar fills.
- *  Without this, bars stretch with the container and feel tall-and-skinny. */
 const MAX_BAR_FILL = 0.78;
 
 export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
@@ -46,29 +43,87 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       },
   );
 
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Average across open days only — closed days would skew the comparison.
+  const openAvg = useMemo(() => {
+    const open = ordered.filter((d) => d.level !== "closed");
+    if (open.length === 0) return 0;
+    return open.reduce((s, d) => s + d.score, 0) / open.length;
+  }, [ordered]);
+
+  useEffect(() => {
+    if (selectedIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedIdx(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIdx]);
+
+  function handleKey(e: React.KeyboardEvent, i: number) {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = (i + 1) % ordered.length;
+      buttonRefs.current[next]?.focus();
+      setSelectedIdx(next);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = (i - 1 + ordered.length) % ordered.length;
+      buttonRefs.current[prev]?.focus();
+      setSelectedIdx(prev);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setSelectedIdx((p) => (p === i ? null : i));
+    }
+  }
+
+  const selected = selectedIdx !== null ? ordered[selectedIdx] : null;
+  const selectedNote =
+    selected && (selected as WeeklyPatternSpec["days"][number]).note;
+  const delta = selected ? selected.score - openAvg : 0;
+
   return (
     <ChartCard context={context ?? "Crowd level by day"} compact={compact}>
-      {/* Bar row — fixed PILL_HEADROOM at top reserves space for the
-          Busiest/Quietest pills, then bars fill at most MAX_BAR_FILL of the
-          remaining height so they read as proportioned to the card. */}
       <div
         className="flex-1 grid grid-cols-7 items-end"
         style={{
           gap: "clamp(6px, 1.2cqi, 14px)",
           paddingTop: PILL_HEADROOM,
         }}
+        role="tablist"
+        aria-label="Days of the week"
       >
         {ordered.map((d, i) => {
           const isClosed = d.level === "closed";
           const fill = LEVEL_FILL[d.level];
-          // Closed days get a fixed 60% block (visible but not dominant).
           const rawPct = Math.max(d.score, isClosed ? 60 : 0);
-          // Apply the cap: the tallest bar (score=100) fills MAX_BAR_FILL.
           const heightPct = rawPct * MAX_BAR_FILL;
+          const isActive = selectedIdx === i;
+          const dimOthers = selectedIdx !== null && !isActive;
           return (
-            <div
+            <button
               key={d.day}
+              ref={(el) => {
+                buttonRefs.current[i] = el;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              aria-label={`${DAY_LABELS[d.day]}${isClosed ? ", closed" : `, score ${d.score} of 100`}`}
+              onClick={() => setSelectedIdx((p) => (p === i ? null : i))}
+              onKeyDown={(e) => handleKey(e, i)}
               className="relative h-full flex flex-col items-center justify-end"
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                opacity: dimOthers ? 0.45 : 1,
+                outline: "none",
+                transition: "opacity .2s ease",
+              }}
             >
               {(d.level === "busiest" || d.level === "quietest") && (
                 <div
@@ -101,8 +156,6 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                 }}
                 className="w-full"
                 style={{
-                  // Wider bars + tighter gap make the row feel grounded
-                  // rather than tall-and-skinny.
                   maxWidth: 96,
                   margin: "0 auto",
                   backgroundColor: isClosed ? "transparent" : fill,
@@ -114,9 +167,13 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                   borderTopRightRadius: 12,
                   borderBottomLeftRadius: 4,
                   borderBottomRightRadius: 4,
+                  boxShadow: isActive
+                    ? `0 0 0 3px ${BRAND.purps}, 0 0 0 5px white inset`
+                    : undefined,
+                  transition: "box-shadow .15s ease",
                 }}
               />
-            </div>
+            </button>
           );
         })}
       </div>
@@ -130,11 +187,16 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
           paddingTop: 6,
         }}
       >
-        {ordered.map((d) => (
+        {ordered.map((d, i) => (
           <div key={d.day} className="text-center">
             <div
               style={{
-                color: d.level === "closed" ? BRAND.slate500 : BRAND.slate900,
+                color:
+                  d.level === "closed"
+                    ? BRAND.slate500
+                    : selectedIdx === i
+                      ? BRAND.purps
+                      : BRAND.slate900,
                 fontWeight: 800,
                 fontSize: "clamp(11px, 1.3cqi, 15px)",
                 lineHeight: 1.1,
@@ -157,6 +219,88 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Selected-day readout. Closed days show "Closed" instead of a delta. */}
+      {selected && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: BRAND.slate50,
+            border: `1px solid ${BRAND.slate100}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            style={{
+              color: BRAND.purps,
+              fontWeight: 800,
+              fontSize: "clamp(11px, 1.2cqi, 13px)",
+            }}
+          >
+            {DAY_LABELS[selected.day]}
+          </span>
+          {selected.level === "closed" ? (
+            <span
+              style={{
+                color: BRAND.slate700,
+                fontWeight: 700,
+                fontSize: "clamp(10px, 1.1cqi, 12px)",
+              }}
+            >
+              Closed all day
+            </span>
+          ) : (
+            <>
+              <span
+                style={{
+                  color: BRAND.slate900,
+                  fontWeight: 700,
+                  fontSize: "clamp(10px, 1.1cqi, 12px)",
+                }}
+              >
+                Crowd score {selected.score}/100
+              </span>
+              <span
+                style={{
+                  color:
+                    delta > 0
+                      ? BRAND.candy
+                      : delta < 0
+                        ? "#0E8F4E"
+                        : BRAND.slate700,
+                  fontWeight: 800,
+                  fontSize: "clamp(10px, 1.1cqi, 12px)",
+                }}
+              >
+                {delta > 0 ? "+" : ""}
+                {delta.toFixed(0)} vs open-day avg
+              </span>
+            </>
+          )}
+          {selectedNote && (
+            <span
+              style={{
+                color: BRAND.slate700,
+                fontWeight: 600,
+                fontSize: "clamp(10px, 1.1cqi, 12px)",
+                flex: "1 1 100%",
+              }}
+            >
+              {selectedNote}
+            </span>
+          )}
+        </motion.div>
+      )}
 
       {!compact && (
         <>

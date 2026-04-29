@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
@@ -13,23 +14,22 @@ interface Bucket {
   label: string;
   share: number;
   inSweet: boolean;
-  rangeMin: number;
-  rangeMax: number;
 }
 
+const RANGES: { label: string; min: number; max: number }[] = [
+  { label: "Same day", min: 0, max: 0 },
+  { label: "1–3 days", min: 1, max: 3 },
+  { label: "4–7 days", min: 4, max: 7 },
+  { label: "1–2 weeks", min: 8, max: 14 },
+  { label: "2–4 weeks", min: 15, max: 30 },
+  { label: "1–2 months", min: 31, max: 60 },
+  { label: "2+ months", min: 61, max: 9999 },
+];
+
 function bucketize(spec: BookingWindowSpec): Bucket[] {
-  const ranges: { label: string; min: number; max: number }[] = [
-    { label: "Same day", min: 0, max: 0 },
-    { label: "1–3 days", min: 1, max: 3 },
-    { label: "4–7 days", min: 4, max: 7 },
-    { label: "1–2 weeks", min: 8, max: 14 },
-    { label: "2–4 weeks", min: 15, max: 30 },
-    { label: "1–2 months", min: 31, max: 60 },
-    { label: "2+ months", min: 61, max: 9999 },
-  ];
   const sweetMin = spec.sweet_spot.days_before_min;
   const sweetMax = spec.sweet_spot.days_before_max;
-  return ranges.map((r) => {
+  return RANGES.map((r) => {
     const inRange = spec.curve.filter(
       (p) => p.days_before >= r.min && p.days_before <= r.max,
     );
@@ -39,30 +39,29 @@ function bucketize(spec: BookingWindowSpec): Bucket[] {
       label: r.label,
       share,
       inSweet: overlapsSweet,
-      rangeMin: r.min,
-      rangeMax: r.max,
     };
   });
 }
 
 export function BookingWindowChart({ spec, context, compact = false }: Props) {
-  const buckets = bucketize(spec);
+  const buckets = useMemo(() => bucketize(spec), [spec]);
   const hasData = buckets.some((b) => b.share > 0);
   const maxShare = Math.max(...buckets.map((b) => b.share), 1);
   const sweetIdxs = buckets
     .map((b, i) => (b.inSweet && b.share > 0 ? i : -1))
     .filter((i) => i >= 0);
   const peakSweetIdx = sweetIdxs.length
-    ? sweetIdxs.reduce((best, i) =>
-        buckets[i].share > buckets[best].share ? i : best,
-      sweetIdxs[0])
+    ? sweetIdxs.reduce(
+        (best, i) => (buckets[i].share > buckets[best].share ? i : best),
+        sweetIdxs[0],
+      )
     : -1;
 
   return (
     <ChartCard context={context ?? "Booking lead time"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         {!compact && (
-          <div className="flex items-end justify-between mb-2">
+          <div className="flex items-end justify-between mb-2 gap-2">
             <div
               style={{
                 fontSize: "clamp(11px, 1.25cqi, 13px)",
@@ -80,6 +79,7 @@ export function BookingWindowChart({ spec, context, compact = false }: Props) {
                 borderRadius: 999,
                 fontSize: "clamp(10px, 1.1cqi, 12px)",
                 fontWeight: 800,
+                border: `1px solid ${BRAND.purps}25`,
               }}
             >
               Sweet spot · {spec.sweet_spot.label}
