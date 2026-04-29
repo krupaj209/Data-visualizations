@@ -44,30 +44,36 @@ Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. 
 
 ## Embed contract
 
-Embeds live at `${origin}/studio/embed/:chartId` and render the single chart fluidly into whatever size the host iframe provides (no fixed aspect ratio). The `Embed` page applies a height floor — body has `overflow: hidden` in embed mode, so any iframe shorter than the floor clips rather than collapses to an unreadable strip.
+Embeds live at `${origin}/studio/embed/:chartId` and render the single chart fluidly into whatever size the host iframe provides (no fixed aspect ratio, **no height floor**). The CMS just pastes the URL — no width/height attrs needed. Charts use container-query-based clamps internally and adapt to whatever box they're given, from ~200×200 up to 1280×500+.
 
-Two modes via URL flag:
+Chrome density auto-adjusts based on rendered viewport height (`window.innerHeight`):
 
-- **Default** (no flag) — full chrome including ESTIMATED pill, context subtitle, chart, and any per-type footer (insight paragraph, calendar chips, legend, helper callouts). Floor: **400px**. Use when the iframe is the only content the host shows for that chart.
-- **Compact** (`?compact=1`) — drops the ChartCard header (ESTIMATED pill + subtitle) **and** any per-chart footer chrome that hosts typically duplicate as bullet copy beneath the card. Tightens outer padding and per-chart row/tick density so the visualization fills the available space cleanly from 320×260 up to 960×400+. Floor: **260px**. Use when the host CMS renders its own bullets/explanation outside the iframe and only the visualization should live inside.
+- **Tall iframes (≥ 340px)** render full chrome: ESTIMATED pill + context subtitle in the ChartCard header, plus any per-chart secondary strip (insight paragraph, calendar chips, legend, helper callouts, scale ticks, headline, y-axis label, etc.).
+- **Short iframes (< 340px)** auto-flip into **compact mode** which drops the ChartCard header AND every per-chart secondary strip, tightens outer padding, and lets the visualization fill nearly the entire box. The 340px threshold is the empirical break-even where default chrome stops fitting without crowding or clipping bottom labels (months, x-axis, day names).
 
-Compact is honored by all 8 chart types used by the curated Florence cluster (the only CEs the CMS embeds — see `LOCKED_CE_SLUGS`). `ChartCard` strips its header (ESTIMATED pill + subtitle) and tightens padding for every chart. Per-component footer/secondary-chrome gating:
+URL overrides:
 
-- **SeasonalCurveChart** — hides `metric_insights` paragraph, `calendar_notes` chip rail, fallback legend.
+- `?compact=1` (or `compact=true`) — force compact mode at any size.
+- `?compact=0` (or `compact=false`) — force default chrome at any size (embedder accepts that small iframes may clip).
+- No flag — auto-detect based on iframe height (recommended for CMS embeds).
+
+Compact is honored by all 8 chart types used by the curated Florence cluster (the only CEs the CMS embeds — see `LOCKED_CE_SLUGS`). `ChartCard` strips its header (ESTIMATED pill + subtitle) and tightens padding for every chart. Per-component secondary-chrome gating:
+
+- **SeasonalCurveChart** — hides `metric_insights` paragraph, `calendar_notes` chip rail, fallback legend; tightens bar-area top padding from 22→14px.
 - **BookingWindowChart** — hides "Sweet spot ·" pill in header strip and `sold_out_risk` insight footer.
-- **DurationProfilesChart** — hides headline strip and `tip` footer; shortens scale-tick labels (e.g. "30 min" → "30m").
-- **TribuneDensityChart** — hides `context_pills` rail, `arrow_callout.helper`; samples sparser x-axis labels (~5 vs ~12).
+- **DurationProfilesChart** — hides headline strip, scale-tick row, and `tip` footer (each bar self-labels its value range, so the axis is redundant at narrow widths).
+- **TribuneDensityChart** — hides y-axis label strip (`y_label`), `context_pills` rail, `arrow_callout.helper`; samples sparser x-axis labels (~5 vs ~12).
 - **CoBookingsChart** — hides headline strip; tightens row gap, rank/icon size, name font; hides `badge` chip on each row.
 - **WeeklyPatternChart** — hides level legend and `day_notes` chips.
 - **DailyPatternChart** — hides opening-hours `caption` pill; samples sparser x-axis labels (~5 vs ~9).
 - **EntranceLanesChart** — hides venue title strip (Landmark icon + name + caption).
 
-Legacy chart types (`hourly_heatmap`, `compare_zones`, `ticket_ladder`, `stat_grid`) and currently-unused types (`month_calendar`, `donut_breakdown`) **do not** accept a `compact` prop and `ChartRenderer` does not pass it to them. They predate the curated Florence cluster, are not part of the CMS embed contract, and may clip at the 260px floor. If a future curated CE adopts one of these types, add the `compact?: boolean` prop and gate its chrome before forwarding from `ChartRenderer`.
+Legacy chart types (`hourly_heatmap`, `compare_zones`, `ticket_ladder`, `stat_grid`) and currently-unused types (`month_calendar`, `donut_breakdown`) **do not** accept a `compact` prop and `ChartRenderer` does not pass it to them. They predate the curated Florence cluster, are not part of the CMS embed contract, and may crowd at very small sizes. If a future curated CE adopts one of these types, add the `compact?: boolean` prop and gate its chrome before forwarding from `ChartRenderer`.
 
-CMS embed snippet (compact mode for short card slots ~320×320):
+CMS embed snippet (auto-compact at small sizes, full chrome at large):
 
 ```html
-<iframe src="https://<host>/studio/embed/<chartId>?compact=1" width="320" height="320" frameborder="0"></iframe>
+<iframe src="https://<host>/studio/embed/<chartId>" frameborder="0"></iframe>
 ```
 
 Curated Florence cluster CEs (currently `galleria-dellaccademia`; `uffizi`, `duomo` planned) are listed in `LOCKED_CE_SLUGS` (`artifacts/api-server/src/routes/ces.ts`) which blocks delete/regenerate so curated chart specs in `scripts/src/data/*.mjs` remain canonical.

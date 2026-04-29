@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Loader2 } from "lucide-react";
 import { useGetChart } from "@workspace/api-client-react";
@@ -6,16 +6,32 @@ import { BRAND } from "@/lib/brand";
 import { ChartRenderer } from "@/components/charts";
 import { type ChartSpec } from "@/lib/chart-spec";
 
+/**
+ * Hysteresis bounds for auto-compact. Below ENTER, chrome doesn't fit and we
+ * flip into compact mode; above EXIT we restore default chrome. The 20px gap
+ * prevents flicker when a host iframe is animated/resized near the boundary.
+ *
+ * Empirical break-even is ~340px: the largest chart with full chrome
+ * (seasonal_curve: ESTIMATED pill + subtitle + Crowds/Weather/Price toggle +
+ * bars + months + insight paragraph + calendar chips) needs at least that to
+ * render every label without crowding or clipping.
+ */
+const COMPACT_ENTER_PX = 330;
+const COMPACT_EXIT_PX = 350;
+
 export default function Embed() {
   const params = useParams<{ id: string }>();
   const idNum = Number(params.id);
   const isValid = !Number.isNaN(idNum) && idNum > 0;
   const { data, isLoading, error } = useGetChart(isValid ? idNum : 0);
 
-  // `?compact=1` strips footer chrome that hosts typically duplicate as bullet
-  // copy below the card (insight paragraph, calendar chips), and lowers the
-  // height floor so the chart fits short CMS card slots (~320×320).
-  const compact = readCompactFlag();
+  // `?compact=1|0` is an explicit override. `compact=1` always uses
+  // chart-only chrome; `compact=0` always shows full chrome (even in tiny
+  // iframes — embedder takes responsibility for sizing). When the flag is
+  // absent we auto-detect based on the rendered viewport height.
+  const explicit = readExplicitCompact();
+  const auto = useAutoCompact();
+  const compact = explicit ?? auto;
 
   useEffect(() => {
     document.body.classList.add("embed-mode");
@@ -40,19 +56,15 @@ export default function Embed() {
   const spec = chart.spec as unknown as ChartSpec;
   const ceName = ce?.name;
 
-  // Fill whatever the host iframe gives us, but enforce a minimum height so
-  // the chart never collapses to an unreadable strip when an embedder picks a
-  // too-short iframe. Body has `overflow: hidden` in embed mode, so below the
-  // floor content is clipped. Default floor (400px) accommodates the chart
-  // with the most chrome (seasonal_curve: toggle + bars + months + insight +
-  // chips). Compact floor (260px) accommodates just the visualization for
-  // hosts that supply their own footer copy.
-  const minHeight = compact ? 260 : 400;
+  // No height floor: the host iframe is the source of truth on size. The
+  // chart components use container-query-based clamps and adapt to whatever
+  // box they're given. When the box is short, `compact` auto-flips on (see
+  // useAutoCompact) to drop chrome that would otherwise crowd or clip.
   return (
     <div
       style={{
         width: "100vw",
-        minHeight: "100vh",
+        height: "100vh",
         background: "white",
         display: "flex",
       }}
@@ -60,8 +72,7 @@ export default function Embed() {
       <div
         style={{
           width: "100%",
-          minHeight,
-          height: "100vh",
+          height: "100%",
           display: "flex",
         }}
       >
@@ -81,10 +92,57 @@ export default function Embed() {
   );
 }
 
-function readCompactFlag(): boolean {
-  if (typeof window === "undefined") return false;
+/**
+ * Returns true when the URL explicitly sets `compact=1|true`, false when it
+ * sets `compact=0|false`, and null when the flag is absent.
+ */
+function readExplicitCompact(): boolean | null {
+  if (typeof window === "undefined") return null;
   const v = new URLSearchParams(window.location.search).get("compact");
-  return v === "1" || v === "true";
+  if (v === "1" || v === "true") return true;
+  if (v === "0" || v === "false") return false;
+  return null;
+}
+
+/**
+ * Tracks the document's viewport height and returns true when the rendered
+ * iframe is shorter than the threshold below which default chrome would
+ * crowd or clip the visualization. Uses ENTER/EXIT hysteresis so a host
+ * iframe animating across the boundary doesn't flicker.
+ */
+function useAutoCompact(): boolean {
+  const [compact, setCompact] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerHeight < COMPACT_ENTER_PX;
+  });
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const evaluate = () => {
+      const h = window.innerHeight;
+      setCompact((prev) => {
+        if (prev) {
+          // Currently compact — stay compact until clearly above EXIT.
+          return h <= COMPACT_EXIT_PX;
+        }
+        // Currently default — flip to compact only below ENTER.
+        return h < COMPACT_ENTER_PX;
+      });
+    };
+    const onResize = () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(evaluate);
+    };
+    evaluate();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return compact;
 }
 
 function FullCenter({ children }: { children: React.ReactNode }) {

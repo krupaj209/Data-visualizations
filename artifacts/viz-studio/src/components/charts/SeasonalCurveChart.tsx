@@ -180,7 +180,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
           style={{
             gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
             columnGap: "clamp(3px, 0.5cqi, 6px)",
-            paddingTop: 22,
+            paddingTop: compact ? 14 : 22,
           }}
         >
           {data.map((d, i) => {

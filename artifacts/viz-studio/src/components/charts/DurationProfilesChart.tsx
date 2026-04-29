@@ -136,64 +136,68 @@ export function DurationProfilesChart({
             })}
           </div>
 
-          {/* Scale ticks */}
-          <div
-            className="grid mt-2"
-            style={{
-              gridTemplateColumns: "44px minmax(0, 110px) 1fr",
-              columnGap: 12,
-            }}
-          >
-            <div />
-            <div />
-            <div className="relative" style={{ height: 22 }}>
-              <div
-                className="absolute inset-x-0"
-                style={{
-                  top: 6,
-                  height: 1,
-                  background: BRAND.slate200,
-                }}
-              />
-              {scale_min.map((s, i) => {
-                const left = (s.minutes / maxScale) * 100;
-                return (
-                  <div
-                    key={i}
-                    className="absolute"
-                    style={{
-                      left: `${left}%`,
-                      top: 0,
-                      transform: "translateX(-50%)",
-                      textAlign: "center",
-                    }}
-                  >
+          {/* Scale ticks — hidden in compact (each bar self-labels its value
+              range, so a separate axis adds no info but crowds at narrow
+              widths). */}
+          {!compact && (
+            <div
+              className="grid mt-2"
+              style={{
+                gridTemplateColumns: "44px minmax(0, 110px) 1fr",
+                columnGap: 12,
+              }}
+            >
+              <div />
+              <div />
+              <div className="relative" style={{ height: 22 }}>
+                <div
+                  className="absolute inset-x-0"
+                  style={{
+                    top: 6,
+                    height: 1,
+                    background: BRAND.slate200,
+                  }}
+                />
+                {scale_min.map((s, i) => {
+                  const left = (s.minutes / maxScale) * 100;
+                  return (
                     <div
+                      key={i}
+                      className="absolute"
                       style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        border: `1.5px solid ${BRAND.slate300}`,
-                        background: "white",
-                        margin: "0 auto",
-                      }}
-                    />
-                    <div
-                      style={{
-                        marginTop: 3,
-                        color: BRAND.slate700,
-                        fontSize: "clamp(8px, 0.9cqi, 10px)",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
+                        left: `${left}%`,
+                        top: 0,
+                        transform: "translateX(-50%)",
+                        textAlign: "center",
                       }}
                     >
-                      {compact ? shortLabel(s.label) : s.label}
+                      <div
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          border: `1.5px solid ${BRAND.slate300}`,
+                          background: "white",
+                          margin: "0 auto",
+                        }}
+                      />
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: BRAND.slate700,
+                          fontSize: "clamp(8px, 0.9cqi, 10px)",
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {s.label}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Tip footer — hidden in compact (host supplies its own copy) */}

@@ -98,17 +98,19 @@ export function TribuneDensityChart({
       compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
-        <div
-          style={{
-            color: BRAND.slate700,
-            fontSize: "clamp(9px, 0.95cqi, 11px)",
-            fontWeight: 700,
-            marginBottom: 4,
-            lineHeight: 1.2,
-          }}
-        >
-          {y_label}
-        </div>
+        {!compact && (
+          <div
+            style={{
+              color: BRAND.slate700,
+              fontSize: "clamp(9px, 0.95cqi, 11px)",
+              fontWeight: 700,
+              marginBottom: 4,
+              lineHeight: 1.2,
+            }}
+          >
+            {y_label}
+          </div>
+        )}
 
         <div
           className="relative flex-1 min-h-0"
