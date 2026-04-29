@@ -175,6 +175,9 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
+      '@workspace/curated-seeds':
+        specifier: workspace:*
+        version: link:../../lib/curated-seeds
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
@@ -812,6 +815,19 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/curated-seeds:
+    dependencies:
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.18.0)(pg@8.20.0)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.3.5
 
   lib/db:
     dependencies:

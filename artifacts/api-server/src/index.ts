@@ -1,3 +1,4 @@
+import { seedCuratedCesIdempotent } from "@workspace/curated-seeds";
 import app from "./app";
 import { logger } from "./lib/logger";
 
@@ -15,11 +16,35 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
+async function bootstrap() {
+  try {
+    const result = await seedCuratedCesIdempotent();
+    if (result.inserted.length > 0) {
+      logger.info(
+        { inserted: result.inserted, skipped: result.skipped },
+        "Curated CEs seeded",
+      );
+    } else {
+      logger.info(
+        { skipped: result.skipped },
+        "Curated CEs already present, no seeding needed",
+      );
+    }
+  } catch (err) {
+    logger.error(
+      { err },
+      "Failed to seed curated CEs — continuing startup anyway",
+    );
   }
 
-  logger.info({ port }, "Server listening");
-});
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+
+    logger.info({ port }, "Server listening");
+  });
+}
+
+bootstrap();

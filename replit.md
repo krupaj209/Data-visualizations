@@ -13,6 +13,12 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
 - `artifacts/weekly-pattern-widget` (web) — Standalone earlier widget (deployed; do not delete).
 
+### Curated / locked CEs
+
+`lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`). The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.
+
+The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo}.mjs` because the dev `seed-*.mjs` scripts (raw `pg.Client`, run via `node`) need it. This duplication is short-term — long-term, those scripts should switch to importing from the lib via `tsx`.
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

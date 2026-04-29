@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
+    "@workspace/curated-seeds": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/integrations-gemini-ai": "workspace:*",
     "@google/genai": "^1.44.0",
