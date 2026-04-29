@@ -157,9 +157,26 @@ export interface DonutBreakdownSpec {
 
 export interface SeasonalCurveSpec {
   type: "seasonal_curve";
-  months: { month: MonthCode; score: number; status: SeasonKey; note?: string }[];
+  months: {
+    month: MonthCode;
+    score: number;
+    status: SeasonKey;
+    note?: string;
+    /** Optional 0–100 weather quality score; higher = better weather. */
+    weather_score?: number;
+    /** Optional 0–100 price pressure score; higher = more expensive. */
+    price_score?: number;
+  }[];
   best_months: string[];
   worst_months: string[];
+  /** Optional calendar-fact chips rendered under the chart. */
+  calendar_notes?: { label: string; kind: "closed" | "free" | "info" }[];
+  /** Optional one-sentence insights surfaced beneath the chart per active metric. */
+  metric_insights?: {
+    crowd?: string;
+    weather?: string;
+    price?: string;
+  };
 }
 
 export interface TicketLadderSpec {

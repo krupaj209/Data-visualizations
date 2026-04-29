@@ -331,6 +331,48 @@ const charts = [
     },
   },
   {
+    slug: "by-month",
+    question: "Which month is best for me?",
+    title: "Crowds, weather and price by month",
+    subtitle: "Toggle to see what matters to you most",
+    insight:
+      "Late January and February have the calmest galleries; May and September pair the best weather with merely-busy lines; July and August peak on every axis.",
+    chart_type: "seasonal_curve",
+    spec: {
+      type: "seasonal_curve",
+      months: [
+        { month: "jan", score: 22, status: "very_quiet", weather_score: 32, price_score: 38 },
+        { month: "feb", score: 28, status: "quiet", weather_score: 38, price_score: 40 },
+        { month: "mar", score: 48, status: "moderate", weather_score: 60, price_score: 55 },
+        { month: "apr", score: 78, status: "busy", weather_score: 78, price_score: 74 },
+        { month: "may", score: 80, status: "busy", weather_score: 92, price_score: 78 },
+        { month: "jun", score: 85, status: "busy", weather_score: 80, price_score: 84 },
+        { month: "jul", score: 92, status: "peak", weather_score: 62, price_score: 92 },
+        { month: "aug", score: 95, status: "peak", weather_score: 58, price_score: 95 },
+        { month: "sep", score: 75, status: "busy", weather_score: 90, price_score: 76 },
+        { month: "oct", score: 55, status: "moderate", weather_score: 78, price_score: 58 },
+        { month: "nov", score: 35, status: "quiet", weather_score: 44, price_score: 42 },
+        { month: "dec", score: 50, status: "moderate", weather_score: 36, price_score: 54 },
+      ],
+      best_months: ["May", "September"],
+      worst_months: ["July", "August"],
+      calendar_notes: [
+        { label: "Jan 1 closed", kind: "closed" },
+        { label: "May 1 closed", kind: "closed" },
+        { label: "Dec 25 closed", kind: "closed" },
+        { label: "First Sunday: free entry, long queues", kind: "free" },
+      ],
+      metric_insights: {
+        crowd:
+          "Late January and February are the calmest months — lines are roughly half their summer length.",
+        weather:
+          "May and late September balance smaller crowds with the brightest, most walkable weather.",
+        price:
+          "January and November tickets are the cheapest of the year — peak summer can cost 30% more.",
+      },
+    },
+  },
+  {
     slug: "co-bookings",
     question: "What do visitors pair the Accademia with?",
     title: "What visitors also book in Florence",

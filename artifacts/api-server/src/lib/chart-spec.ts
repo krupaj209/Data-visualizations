@@ -187,11 +187,33 @@ export const seasonalCurveSpec = z.object({
         score: z.number().min(0).max(100),
         status: seasonStatusEnum,
         note: z.string().max(60).optional(),
+        /** Optional 0–100 weather quality score; higher = better weather. */
+        weather_score: z.number().min(0).max(100).optional(),
+        /** Optional 0–100 price pressure score; higher = more expensive / more demand. */
+        price_score: z.number().min(0).max(100).optional(),
       }),
     )
     .length(12),
   best_months: z.array(z.string()).max(4),
   worst_months: z.array(z.string()).max(4),
+  /** Optional calendar facts shown as chips below the chart. */
+  calendar_notes: z
+    .array(
+      z.object({
+        label: z.string().max(60),
+        kind: z.enum(["closed", "free", "info"]),
+      }),
+    )
+    .max(8)
+    .optional(),
+  /** Optional one-sentence insights surfaced beneath the chart per active metric. */
+  metric_insights: z
+    .object({
+      crowd: z.string().max(160).optional(),
+      weather: z.string().max(160).optional(),
+      price: z.string().max(160).optional(),
+    })
+    .optional(),
 });
 
 export const ticketLadderSpec = z.object({

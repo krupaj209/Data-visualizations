@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Body & Micro Type</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:22px 26px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:flex;align-items:baseline;gap:18px;}
+  .tag{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);width:120px;flex-shrink:0;}
+  .body-lg{font-size:16px;line-height:1.55;color:var(--fg-2);max-width:520px;}
+  .body{font-size:15px;line-height:1.55;color:var(--fg-2);max-width:520px;}
+  .body-sm{font-size:14px;line-height:1.5;color:var(--fg-2);max-width:520px;}
+  .caption{font-size:13px;line-height:1.45;color:var(--fg-3);}
+  .micro{font-size:12px;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;color:var(--fg-3);}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row"><div class="tag">Body LG · 16</div><div class="body-lg">At Headout, you only find the best. We do the hard work so you don't have to.</div></div>
+    <div class="row"><div class="tag">Body · 15</div><div class="body">With quality, you also get lowest prices, last-minute availability and 24×7 support.</div></div>
+    <div class="row"><div class="tag">Body SM · 14</div><div class="body-sm">Didn't love it? We'll give you your money back. Not cocky, just confident.</div></div>
+    <div class="row"><div class="tag">Caption · 13</div><div class="caption">4.4 · 39,128 reviews · Free cancellation</div></div>
+    <div class="row"><div class="tag">Micro · 12</div><div class="micro">Selling out fast</div></div>
+  </div>
+</body>
+</html>

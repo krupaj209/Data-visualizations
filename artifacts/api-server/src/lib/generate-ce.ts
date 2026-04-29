@@ -100,8 +100,11 @@ CHART TYPE MENU — each entry lists (a) the visitor intent it answers, (b) good
    Bad: "Best time to visit?" (vague) / "Is summer crowded?" (yes/no)
    Schema:
    { "type": "seasonal_curve",
-     "months": [ { "month": "<jan..dec>", "score": <0-100 int>, "status": "<closed|very_quiet|quiet|moderate|busy|peak>", "note"?: "..." }, ... 12 items ],
-     "best_months": ["May", "October"], "worst_months": ["August"] }
+     "months": [ { "month": "<jan..dec>", "score": <0-100 int>, "status": "<closed|very_quiet|quiet|moderate|busy|peak>", "note"?: "...", "weather_score"?: <0-100 int>, "price_score"?: <0-100 int> }, ... 12 items ],
+     "best_months": ["May", "October"], "worst_months": ["August"],
+     "calendar_notes"?: [ { "label": "Jan 1 closed", "kind": "<closed|free|info>" }, ... up to 8 ],
+     "metric_insights"?: { "crowd"?: "...", "weather"?: "...", "price"?: "..." } }
+   weather_score, price_score, calendar_notes and metric_insights are OPTIONAL — only populate them if you have a real, defensible source. Do not invent weather or price data; leaving these unset gracefully falls back to a crowd-only chart.
 
 9) ticket_ladder — "Which ticket tier saves the most time / gives the most for the price?"
    Good questions: "How much wait time does each ticket tier save?" / "What does each ticket tier cost and include?" / "Which tier do most visitors pick for <CE name>?"

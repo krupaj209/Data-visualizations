@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Headout — Badges</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  html,body{margin:0;padding:0;background:var(--bg-1);}
+  .wrap{padding:22px 26px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-family:var(--font-text);font-weight:700;font-size:12px;letter-spacing:-0.005em;}
+  .cancel{background:var(--color-subtle-green);color:#0a5a22;}
+  .hot{background:var(--color-candy);color:#fff;}
+  .off{background:var(--color-slate-black);color:var(--color-hola-yellow);}
+  .info{background:var(--bg-brand-soft);color:var(--color-purps);}
+  .rating{background:var(--color-purps);color:#fff;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:700;display:inline-flex;gap:3px;align-items:center;}
+  .rating svg{width:11px;height:11px;}
+  .new{background:var(--color-hola-yellow);color:var(--color-slate-black);}
+  .lbl{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);text-transform:uppercase;letter-spacing:0.04em;width:90px;flex-shrink:0;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row"><div class="lbl">promo</div>
+      <span class="badge cancel">Free cancellation</span>
+      <span class="badge hot">Selling out fast</span>
+      <span class="badge off">20% off</span>
+      <span class="badge new">New</span>
+    </div>
+    <div class="row"><div class="lbl">meta</div>
+      <span class="rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 7h7.1l-5.8 4.2 2.2 7L12 15.9 5.6 20.2l2.2-7L2 9h7.1z"/></svg>4.4</span>
+      <span class="badge info">Best seller</span>
+    </div>
+  </div>
+</body>
+</html>
