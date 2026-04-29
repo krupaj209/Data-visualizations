@@ -1,5 +1,7 @@
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE } from "@/lib/chart-system";
+import { CalloutPill, LegendSwatch } from "@/components/charts/system";
 import {
   DAY_LABELS,
   DAY_ORDER,
@@ -35,9 +37,9 @@ export function HourlyHeatmapChart({ spec, context }: Props) {
               <div
                 key={d}
                 style={{
-                  fontSize: "clamp(10px, 1.1cqi, 12px)",
-                  fontWeight: 700,
-                  color: BRAND.slate700,
+                  fontSize: CHART_TYPE.axisTick.fontSize,
+                  fontWeight: CHART_TYPE.axisTick.fontWeight,
+                  color: CHART_TYPE.axisTick.color,
                 }}
               >
                 {DAY_LABELS[d]}
@@ -57,9 +59,9 @@ export function HourlyHeatmapChart({ spec, context }: Props) {
                 <div
                   key={h}
                   style={{
-                    fontSize: "clamp(8px, 0.85cqi, 10px)",
+                    fontSize: CHART_TYPE.axisTick.fontSize,
                     color: BRAND.slate500,
-                    fontWeight: 600,
+                    fontWeight: CHART_TYPE.axisTick.fontWeight,
                     textAlign: "center",
                   }}
                 >
@@ -109,47 +111,30 @@ export function HourlyHeatmapChart({ spec, context }: Props) {
           <div className="flex items-center gap-1.5">
             <span
               style={{
-                fontSize: "clamp(10px, 1.05cqi, 12px)",
-                color: BRAND.slate700,
-                fontWeight: 700,
+                fontSize: CHART_TYPE.legend.fontSize,
+                color: CHART_TYPE.legend.color,
+                fontWeight: CHART_TYPE.legend.fontWeight,
               }}
             >
               Quiet
             </span>
             {HEAT_PALETTE.map((c) => (
-              <span
-                key={c}
-                style={{
-                  width: 18,
-                  height: 10,
-                  background: c,
-                  borderRadius: 3,
-                }}
-              />
+              <LegendSwatch key={c} color={c} shape="bar" />
             ))}
             <span
               style={{
-                fontSize: "clamp(10px, 1.05cqi, 12px)",
-                color: BRAND.slate700,
-                fontWeight: 700,
+                fontSize: CHART_TYPE.legend.fontSize,
+                color: CHART_TYPE.legend.color,
+                fontWeight: CHART_TYPE.legend.fontWeight,
               }}
             >
               Crowded
             </span>
           </div>
           {spec.best_window && (
-            <div
-              style={{
-                background: BRAND.purpsSoft,
-                color: BRAND.purps,
-                padding: "4px 10px",
-                borderRadius: 999,
-                fontSize: "clamp(10px, 1.1cqi, 12px)",
-                fontWeight: 800,
-              }}
-            >
+            <CalloutPill bg={BRAND.purpsSoft} fg={BRAND.purps}>
               Best window · {spec.best_window.label}
-            </div>
+            </CalloutPill>
           )}
         </div>
       </div>

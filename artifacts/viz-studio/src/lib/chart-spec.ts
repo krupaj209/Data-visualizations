@@ -273,6 +273,12 @@ export interface DurationProfilesSpec {
     note?: string;
     /** Highlight as the recommended/most-common profile. */
     highlight?: boolean;
+    /** Long-form description shown in the locked detail panel. */
+    description?: string;
+    /** What this profile typically skips, shown as a pill in the locked panel. */
+    skips?: string;
+    /** Recommended lane / route, shown as a pill in the locked panel. */
+    lane?: string;
   }[];
   /** Optional candy-pill tip at the bottom. */
   tip?: string;
@@ -322,6 +328,12 @@ export interface CoBookingsSpec {
       | "building"
       | "trees"
       | "gem";
+    /** Suggested pairing copy shown in the locked detail panel. */
+    pairing?: string;
+    /** Walking-distance hint shown as a pill in the locked panel. */
+    walk?: string;
+    /** Whether the pair is included in the same library/bundle. */
+    on_library?: string;
   }[];
   /** How many top items to highlight in solid Purps (rest stay pale). */
   highlight_top?: number;

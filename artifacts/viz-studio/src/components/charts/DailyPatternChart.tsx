@@ -9,6 +9,12 @@ import {
   getDotStyle,
   type BandToneKey,
 } from "@/lib/brand";
+import {
+  CALLOUT_PILL,
+  CHART_LAYOUT,
+  CHART_TYPE,
+} from "@/lib/chart-system";
+import { ChartTooltip } from "@/components/charts/system";
 import { type DailyPatternSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -47,8 +53,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
   const { points, zones, caption } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
-  const HEADER = compact ? 24 : CHART_TOKENS.headerStripPx;
-  const X_AXIS = CHART_TOKENS.xAxisStripPx;
+  const HEADER = compact ? 24 : CHART_LAYOUT.headerStripPx;
+  const X_AXIS = CHART_LAYOUT.xAxisStripPx;
 
   const { xs, dMin, range, yMax } = useMemo(() => {
     const xsLocal = points.map((p) => toMin(p.time));
@@ -159,11 +165,12 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                       transform: "translateX(-50%)",
                       background: tone.pillBg,
                       color: tone.pillFg,
-                      padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX + 2}px`,
-                      borderRadius: CHART_TOKENS.pill.radius,
-                      fontSize: CHART_TOKENS.zoneLabel.fontSize,
-                      fontWeight: CHART_TOKENS.zoneLabel.fontWeight,
+                      padding: `${CALLOUT_PILL.paddingY}px ${CALLOUT_PILL.paddingX}px`,
+                      borderRadius: CALLOUT_PILL.radius,
+                      fontSize: CHART_TYPE.zoneLabel.fontSize,
+                      fontWeight: CHART_TYPE.zoneLabel.fontWeight,
                       whiteSpace: "nowrap",
+                      lineHeight: 1.15,
                     }}
                   >
                     {z.label}
@@ -280,24 +287,13 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                     }}
                   />
                   {isHovered && (
-                    <div
-                      className="absolute pointer-events-none z-30"
-                      style={{
-                        bottom: `calc(50% + ${CHART_TOKENS.dot.labelOffset + 4}px)`,
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        background: BRAND.slate900,
-                        color: "white",
-                        padding: "4px 8px",
-                        borderRadius: 6,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                      }}
+                    <ChartTooltip
+                      anchorXPct={c.x}
+                      offset={CHART_TOKENS.dot.labelOffset + 4}
                     >
                       {fmtClock(p.time)} · {p.crowd}/
                       {Math.max(...points.map((pt) => pt.crowd))}
-                    </div>
+                    </ChartTooltip>
                   )}
                 </div>
               );
@@ -325,9 +321,9 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                 <div
                   key={i}
                   style={{
-                    color: BRAND.slate900,
-                    fontSize: CHART_TOKENS.axisLabel.fontSize,
-                    fontWeight: CHART_TOKENS.axisLabel.fontWeight,
+                    color: CHART_TYPE.axisTick.color,
+                    fontSize: CHART_TYPE.axisTick.fontSize,
+                    fontWeight: CHART_TYPE.axisTick.fontWeight,
                     whiteSpace: "nowrap",
                   }}
                 >

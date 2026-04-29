@@ -1,5 +1,6 @@
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND, SEASON_DOT, SEASON_FILL, SEASON_LABEL, type SeasonKey } from "@/lib/brand";
+import { Legend, LegendItem } from "@/components/charts/system";
 import { type MonthCalendarSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -200,34 +201,13 @@ export function MonthCalendarChart({ spec, context }: Props) {
         </div>
       </div>
 
-      <div
-        className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5"
-        style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 10 }}
-      >
+      <Legend withDivider style={{ marginTop: 12 }}>
         {(
           ["very_quiet", "quiet", "moderate", "busy", "peak", "closed"] as SeasonKey[]
         ).map((s) => (
-          <div key={s} className="flex items-center gap-1.5">
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 3,
-                background: SEASON_DOT[s],
-              }}
-            />
-            <span
-              style={{
-                fontSize: "clamp(9px, 1cqi, 11px)",
-                color: BRAND.slate700,
-                fontWeight: 600,
-              }}
-            >
-              {SEASON_LABEL[s]}
-            </span>
-          </div>
+          <LegendItem key={s} color={SEASON_DOT[s]} label={SEASON_LABEL[s]} />
         ))}
-      </div>
+      </Legend>
     </ChartCard>
   );
 }

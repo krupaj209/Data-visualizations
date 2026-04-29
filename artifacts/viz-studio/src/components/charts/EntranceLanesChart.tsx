@@ -2,7 +2,9 @@ import { Fragment, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { ACCENT_LANE, BRAND } from "@/lib/brand";
+import { BRAND } from "@/lib/brand";
+import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
+import { CalloutPill } from "@/components/charts/system";
 import { type EntranceLanesSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -11,12 +13,41 @@ interface Props {
   compact?: boolean;
 }
 
-// Lane tones come from the centralized `ACCENT_LANE` bundle. The two
-// "loud" tones (candy / purps) signal the highlighted Reserved / Walk-up
-// lanes and keep their saturated brand color; "okay" / "slate" are
-// supporting lanes and drop to a calmer companion tint — the same
-// "soft default, vivid only on callout" rhythm the rest of the deck uses.
-const TONES = ACCENT_LANE;
+// Soft default, vivid only on the highlighted lane — same rhythm as the
+// Weekly pattern + Seasonal curve charts. The two "loud" tones (candy /
+// purps) signal the highlighted "Reserved" / "Walk-up" lanes and keep
+// their saturated brand color; "okay" / "slate" are supporting lanes and
+// drop to a calmer companion tint. The pill foreground (`pillFg`) stays
+// readable enough to anchor the locked-state ring on every lane.
+const TONES: Record<
+  EntranceLanesSpec["lanes"][number]["tone"],
+  { dot: string; pillBg: string; pillFg: string; bar: string }
+> = {
+  candy: {
+    dot: BRAND.candy,
+    pillBg: BRAND.candySoft,
+    pillFg: BRAND.candy,
+    bar: BRAND.candy,
+  },
+  purps: {
+    dot: BRAND.purps,
+    pillBg: BRAND.purpsSoft,
+    pillFg: BRAND.purps,
+    bar: BRAND.purps,
+  },
+  okay: {
+    dot: BRAND.subtleGreen,
+    pillBg: BRAND.bgMint,
+    pillFg: "#0E8F4E",
+    bar: BRAND.subtleGreen,
+  },
+  slate: {
+    dot: BRAND.slate300,
+    pillBg: BRAND.slate100,
+    pillFg: BRAND.slate700,
+    bar: BRAND.slate300,
+  },
+};
 
 function EntranceIllustration({ height = 44 }: { height?: number }) {
   const width = Math.round((height * 96) / 64);
@@ -125,10 +156,9 @@ export function EntranceLanesChart({
             <div
               style={{
                 writingMode: "vertical-rl",
-                color: BRAND.slate900,
-                fontSize: "clamp(11px, 1.25cqi, 13px)",
-                fontWeight: 800,
-                letterSpacing: 0.2,
+                color: CHART_TYPE.axisTick.color,
+                fontSize: CHART_TYPE.axisTick.fontSize,
+                fontWeight: CHART_TYPE.axisTick.fontWeight,
               }}
             >
               Longer wait
@@ -291,19 +321,9 @@ export function EntranceLanesChart({
                     transition: "opacity .2s ease",
                   }}
                 >
-                  <div
-                    style={{
-                      background: tone.pillBg,
-                      color: tone.pillFg,
-                      padding: "4px 12px",
-                      borderRadius: 999,
-                      fontSize: "clamp(10px, 1.15cqi, 12px)",
-                      fontWeight: 800,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <CalloutPill bg={tone.pillBg} fg={tone.pillFg}>
                     {lane.wait_label}
-                  </div>
+                  </CalloutPill>
                 </div>
               </Fragment>
             );
@@ -386,32 +406,14 @@ export function EntranceLanesChart({
                   style={{ marginBottom: 6 }}
                 >
                   {locked.wait_peak && (
-                    <span
-                      style={{
-                        background: "white",
-                        color: lockedTone.pillFg,
-                        padding: "3px 9px",
-                        borderRadius: 999,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 800,
-                      }}
-                    >
+                    <CalloutPill bg="white" fg={lockedTone.pillFg}>
                       Peak: {locked.wait_peak}
-                    </span>
+                    </CalloutPill>
                   )}
                   {locked.wait_off_peak && (
-                    <span
-                      style={{
-                        background: "white",
-                        color: BRAND.slate700,
-                        padding: "3px 9px",
-                        borderRadius: 999,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 700,
-                      }}
-                    >
+                    <CalloutPill bg="white" fg={BRAND.slate700}>
                       Off-peak: {locked.wait_off_peak}
-                    </span>
+                    </CalloutPill>
                   )}
                 </div>
               )}

@@ -5,13 +5,18 @@ import {
   ACCENT_FG,
   ACCENT_SOFT,
   BRAND,
-  CHART_TOKENS,
   LEVEL_FILL,
   LEVEL_FILL_SOFT,
   LEVEL_LABEL,
   getLevelFill,
   type LevelKey,
 } from "@/lib/brand";
+import { CHART_TYPE } from "@/lib/chart-system";
+import {
+  CalloutPill,
+  Legend,
+  LegendItem,
+} from "@/components/charts/system";
 import {
   DAY_LABELS,
   DAY_ORDER,
@@ -138,25 +143,12 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                   className="absolute left-1/2 -translate-x-1/2 z-10 flex flex-col items-center pointer-events-none"
                   style={{ bottom: `calc(${heightPct}% + 8px)` }}
                 >
-                  <div
-                    style={{
-                      backgroundColor:
-                        d.level === "busiest"
-                          ? ACCENT_SOFT.candy
-                          : ACCENT_SOFT.okay,
-                      color:
-                        d.level === "busiest"
-                          ? ACCENT_FG.candy
-                          : ACCENT_FG.okay,
-                      padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX}px`,
-                      borderRadius: CHART_TOKENS.pill.radius,
-                      fontSize: CHART_TOKENS.pill.fontSize,
-                      fontWeight: CHART_TOKENS.pill.fontWeight,
-                      whiteSpace: "nowrap",
-                    }}
+                  <CalloutPill
+                    bg={d.level === "busiest" ? BRAND.candySoft : BRAND.bgMint}
+                    fg={d.level === "busiest" ? BRAND.candy : "#0E8F4E"}
                   >
                     {d.level === "busiest" ? "Busiest" : "Quietest"}
-                  </div>
+                  </CalloutPill>
                 </div>
               )}
               <motion.div
@@ -221,7 +213,7 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
               <div
                 style={{
                   color: BRAND.slate500,
-                  fontSize: CHART_TOKENS.axisLabel.fontSize,
+                  fontSize: CHART_TYPE.axisTick.fontSize,
                   fontWeight: 600,
                   marginTop: 1,
                 }}
@@ -317,43 +309,25 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
 
       {!compact && (
         <>
-          <div
-            className="flex flex-wrap gap-x-3 gap-y-1"
-            style={{ marginTop: 8 }}
-          >
+          <Legend>
             {(["quietest", "quiet", "busy", "busiest"] as LevelKey[]).map(
               (lvl) => {
-                // Mirror what's on the chart: extreme levels (quietest, busiest)
-                // always render as the called-out vivid swatch; middle levels
-                // (quiet, busy) live in the soft tint as background bars.
+                // Mirror the chart's color rhythm: extremes saturate, middle
+                // levels stay in the soft tint that matches the bars.
                 const swatch =
                   lvl === "quietest" || lvl === "busiest"
                     ? LEVEL_FILL[lvl]
                     : LEVEL_FILL_SOFT[lvl];
                 return (
-                  <div key={lvl} className="flex items-center gap-1.5">
-                    <span
-                      style={{
-                        width: 9,
-                        height: 9,
-                        borderRadius: 3,
-                        background: swatch,
-                      }}
-                    />
-                    <span
-                      style={{
-                        color: BRAND.slate700,
-                        fontSize: CHART_TOKENS.axisLabel.fontSize,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {LEVEL_LABEL[lvl]}
-                    </span>
-                  </div>
+                  <LegendItem
+                    key={lvl}
+                    color={swatch}
+                    label={LEVEL_LABEL[lvl]}
+                  />
                 );
               },
             )}
-          </div>
+          </Legend>
 
           {spec.day_notes && spec.day_notes.length > 0 && (
             <div
@@ -363,20 +337,13 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
               {spec.day_notes.map((note, i) => {
                 const tone = DAY_NOTE_TONE[note.kind];
                 return (
-                  <span
+                  <CalloutPill
                     key={`${note.label}-${i}`}
-                    style={{
-                      background: tone.bg,
-                      color: tone.fg,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      fontSize: CHART_TOKENS.axisLabel.fontSize,
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                    }}
+                    bg={tone.bg}
+                    fg={tone.fg}
                   >
                     {note.label}
-                  </span>
+                  </CalloutPill>
                 );
               })}
             </div>

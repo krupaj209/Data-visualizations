@@ -16,6 +16,8 @@ import {
   MONTH_ORDER,
   type SeasonalCurveSpec,
 } from "@/lib/chart-spec";
+import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
+import { CalloutPill, Legend, LegendItem } from "@/components/charts/system";
 
 interface Props {
   spec: SeasonalCurveSpec;
@@ -244,12 +246,12 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
                       style={{
                         background: primaryBg,
                         color: "#FFFFFF",
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 700,
-                        letterSpacing: "-0.005em",
+                        padding: `${CALLOUT_PILL.paddingY}px ${CALLOUT_PILL.paddingX}px`,
+                        borderRadius: CALLOUT_PILL.radius,
+                        fontSize: CALLOUT_PILL.fontSize,
+                        fontWeight: CALLOUT_PILL.fontWeight,
                         whiteSpace: "nowrap",
+                        lineHeight: 1.15,
                       }}
                     >
                       {primaryLabel}
@@ -268,11 +270,12 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
                       style={{
                         background: crowdBg,
                         color: crowdFg,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        fontSize: "clamp(8px, 0.95cqi, 10px)",
-                        fontWeight: 800,
+                        padding: `${CALLOUT_PILL.paddingY}px ${CALLOUT_PILL.paddingX}px`,
+                        borderRadius: CALLOUT_PILL.radius,
+                        fontSize: CALLOUT_PILL.fontSize,
+                        fontWeight: CALLOUT_PILL.fontWeight,
                         whiteSpace: "nowrap",
+                        lineHeight: 1.15,
                       }}
                     >
                       {crowdLabel}
@@ -322,9 +325,9 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
               key={d.month}
               className="text-center"
               style={{
-                fontSize: "clamp(9px, 1.05cqi, 12px)",
+                fontSize: CHART_TYPE.axisTick.fontSize,
                 color: BRAND.slate900,
-                fontWeight: 700,
+                fontWeight: CHART_TYPE.axisTick.fontWeight,
               }}
             >
               {d.label}
@@ -360,27 +363,20 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
               {spec.calendar_notes.map((note, i) => {
                 const tone = CHIP_TONE[note.kind];
                 return (
-                  <span
+                  <CalloutPill
                     key={`${note.label}-${i}`}
-                    style={{
-                      background: tone.bg,
-                      color: tone.fg,
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      fontSize: "clamp(9px, 0.95cqi, 11px)",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                    }}
+                    bg={tone.bg}
+                    fg={tone.fg}
                   >
                     {note.label}
-                  </span>
+                  </CalloutPill>
                 );
               })}
             </div>
           )}
 
         {!compact && !hasUpgrade && (
-          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+          <Legend>
             {(
               [
                 "very_quiet",
@@ -390,27 +386,9 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
                 "peak",
               ] as SeasonKey[]
             ).map((s) => (
-              <div key={s} className="flex items-center gap-1.5">
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 3,
-                    background: SEASON_DOT[s],
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    color: BRAND.slate700,
-                    fontWeight: 600,
-                  }}
-                >
-                  {SEASON_LABEL[s]}
-                </span>
-              </div>
+              <LegendItem key={s} color={SEASON_DOT[s]} label={SEASON_LABEL[s]} />
             ))}
-          </div>
+          </Legend>
         )}
       </div>
     </ChartCard>

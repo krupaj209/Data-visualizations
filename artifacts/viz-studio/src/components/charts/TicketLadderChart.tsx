@@ -1,6 +1,7 @@
 import { Check, Star } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { CALLOUT_PILL } from "@/lib/chart-system";
 import { type TicketLadderSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -57,11 +58,11 @@ export function TicketLadderChart({ spec, context }: Props) {
                     right: 12,
                     background: BRAND.purps,
                     color: "white",
-                    padding: "3px 10px",
-                    borderRadius: 999,
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 800,
-                    letterSpacing: "0.04em",
+                    padding: `${CALLOUT_PILL.paddingY}px ${CALLOUT_PILL.paddingX}px`,
+                    borderRadius: CALLOUT_PILL.radius,
+                    fontSize: CALLOUT_PILL.fontSize,
+                    fontWeight: CALLOUT_PILL.fontWeight,
+                    lineHeight: 1.15,
                     display: "flex",
                     alignItems: "center",
                     gap: 4,

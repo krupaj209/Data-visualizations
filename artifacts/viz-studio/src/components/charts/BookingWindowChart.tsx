@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE } from "@/lib/chart-system";
+import { CalloutPill } from "@/components/charts/system";
 import { type BookingWindowSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -71,19 +73,9 @@ export function BookingWindowChart({ spec, context, compact = false }: Props) {
             >
               % of bookings
             </div>
-            <div
-              style={{
-                background: BRAND.purpsSoft,
-                color: BRAND.purps,
-                padding: "4px 10px",
-                borderRadius: 999,
-                fontSize: "clamp(10px, 1.1cqi, 12px)",
-                fontWeight: 800,
-                border: `1px solid ${BRAND.purps}25`,
-              }}
-            >
+            <CalloutPill bg={BRAND.purpsSoft} fg={BRAND.purps}>
               Sweet spot · {spec.sweet_spot.label}
-            </div>
+            </CalloutPill>
           </div>
         )}
 
@@ -116,19 +108,9 @@ export function BookingWindowChart({ spec, context, compact = false }: Props) {
                     className="absolute z-10 left-1/2 -translate-x-1/2 pointer-events-none"
                     style={{ bottom: `calc(${heightPct}% + 6px)` }}
                   >
-                    <div
-                      style={{
-                        background: BRAND.purps,
-                        color: "white",
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 800,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <CalloutPill bg={BRAND.purps} fg="white">
                       Sweet spot
-                    </div>
+                    </CalloutPill>
                   </div>
                 )}
                 <motion.div
@@ -194,18 +176,9 @@ export function BookingWindowChart({ spec, context, compact = false }: Props) {
 
         {!compact && spec.sold_out_risk && (
           <div className="mt-3 flex items-center gap-2">
-            <span
-              style={{
-                background: BRAND.candySoft,
-                color: BRAND.candy,
-                padding: "3px 9px",
-                borderRadius: 999,
-                fontSize: "clamp(9px, 1cqi, 11px)",
-                fontWeight: 800,
-              }}
-            >
+            <CalloutPill bg={BRAND.candySoft} fg={BRAND.candy}>
               Sells out
-            </span>
+            </CalloutPill>
             <span
               style={{
                 fontSize: "clamp(10px, 1.1cqi, 12px)",

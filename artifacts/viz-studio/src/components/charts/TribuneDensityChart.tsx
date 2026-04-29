@@ -2,16 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import {
-  ACCENT_FG,
-  ACCENT_SOFT,
-  BAND_TONE,
-  BRAND,
-  CHART_TOKENS,
-  getDotStyle,
-  type AccentKey,
-  type BandToneKey,
-} from "@/lib/brand";
+import { BRAND, CHART_TOKENS } from "@/lib/brand";
+import { CALLOUT_PILL } from "@/lib/chart-system";
+import { ChartTooltip } from "@/components/charts/system";
 import { type TribuneDensitySpec } from "@/lib/chart-spec";
 import { ChipButton } from "./interactions/ChipButton";
 
@@ -21,29 +14,38 @@ interface Props {
   compact?: boolean;
 }
 
-// Map this chart's spec-level zone tones onto the shared BAND_TONE family
-// (`calm` = soft green wash, `loud` = saturated candy wash) so the rhythm
-// stays in sync with the Daily pattern chart and any future band-using
-// chart. The "Peak" (`packed`) zone is the explicit callout — only it
-// gets the loud wash; everything else recedes to calm.
-const ZONE_BAND: Record<
+// Soft default, vivid only on callout — same rhythm as the Weekly pattern
+// and Seasonal curve charts. The "Peak" band (`packed`) is the explicitly
+// labeled extreme so it keeps the saturated candy tint; the supporting
+// "Best window" / "Quieter again" bands drop to a calmer green wash.
+const ZONE_TONES: Record<
   TribuneDensitySpec["zones"][number]["tone"],
-  BandToneKey
+  { bg: string; bgActive: string; label: string }
 > = {
-  quiet: "calm",
-  packed: "loud",
-  second_window: "calm",
+  quiet: {
+    bg: "rgba(21, 216, 118, 0.05)",
+    bgActive: "rgba(21, 216, 118, 0.20)",
+    label: "#0E8F4E",
+  },
+  packed: {
+    bg: "rgba(255, 0, 118, 0.12)",
+    bgActive: "rgba(255, 0, 118, 0.24)",
+    label: BRAND.candy,
+  },
+  second_window: {
+    bg: "rgba(21, 216, 118, 0.05)",
+    bgActive: "rgba(21, 216, 118, 0.20)",
+    label: "#0E8F4E",
+  },
 };
 
-// Pill tones reuse the centralized `ACCENT_SOFT` + `ACCENT_FG` rhythm so
-// every "soft pill, vivid label" chip in the deck stays identical.
-const PILL_ACCENT: Record<
+const PILL_TONES: Record<
   TribuneDensitySpec["context_pills"][number]["tone"],
-  AccentKey
+  { bg: string; fg: string }
 > = {
-  candy: "candy",
-  okay: "okay",
-  purps: "purps",
+  candy: { bg: BRAND.candySoft, fg: BRAND.candy },
+  okay: { bg: BRAND.bgMint, fg: "#0E8F4E" },
+  purps: { bg: BRAND.purpsSoft, fg: BRAND.purps },
 };
 
 const ICON_FOR: Record<
@@ -329,7 +331,7 @@ export function TribuneDensityChart({
             {zones.map((z, i) => {
               const left = xPct(toMin(z.start));
               const right = xPct(toMin(z.end));
-              const tone = BAND_TONE[ZONE_BAND[z.tone]];
+              const tone = ZONE_TONES[z.tone];
               const isActive =
                 selection?.kind === "zone" && selection.idx === i;
               const dimOthers =
@@ -509,18 +511,15 @@ export function TribuneDensityChart({
                     animate={{ scale: 1 }}
                     transition={{ delay: 1.1 + i * 0.04, duration: 0.3 }}
                     style={{
-                      // Hollow ring by default, saturated fill only on the
-                      // callout/focused points — the centralized
-                      // "soft default, vivid on callout" dot rhythm. Tribune
-                      // overrides the callout border so the white visual
-                      // separation comes from the boxShadow ring below.
-                      ...getDotStyle(
-                        isFocusAt || isCallout ? "callout" : "default",
-                      ),
-                      border: `2px solid ${BRAND.purps}`,
                       width: isFocusAt ? 12 : isCallout ? 10 : 7,
                       height: isFocusAt ? 12 : isCallout ? 10 : 7,
                       borderRadius: "50%",
+                      // Hollow ring by default, saturated fill only on the
+                      // callout/focused points — same "soft default, vivid
+                      // on callout" rhythm as the Weekly pattern bars.
+                      background:
+                        isFocusAt || isCallout ? BRAND.purps : "white",
+                      border: `2px solid ${BRAND.purps}`,
                       boxShadow: isFocusAt
                         ? `0 0 0 4px ${BRAND.purps}40`
                         : isCallout
@@ -549,23 +548,13 @@ export function TribuneDensityChart({
                     {p.density}
                   </div>
                   {isHovered && (
-                    <div
-                      className="absolute pointer-events-none z-30"
-                      style={{
-                        top: "calc(50% + 14px)",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        background: BRAND.slate900,
-                        color: "white",
-                        padding: "4px 8px",
-                        borderRadius: 6,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                      }}
+                    <ChartTooltip
+                      anchorXPct={c.x}
+                      placement="below"
+                      offset={14}
                     >
                       {p.time} · {p.density}/10
-                    </div>
+                    </ChartTooltip>
                   )}
                 </div>
               );
@@ -617,10 +606,15 @@ export function TribuneDensityChart({
                     background: "white",
                     border: `1.5px solid ${BRAND.purps}`,
                     color: BRAND.purps,
-                    padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX}px`,
+                    padding: `${CALLOUT_PILL.paddingY}px ${CALLOUT_PILL.paddingX}px`,
+                    // Tribune's arrow_callout uses a small radius (instead of
+                    // the system's pill 999) because of the tail geometry
+                    // below; everything else — padding, font, weight — stays
+                    // unified with the rest of the system.
                     borderRadius: 8,
-                    fontSize: CHART_TOKENS.pill.fontSize,
-                    fontWeight: CHART_TOKENS.pill.fontWeight,
+                    fontSize: CALLOUT_PILL.fontSize,
+                    fontWeight: CALLOUT_PILL.fontWeight,
+                    lineHeight: 1.15,
                     whiteSpace: "nowrap",
                     boxShadow: "var(--shadow-card)",
                   }}
@@ -692,9 +686,7 @@ export function TribuneDensityChart({
           >
             {context_pills.map((p, i) => {
               const Icon = ICON_FOR[p.icon];
-              const accent = PILL_ACCENT[p.tone];
-              const pillBg = ACCENT_SOFT[accent];
-              const pillFg = ACCENT_FG[accent];
+              const tone = PILL_TONES[p.tone];
               const isActive =
                 selection?.kind === "pill" && selection.idx === i;
               const dimOthers =
@@ -705,8 +697,8 @@ export function TribuneDensityChart({
                   active={isActive}
                   dim={dimOthers}
                   onClick={() => togglePill(i)}
-                  bg={pillBg}
-                  fg={pillFg}
+                  bg={tone.bg}
+                  fg={tone.fg}
                   ariaPressed={isActive}
                   ariaLabel={`Highlight ${p.title} on chart`}
                   style={{
@@ -726,7 +718,7 @@ export function TribuneDensityChart({
                       height: 22,
                       borderRadius: "50%",
                       background: "white",
-                      color: pillFg,
+                      color: tone.fg,
                     }}
                   >
                     <Icon size={12} strokeWidth={2.5} />
@@ -734,7 +726,7 @@ export function TribuneDensityChart({
                   <div className="min-w-0">
                     <div
                       style={{
-                        color: pillFg,
+                        color: tone.fg,
                         fontWeight: 800,
                         fontSize: "clamp(9px, 1cqi, 11px)",
                         lineHeight: 1.15,
@@ -785,16 +777,6 @@ function FocusMarker({
   pillLabel?: string;
 }) {
   const x = xPct(at);
-  // Clamp tooltip horizontally so it doesn't overflow the plot area.
-  let tipLeft = "50%";
-  let tipTransform = "translateX(-50%)";
-  if (x < 12) {
-    tipLeft = "0%";
-    tipTransform = "translateX(0)";
-  } else if (x > 88) {
-    tipLeft = "100%";
-    tipTransform = "translateX(-100%)";
-  }
   return (
     <div
       className="absolute pointer-events-none"
@@ -816,24 +798,10 @@ function FocusMarker({
           }}
         />
       )}
-      <div
-        className="absolute"
-        style={{
-          left: tipLeft,
-          top: -36,
-          transform: tipTransform,
-          background: BRAND.slate900,
-          color: "white",
-          padding: "5px 10px",
-          borderRadius: 8,
-          fontSize: "clamp(9px, 1cqi, 11px)",
-          fontWeight: 800,
-          whiteSpace: "nowrap",
-        }}
-      >
+      <ChartTooltip anchorXPct={x} placement="above" offset={22}>
         {pillLabel ? `${pillLabel} · ` : ""}
         {fmtMin(at)} · {Math.round(density)}/10
-      </div>
+      </ChartTooltip>
     </div>
   );
 }
