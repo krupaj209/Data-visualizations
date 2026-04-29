@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Home from "@/pages/Home";
 import CeDetail from "@/pages/CeDetail";
 import Embed from "@/pages/Embed";
+import StyleGuide from "@/pages/StyleGuide";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/ce/:slug" component={CeDetail} />
       <Route path="/embed/:id" component={Embed} />
+      <Route path="/style" component={StyleGuide} />
       <Route component={NotFound} />
     </Switch>
   );

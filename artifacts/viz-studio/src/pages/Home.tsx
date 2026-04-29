@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, Palette, Plus, Sparkles, Trash2 } from "lucide-react";
 import {
   useListCes,
   useCreateCe,
@@ -128,6 +128,23 @@ export default function Home() {
               AI-generated visuals for listing pages
             </div>
           </div>
+          <Link
+            href="/style"
+            className="inline-flex items-center gap-1.5"
+            style={{
+              background: BRAND.purpsSoft,
+              color: BRAND.purps,
+              padding: "6px 11px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "-0.005em",
+              textDecoration: "none",
+            }}
+          >
+            <Palette size={13} strokeWidth={2.5} />
+            Style guide
+          </Link>
           <span
             style={{
               background: BRAND.purpsSoft,
