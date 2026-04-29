@@ -35,25 +35,28 @@ export default function Embed() {
   const spec = chart.spec as unknown as ChartSpec;
   const ceName = ce?.name;
 
+  // Fill whatever the host iframe gives us, but enforce a minimum height
+  // so the chart never collapses to an unreadable strip when an embedder
+  // picks a too-short iframe (e.g. mobile responsive `iframe { height: auto }`
+  // or a CMS that sets ~250px). Below the floor we let the iframe scroll
+  // vertically rather than render a broken chart. Charts use container
+  // queries for font sizing and percentage-based geometry, so they fill
+  // any aspect ratio cleanly above the floor.
   return (
     <div
       style={{
         width: "100vw",
-        height: "100vh",
+        minHeight: "100vh",
         background: "white",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
       }}
     >
       <div
         style={{
-          aspectRatio: "16 / 10",
           width: "100%",
-          height: "100%",
-          maxWidth: "min(100vw, calc(100vh * 16 / 10))",
-          maxHeight: "min(100vh, calc(100vw * 10 / 16))",
+          minHeight: 460,
+          height: "100vh",
+          display: "flex",
         }}
       >
         <ChartRenderer
