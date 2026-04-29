@@ -38,10 +38,12 @@ export default function Embed() {
   // Fill whatever the host iframe gives us, but enforce a minimum height
   // so the chart never collapses to an unreadable strip when an embedder
   // picks a too-short iframe (e.g. mobile responsive `iframe { height: auto }`
-  // or a CMS that sets ~250px). Below the floor we let the iframe scroll
-  // vertically rather than render a broken chart. Charts use container
-  // queries for font sizing and percentage-based geometry, so they fill
-  // any aspect ratio cleanly above the floor.
+  // or a CMS that sets ~250px). Body has `overflow: hidden` in embed mode,
+  // so below the floor content is clipped — the floor (400px) is sized to
+  // accommodate the chart with the most chrome (seasonal_curve: toggle +
+  // bars + months + insight + chips). Charts use container queries for font
+  // sizing and percentage-based geometry, so they fill any aspect ratio
+  // cleanly above the floor.
   return (
     <div
       style={{
@@ -54,7 +56,7 @@ export default function Embed() {
       <div
         style={{
           width: "100%",
-          minHeight: 460,
+          minHeight: 400,
           height: "100vh",
           display: "flex",
         }}

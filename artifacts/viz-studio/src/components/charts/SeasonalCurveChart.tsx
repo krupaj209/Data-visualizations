@@ -173,7 +173,7 @@ export function SeasonalCurveChart({ spec, context }: Props) {
           style={{
             gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
             columnGap: "clamp(3px, 0.5cqi, 6px)",
-            paddingTop: 26,
+            paddingTop: 22,
           }}
         >
           {data.map((d, i) => {
@@ -308,12 +308,12 @@ export function SeasonalCurveChart({ spec, context }: Props) {
         </div>
 
         <div
-          className="grid mt-2"
+          className="grid mt-1.5"
           style={{
             gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
             columnGap: "clamp(3px, 0.5cqi, 6px)",
             borderTop: `1px solid ${BRAND.slate100}`,
-            paddingTop: 8,
+            paddingTop: 5,
           }}
         >
           {data.map((d) => (
@@ -337,12 +337,12 @@ export function SeasonalCurveChart({ spec, context }: Props) {
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-3"
+            className="mt-2"
             style={{
               fontSize: "clamp(10px, 1.05cqi, 12px)",
               color: BRAND.slate900,
               fontWeight: 600,
-              lineHeight: 1.45,
+              lineHeight: 1.4,
             }}
           >
             {spec.metric_insights[metric]}
@@ -352,7 +352,7 @@ export function SeasonalCurveChart({ spec, context }: Props) {
         {hasUpgrade &&
           spec.calendar_notes &&
           spec.calendar_notes.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {spec.calendar_notes.map((note, i) => {
                 const tone = CHIP_TONE[note.kind];
                 return (
