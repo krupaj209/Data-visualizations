@@ -19,7 +19,8 @@ import {
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
-import { ChartRenderer, CHART_TYPE_META } from "@/components/charts";
+import { ChartRenderer } from "@/components/charts";
+import { CHART_TYPE_META } from "@/components/charts/meta";
 import { type ChartSpec } from "@/lib/chart-spec";
 import { toSentenceCase } from "@/lib/text";
 
