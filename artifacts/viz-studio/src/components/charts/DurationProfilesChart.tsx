@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, Timer } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
@@ -39,6 +39,19 @@ function fmtRange(min: number, max: number) {
   return `${min}–${max} min`;
 }
 
+/**
+ * Wrapper-height thresholds (px, excluding ChartCard's outer padding) below
+ * which this chart drops its secondary chrome rather than letting the 5
+ * profile rows overflow into it. The wrapper needs roughly:
+ *   headline ~50  +  5 rows ~47 each + 4 gaps ~12  +  scale ~30  +  tip ~30
+ *   ≈ 393px to fit everything at typical desktop type sizes.
+ * Below that, drop the tip first (the host CMS usually duplicates it as
+ * bullet copy anyway); then drop the scale row; finally compact mode
+ * (window.innerHeight < 340) takes over and strips ChartCard chrome too.
+ */
+const TIP_HIDE_BELOW_PX = 400;
+const SCALE_HIDE_BELOW_PX = 370;
+
 export function DurationProfilesChart({
   spec,
   context,
@@ -48,6 +61,38 @@ export function DurationProfilesChart({
   const maxScale = Math.max(...scale_min.map((s) => s.minutes), 1);
   const [hovered, setHovered] = useState<number | null>(null);
   const [lockedIdx, setLockedIdx] = useState<number | null>(null);
+
+  // Measure the rendered card height so we can drop the tip / scale row
+  // before they get visually overlapped by the profile rows above. The
+  // measurement uses a ResizeObserver on the chart's outer wrapper so the
+  // chart reacts to container size changes from BOTH the iframe (Embed page)
+  // and the aspect-ratio frame on the CE detail page.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    // Synchronous initial read so the first paint already has a real height
+    // instead of falling back to the "assume tall" sentinel — this prevents
+    // the one-frame flicker where tip/scale render briefly then hide once
+    // the ResizeObserver callback fires asynchronously.
+    setCardHeight(el.getBoundingClientRect().height);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const h = entry.contentRect.height;
+      setCardHeight((prev) => (prev !== null && Math.abs(prev - h) < 1 ? prev : h));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Effective height for thresholding: use the measured wrapper height when
+  // available, otherwise assume there's room (large default) so the first
+  // paint matches the desktop / detail-page case.
+  const effectiveHeight = cardHeight ?? 9999;
+  const showTip = !compact && effectiveHeight >= TIP_HIDE_BELOW_PX;
+  const showScale = !compact && effectiveHeight >= SCALE_HIDE_BELOW_PX;
 
   useEffect(() => {
     if (lockedIdx === null) return;
@@ -66,7 +111,7 @@ export function DurationProfilesChart({
       pill="Estimated"
       compact={compact}
     >
-      <div className="flex-1 flex flex-col min-h-0">
+      <div ref={wrapperRef} className="flex-1 flex flex-col min-h-0">
         {!compact && (
           <div className="flex items-center gap-3 mb-3">
             <span
@@ -137,7 +182,7 @@ export function DurationProfilesChart({
             })}
           </div>
 
-          {!compact && (
+          {showScale && (
             <div
               className="grid mt-2"
               style={{
@@ -298,7 +343,7 @@ export function DurationProfilesChart({
           </motion.div>
         )}
 
-        {!compact && tip && !locked && (
+        {showTip && tip && !locked && (
           <div className="flex items-center gap-2 mt-3">
             <span
               className="flex items-center justify-center shrink-0"
