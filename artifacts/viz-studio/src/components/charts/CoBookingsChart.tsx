@@ -6,7 +6,6 @@ import {
   Building2,
   Trees,
   Gem,
-  MapPin,
 } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
@@ -41,23 +40,6 @@ export function CoBookingsChart({ spec, context, compact = false }: Props) {
       compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {!compact && (
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className="flex items-center justify-center"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: BRAND.purpsSoft,
-                color: BRAND.purps,
-              }}
-            >
-              <MapPin size={14} strokeWidth={2.5} />
-            </span>
-          </div>
-        )}
-
         <div
           className="flex-1 flex flex-col min-h-0"
           style={{
@@ -193,7 +175,7 @@ function Row({
         style={{
           height: compact
             ? "clamp(14px, 1.8cqi, 20px)"
-            : "clamp(22px, 2.8cqi, 30px)",
+            : "clamp(28px, 4.2cqi, 44px)",
         }}
       >
         <motion.div
