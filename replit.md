@@ -8,7 +8,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ## Artifacts
 
-- `artifacts/viz-studio` (web) — Main app: browse/create CEs, view chart library, copy iframe URLs. Embed view at `/studio/embed/:chartId` is a strict 16:10 full-bleed render for use in iframes.
+- `artifacts/viz-studio` (web) — Main app: browse/create CEs, view chart library, copy iframe URLs. Embed view at `/studio/embed/:chartId` fills any iframe size (responsive, container-query–driven) with a 400px height floor.
 - `artifacts/api-server` (api) — Express API. POSTs to Gemini for chart generation, persists CEs + charts in Postgres, serves via OpenAPI/Orval-generated hooks.
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
 - `artifacts/weekly-pattern-widget` (web) — Standalone earlier widget (deployed; do not delete).
@@ -33,7 +33,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 Generation: `artifacts/api-server/src/lib/generate-ce.ts` builds a strict prompt with per-type schemas, calls Gemini, validates against Zod, and retries once with the validation error fed back. Strict array lengths enforce data completeness (`.length(12)` for months, `.length(7)` for weekday rows, `.length(24)` for hours).
 
-Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. All wrapped in `ChartCard` which enforces 16:10 aspect ratio, header (ESTIMATED pill, title, subtitle), and footer insight.
+Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. All wrapped in `ChartCard` (header with ESTIMATED pill + title/subtitle, content area, footer insight). Charts use container queries + percentage-based geometry so they fill any size cleanly above the 400px embed floor.
 
 ## Key Commands
 
@@ -44,10 +44,12 @@ Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. 
 
 ## Embed contract
 
-Embeds live at `${origin}/studio/embed/:chartId` and render the single chart at strict 16:10 (min 800×500, prefer 1600×1000). The `Embed` page uses `aspect-ratio` so an `<iframe width=1600 height=1000>` displays the chart full-bleed without crop. CMS embed snippet:
+Embeds live at `${origin}/studio/embed/:chartId` and render the single chart fluidly into whatever size the host iframe provides (no fixed aspect ratio). The `Embed` page applies a 400px `minHeight` floor — body has `overflow: hidden` in embed mode, so any iframe shorter than 400px clips rather than collapses to an unreadable strip. The CMS layout currently uses a 3-cards-per-row grid (~320×400 per card); all 8 Accademia chart types verified to render cleanly at 320×400. CMS embed snippet:
 
 ```html
-<iframe src="https://<host>/studio/embed/<chartId>" width="1600" height="1000" frameborder="0"></iframe>
+<iframe src="https://<host>/studio/embed/<chartId>" width="320" height="400" frameborder="0"></iframe>
 ```
+
+Curated Florence cluster CEs (currently `galleria-dellaccademia`; `uffizi`, `duomo` planned) are listed in `LOCKED_CE_SLUGS` (`artifacts/api-server/src/routes/ces.ts`) which blocks delete/regenerate so curated chart specs in `scripts/src/data/*.mjs` remain canonical.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
