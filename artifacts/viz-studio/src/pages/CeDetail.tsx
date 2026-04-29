@@ -28,6 +28,35 @@ const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
 const LOCKED_SLUGS = new Set(["galleria-dellaccademia"]);
 
+/**
+ * Per-chart-type frame proportions. Chosen so the visualization gets a canvas
+ * that fits its content rather than every chart being squeezed into a single
+ * 16:10 box. Wide-and-shallow for line/area patterns, less-tall for bar charts,
+ * a square-ish frame for grids/calendars.
+ */
+const CHART_FRAME: Record<
+  ChartSpec["type"],
+  { aspectRatio: string; minHeight?: number; maxHeight?: number }
+> = {
+  // Wide line/area charts so the curve breathes horizontally
+  tribune_density: { aspectRatio: "5 / 2", minHeight: 320, maxHeight: 440 },
+  daily_pattern: { aspectRatio: "12 / 5", minHeight: 300, maxHeight: 400 },
+  seasonal_curve: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
+  booking_window: { aspectRatio: "16 / 7", minHeight: 280, maxHeight: 380 },
+  // Less tall — bars feel grounded instead of stretched
+  weekly_pattern: { aspectRatio: "16 / 6", minHeight: 240, maxHeight: 320 },
+  hourly_heatmap: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  // More square — content needs vertical room
+  month_calendar: { aspectRatio: "5 / 4", minHeight: 360, maxHeight: 520 },
+  ticket_ladder: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 420 },
+  duration_profiles: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  entrance_lanes: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  compare_zones: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  donut_breakdown: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
+  stat_grid: { aspectRatio: "16 / 6", minHeight: 200, maxHeight: 280 },
+  co_bookings: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
+};
+
 export default function CeDetail() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
@@ -224,6 +253,8 @@ function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
   const opts = { preserve: ceName };
   const headline = toSentenceCase(chart.question || chart.title, opts);
   const insightText = chart.insight ? toSentenceCase(chart.insight, opts) : null;
+  const frame =
+    CHART_FRAME[spec.type] ?? { aspectRatio: "16 / 10", minHeight: 320 };
 
   return (
     <section>
@@ -266,7 +297,14 @@ function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
             padding: 0,
           }}
         >
-          <div className="aspect-1610 w-full">
+          <div
+            className="w-full"
+            style={{
+              aspectRatio: frame.aspectRatio,
+              minHeight: frame.minHeight,
+              maxHeight: frame.maxHeight,
+            }}
+          >
             <ChartRenderer
               spec={spec}
               preserve={ceName}

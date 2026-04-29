@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND } from "@/lib/brand";
+import { BRAND, CHART_TOKENS } from "@/lib/brand";
 import { type TribuneDensitySpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -54,41 +54,77 @@ export function TribuneDensityChart({
   const { points, zones, arrow_callout, context_pills, scope, y_label } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
-  const { xs, dMin, dMax, range } = useMemo(() => {
-    const xs = points.map((p) => toMin(p.time));
-    const dMin = Math.min(...xs);
-    const dMax = Math.max(...xs);
-    return { xs, dMin, dMax, range: Math.max(dMax - dMin, 1) };
+  // The plot area is split into three vertical strips:
+  //   • HEADER  — zone band labels + the "Tour groups arrive" callout pill
+  //   • plot    — the curve, dots, value labels, gridlines
+  //   • X_AXIS  — bottom row of clock labels
+  // Reserving the header strip explicitly is what stops the topmost dot value
+  // labels (e.g. the "10"s) and the callout pill from being clipped above the
+  // card edge.
+  const HEADER = compact ? 28 : 56;
+  const X_AXIS = CHART_TOKENS.xAxisStripPx;
+  const Y_TICK_W = compact ? 16 : 22;
+
+  const { xs, dMin, range, yMax } = useMemo(() => {
+    const xsLocal = points.map((p) => toMin(p.time));
+    const dMinLocal = Math.min(...xsLocal);
+    const dMaxLocal = Math.max(...xsLocal);
+    // Cap the y-scale ABOVE the highest density so the topmost dot doesn't
+    // sit flush with the top edge — gives ~16% headroom inside the plot.
+    const peak = Math.max(...points.map((p) => p.density), 1);
+    const yMaxLocal = Math.max(peak + 2, 12);
+    return {
+      xs: xsLocal,
+      dMin: dMinLocal,
+      range: Math.max(dMaxLocal - dMinLocal, 1),
+      yMax: yMaxLocal,
+    };
   }, [points]);
 
   const xPct = (mins: number) => ((mins - dMin) / range) * 100;
-  const yMax = 10;
   const yPct = (v: number) => 100 - (v / yMax) * 100;
 
-  const path = useMemo(() => {
-    const cmds: string[] = [];
-    const coords = points.map((p, i) => ({
+  // Cardinal-spline curve through every point so the line and area are one
+  // continuous piece of geometry.
+  const { linePath, areaPath, coords } = useMemo(() => {
+    const cs = points.map((p, i) => ({
       x: xPct(xs[i]),
       y: yPct(p.density),
     }));
-    if (coords.length === 0) return "";
-    cmds.push(`M ${coords[0].x} ${coords[0].y}`);
-    for (let i = 1; i < coords.length; i++) {
-      const p0 = coords[i - 1];
-      const p1 = coords[i];
-      const cx1 = p0.x + (p1.x - p0.x) * 0.5;
-      const cx2 = p0.x + (p1.x - p0.x) * 0.5;
-      cmds.push(`C ${cx1} ${p0.y}, ${cx2} ${p1.y}, ${p1.x} ${p1.y}`);
+    if (cs.length === 0) return { linePath: "", areaPath: "", coords: cs };
+    const cmds: string[] = [`M ${cs[0].x.toFixed(3)} ${cs[0].y.toFixed(3)}`];
+    const tension = 0.5;
+    for (let i = 0; i < cs.length - 1; i++) {
+      const p0 = cs[Math.max(i - 1, 0)];
+      const p1 = cs[i];
+      const p2 = cs[i + 1];
+      const p3 = cs[Math.min(i + 2, cs.length - 1)];
+      const cp1x = p1.x + ((p2.x - p0.x) / 6) * tension;
+      const cp1y = p1.y + ((p2.y - p0.y) / 6) * tension;
+      const cp2x = p2.x - ((p3.x - p1.x) / 6) * tension;
+      const cp2y = p2.y - ((p3.y - p1.y) / 6) * tension;
+      cmds.push(
+        `C ${cp1x.toFixed(3)} ${cp1y.toFixed(3)}, ${cp2x.toFixed(3)} ${cp2y.toFixed(3)}, ${p2.x.toFixed(3)} ${p2.y.toFixed(3)}`,
+      );
     }
-    return cmds.join(" ");
-  }, [points, xs, range, dMin]);
+    const line = cmds.join(" ");
+    const last = cs[cs.length - 1];
+    const area = `${line} L ${last.x.toFixed(3)} 100 L ${cs[0].x.toFixed(3)} 100 Z`;
+    return { linePath: line, areaPath: area, coords: cs };
+  }, [points, xs, range, dMin, yMax]);
 
-  const areaPath = path ? `${path} L 100 100 L 0 100 Z` : "";
-
-  // Arrow callout anchor
   const calloutPoint = arrow_callout
     ? points.find((p) => p.time === arrow_callout.at)
     : undefined;
+
+  // Y ticks — sample whole-number ticks up to a sensible max so they stay readable.
+  const yTicks = useMemo(() => {
+    const top = Math.min(yMax, 12);
+    const stepGuess = Math.ceil(top / 6);
+    const out: number[] = [];
+    for (let v = stepGuess; v <= 10; v += stepGuess) out.push(v);
+    return out;
+  }, [yMax]);
 
   return (
     <ChartCard
@@ -98,38 +134,75 @@ export function TribuneDensityChart({
       compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
+        {/* Header row hidden in compact mode (saves vertical space for the
+            embed). When visible, shows the y_label on the left and an inline
+            helper sentence on the right — keeping the helper out of the plot
+            area where it used to overlay the curve. */}
         {!compact && (
           <div
-            style={{
-              color: BRAND.slate700,
-              fontSize: "clamp(9px, 0.95cqi, 11px)",
-              fontWeight: 700,
-              marginBottom: 4,
-              lineHeight: 1.2,
-            }}
+            className="flex items-baseline justify-between gap-3"
+            style={{ marginBottom: 4 }}
           >
-            {y_label}
+            <div
+              style={{
+                color: BRAND.slate700,
+                fontSize: CHART_TOKENS.axisLabel.fontSize,
+                fontWeight: CHART_TOKENS.axisLabel.fontWeight,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {y_label}
+            </div>
+            {arrow_callout?.helper && (
+              <div
+                style={{
+                  color: BRAND.slate500,
+                  fontSize: "clamp(9px, 0.95cqi, 11px)",
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                  textAlign: "right",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {arrow_callout.helper}
+              </div>
+            )}
           </div>
         )}
 
         <div
           className="relative flex-1 min-h-0"
-          style={{ paddingLeft: 22, paddingRight: 8, paddingTop: 22 }}
+          style={{
+            paddingLeft: Y_TICK_W,
+            paddingRight: CHART_TOKENS.plotInsetX,
+          }}
         >
-          {/* Y-axis ticks (1..10) */}
+          {/* Y-axis ticks */}
           <div
-            className="absolute top-[22px] bottom-[22px] left-0 flex flex-col-reverse justify-between"
-            style={{ width: 18 }}
+            className="absolute flex flex-col-reverse justify-between"
+            style={{
+              top: HEADER,
+              bottom: X_AXIS,
+              left: 0,
+              width: Y_TICK_W - 4,
+            }}
           >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => (
+            {yTicks.map((v) => (
               <div
                 key={v}
                 style={{
+                  position: "absolute",
+                  bottom: `${(v / yMax) * 100}%`,
+                  right: 4,
+                  transform: "translateY(50%)",
                   color: BRAND.slate500,
                   fontSize: "clamp(7px, 0.8cqi, 9px)",
                   fontWeight: 700,
                   textAlign: "right",
-                  paddingRight: 4,
                   lineHeight: 1,
                 }}
               >
@@ -138,12 +211,17 @@ export function TribuneDensityChart({
             ))}
           </div>
 
-          {/* Plot area */}
+          {/* Zone backgrounds + zone band labels live in the header strip. */}
           <div
-            className="relative h-full"
-            style={{ marginBottom: 22, height: "calc(100% - 22px)" }}
+            className="absolute"
+            style={{
+              top: 0,
+              bottom: X_AXIS,
+              left: Y_TICK_W,
+              right: CHART_TOKENS.plotInsetX,
+              pointerEvents: "none",
+            }}
           >
-            {/* Zone backgrounds */}
             {zones.map((z, i) => {
               const left = xPct(toMin(z.start));
               const right = xPct(toMin(z.end));
@@ -165,8 +243,8 @@ export function TribuneDensityChart({
                       left: "50%",
                       transform: "translateX(-50%)",
                       color: tone.label,
-                      fontSize: "clamp(10px, 1.1cqi, 13px)",
-                      fontWeight: 800,
+                      fontSize: CHART_TOKENS.zoneLabel.fontSize,
+                      fontWeight: CHART_TOKENS.zoneLabel.fontWeight,
                       whiteSpace: "nowrap",
                     }}
                   >
@@ -175,33 +253,57 @@ export function TribuneDensityChart({
                 </div>
               );
             })}
+          </div>
 
-            {/* Horizontal gridlines */}
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 w-full h-full"
-              style={{ overflow: "visible" }}
-            >
-              {[2, 4, 6, 8].map((v) => (
-                <line
-                  key={v}
-                  x1={0}
-                  x2={100}
-                  y1={yPct(v)}
-                  y2={yPct(v)}
-                  stroke={BRAND.slate100}
-                  strokeWidth={0.2}
-                  vectorEffect="non-scaling-stroke"
+          {/* SVG: gridlines + area + curve */}
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute"
+            style={{
+              top: HEADER,
+              bottom: X_AXIS,
+              left: Y_TICK_W,
+              right: CHART_TOKENS.plotInsetX,
+              width: `calc(100% - ${Y_TICK_W + CHART_TOKENS.plotInsetX}px)`,
+              height: `calc(100% - ${HEADER + X_AXIS}px)`,
+              overflow: "visible",
+              pointerEvents: "none",
+            }}
+          >
+            <defs>
+              <linearGradient id="tribuneFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.18} />
+                <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0.0} />
+              </linearGradient>
+              {/* Reveal mask — left-to-right wipe. Avoids the dashed-stroke
+                  artifact framer-motion's pathLength animation produces when
+                  combined with vector-effect: non-scaling-stroke and a
+                  stretched viewBox. */}
+              <clipPath id="tribuneReveal" clipPathUnits="objectBoundingBox">
+                <motion.rect
+                  x={0}
+                  y={0}
+                  height={1}
+                  initial={{ width: 0 }}
+                  animate={{ width: 1 }}
+                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
                 />
-              ))}
-              <defs>
-                <linearGradient id="tribuneFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.18} />
-                  <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0.0} />
-                </linearGradient>
-              </defs>
-              {/* Area */}
+              </clipPath>
+            </defs>
+            {yTicks.map((v) => (
+              <line
+                key={v}
+                x1={0}
+                x2={100}
+                y1={yPct(v)}
+                y2={yPct(v)}
+                stroke={BRAND.slate100}
+                strokeWidth={0.2}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+            {areaPath && (
               <motion.path
                 d={areaPath}
                 fill="url(#tribuneFill)"
@@ -209,25 +311,34 @@ export function TribuneDensityChart({
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.6, delay: 0.5 }}
               />
-              {/* Line */}
-              <motion.path
-                d={path}
+            )}
+            {linePath && (
+              <path
+                d={linePath}
                 fill="none"
                 stroke={BRAND.purps}
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                clipPath="url(#tribuneReveal)"
               />
-            </svg>
+            )}
+          </svg>
 
-            {/* Data dots (with hover tooltips) */}
+          {/* Data dots + numeric labels */}
+          <div
+            className="absolute"
+            style={{
+              top: HEADER,
+              bottom: X_AXIS,
+              left: Y_TICK_W,
+              right: CHART_TOKENS.plotInsetX,
+            }}
+          >
             {points.map((p, i) => {
-              const x = xPct(xs[i]);
-              const y = yPct(p.density);
+              const c = coords[i];
+              if (!c) return null;
               const isHovered = hovered === i;
               const isCallout = arrow_callout?.at === p.time;
               return (
@@ -235,8 +346,8 @@ export function TribuneDensityChart({
                   key={i}
                   className="absolute"
                   style={{
-                    left: `${x}%`,
-                    top: `${y}%`,
+                    left: `${c.x}%`,
+                    top: `${c.y}%`,
                     transform: "translate(-50%, -50%)",
                     width: 16,
                     height: 16,
@@ -268,16 +379,15 @@ export function TribuneDensityChart({
                       cursor: "pointer",
                     }}
                   />
-                  {/* Density label above each dot (matching reference) */}
                   <div
                     className="absolute pointer-events-none"
                     style={{
-                      bottom: "calc(50% + 8px)",
+                      bottom: `calc(50% + ${CHART_TOKENS.dot.labelOffset}px)`,
                       left: "50%",
                       transform: "translateX(-50%)",
                       color: BRAND.slate900,
-                      fontSize: "clamp(9px, 1cqi, 12px)",
-                      fontWeight: 700,
+                      fontSize: CHART_TOKENS.dotLabel.fontSize,
+                      fontWeight: CHART_TOKENS.dotLabel.fontWeight,
                     }}
                   >
                     {p.density}
@@ -304,70 +414,72 @@ export function TribuneDensityChart({
                 </div>
               );
             })}
+          </div>
 
-            {/* Arrow callout */}
-            {arrow_callout && calloutPoint && (
-              <>
-                {/* Callout pill */}
+          {/* Callout pill — anchored INSIDE the reserved header strip so it
+              never gets clipped above the card edge. The arrow tip is the
+              little triangle drawn just below it. */}
+          {arrow_callout && calloutPoint && (
+            <div
+              className="absolute"
+              style={{
+                top: 0,
+                bottom: X_AXIS,
+                left: Y_TICK_W,
+                right: CHART_TOKENS.plotInsetX,
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                className="absolute"
+                style={{
+                  left: `${xPct(toMin(arrow_callout.at))}%`,
+                  top: HEADER - 26,
+                  transform: "translateX(-50%)",
+                }}
+              >
                 <div
-                  className="absolute pointer-events-none z-20"
                   style={{
-                    left: `${xPct(toMin(arrow_callout.at))}%`,
-                    top: 0,
-                    transform: "translate(-50%, -120%)",
+                    background: "white",
+                    border: `1.5px solid ${BRAND.purps}`,
+                    color: BRAND.purps,
+                    padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX}px`,
+                    borderRadius: 8,
+                    fontSize: CHART_TOKENS.pill.fontSize,
+                    fontWeight: CHART_TOKENS.pill.fontWeight,
+                    whiteSpace: "nowrap",
+                    boxShadow: "var(--shadow-card)",
                   }}
                 >
-                  <div
-                    style={{
-                      background: "white",
-                      border: `1.5px solid ${BRAND.purps}`,
-                      color: BRAND.purps,
-                      padding: "4px 9px",
-                      borderRadius: 8,
-                      fontSize: "clamp(9px, 1cqi, 11px)",
-                      fontWeight: 800,
-                      whiteSpace: "nowrap",
-                      boxShadow: "var(--shadow-card)",
-                    }}
-                  >
-                    {arrow_callout.label}
-                  </div>
+                  {arrow_callout.label}
                 </div>
-                {/* Helper text — pinned near start of "quiet" zone */}
-                {!compact && arrow_callout.helper && (
-                  <div
-                    className="absolute pointer-events-none z-20"
-                    style={{
-                      left: `${xPct(toMin(zones[0]?.start ?? "8:30")) + 1}%`,
-                      top: "38%",
-                      transform: "translateX(0)",
-                      maxWidth: "20%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: BRAND.purpsSoft,
-                        border: `1px solid ${BRAND.purps}40`,
-                        color: BRAND.purps,
-                        padding: "5px 8px",
-                        borderRadius: 8,
-                        fontSize: "clamp(8px, 0.9cqi, 10px)",
-                        fontWeight: 700,
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {arrow_callout.helper}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                {/* Tiny downward arrow indicator */}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: -5,
+                    left: "50%",
+                    transform: "translateX(-50%) rotate(45deg)",
+                    width: 8,
+                    height: 8,
+                    background: "white",
+                    borderRight: `1.5px solid ${BRAND.purps}`,
+                    borderBottom: `1.5px solid ${BRAND.purps}`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* X-axis labels — sparser sample in compact to avoid collisions */}
           <div
-            className="absolute left-[22px] right-[8px] flex justify-between"
-            style={{ bottom: 0, height: 18 }}
+            className="absolute flex justify-between"
+            style={{
+              left: Y_TICK_W,
+              right: CHART_TOKENS.plotInsetX,
+              bottom: 0,
+              height: 18,
+            }}
           >
             {points
               .filter(
@@ -384,8 +496,8 @@ export function TribuneDensityChart({
                   key={i}
                   style={{
                     color: BRAND.slate700,
-                    fontSize: "clamp(8px, 0.9cqi, 10px)",
-                    fontWeight: 700,
+                    fontSize: CHART_TOKENS.axisLabel.fontSize,
+                    fontWeight: CHART_TOKENS.axisLabel.fontWeight,
                     whiteSpace: "nowrap",
                   }}
                 >

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND } from "@/lib/brand";
+import { BRAND, CHART_TOKENS } from "@/lib/brand";
 import { type DailyPatternSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -49,136 +49,216 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
   const { points, zones, caption } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
+  // The plot area carries a reserved top header strip for zone pills and a
+  // bottom strip for x-axis ticks. The SVG + dot wrappers map their 0–100
+  // local coords into this inner band so the highest point gets ~15% headroom
+  // and the lowest dot doesn't kiss the x-axis row.
+  const HEADER = compact ? 24 : CHART_TOKENS.headerStripPx;
+  const X_AXIS = CHART_TOKENS.xAxisStripPx;
+
   const { xs, dMin, range, yMax } = useMemo(() => {
-    const xs = points.map((p) => toMin(p.time));
-    const dMin = Math.min(...xs);
-    const dMax = Math.max(...xs);
-    const yMax = Math.max(...points.map((p) => p.crowd), 10);
-    return { xs, dMin, range: Math.max(dMax - dMin, 1), yMax };
+    const xsLocal = points.map((p) => toMin(p.time));
+    const dMinLocal = Math.min(...xsLocal);
+    const dMaxLocal = Math.max(...xsLocal);
+    // Add ~15% headroom above the peak so the curve never kisses the top edge.
+    const peak = Math.max(...points.map((p) => p.crowd), 1);
+    const yMaxLocal = Math.max(Math.ceil(peak * 1.18), peak + 1, 10);
+    return {
+      xs: xsLocal,
+      dMin: dMinLocal,
+      range: Math.max(dMaxLocal - dMinLocal, 1),
+      yMax: yMaxLocal,
+    };
   }, [points]);
 
   const xPct = (mins: number) => ((mins - dMin) / range) * 100;
   const yPct = (v: number) => 100 - (v / yMax) * 100;
 
-  const path = useMemo(() => {
-    const coords = points.map((p, i) => ({
+  // Build a smooth path through every point. We use a Catmull-Rom-style
+  // cardinal spline so the curve genuinely passes through each data point and
+  // a single continuous d="…" string carries the whole dataset (so framer
+  // motion's pathLength animation reveals one unbroken curve, not segments).
+  const { linePath, areaPath, coords } = useMemo(() => {
+    const cs = points.map((p, i) => ({
       x: xPct(xs[i]),
       y: yPct(p.crowd),
     }));
-    if (!coords.length) return "";
-    const cmds = [`M ${coords[0].x} ${coords[0].y}`];
-    for (let i = 1; i < coords.length; i++) {
-      const p0 = coords[i - 1];
-      const p1 = coords[i];
-      const cx1 = p0.x + (p1.x - p0.x) * 0.5;
-      cmds.push(`C ${cx1} ${p0.y}, ${cx1} ${p1.y}, ${p1.x} ${p1.y}`);
+    if (cs.length === 0) return { linePath: "", areaPath: "", coords: cs };
+    if (cs.length === 1) {
+      const d = `M ${cs[0].x} ${cs[0].y}`;
+      return { linePath: d, areaPath: "", coords: cs };
     }
-    return cmds.join(" ");
+    const cmds: string[] = [`M ${cs[0].x.toFixed(3)} ${cs[0].y.toFixed(3)}`];
+    const tension = 0.5;
+    for (let i = 0; i < cs.length - 1; i++) {
+      const p0 = cs[Math.max(i - 1, 0)];
+      const p1 = cs[i];
+      const p2 = cs[i + 1];
+      const p3 = cs[Math.min(i + 2, cs.length - 1)];
+      const cp1x = p1.x + ((p2.x - p0.x) / 6) * tension;
+      const cp1y = p1.y + ((p2.y - p0.y) / 6) * tension;
+      const cp2x = p2.x - ((p3.x - p1.x) / 6) * tension;
+      const cp2y = p2.y - ((p3.y - p1.y) / 6) * tension;
+      cmds.push(
+        `C ${cp1x.toFixed(3)} ${cp1y.toFixed(3)}, ${cp2x.toFixed(3)} ${cp2y.toFixed(3)}, ${p2.x.toFixed(3)} ${p2.y.toFixed(3)}`,
+      );
+    }
+    const line = cmds.join(" ");
+    // Close the area path back to the bottom.
+    const last = cs[cs.length - 1];
+    const area = `${line} L ${last.x.toFixed(3)} 100 L ${cs[0].x.toFixed(3)} 100 Z`;
+    return { linePath: line, areaPath: area, coords: cs };
   }, [points, xs, range, dMin, yMax]);
-
-  const areaPath = path ? `${path} L 100 100 L 0 100 Z` : "";
 
   return (
     <ChartCard context={context ?? "Typical daily pattern"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         <div
           className="relative flex-1 min-h-0"
-          style={{ paddingTop: 30, paddingBottom: 24 }}
+          style={{
+            paddingTop: HEADER,
+            paddingBottom: X_AXIS,
+            paddingLeft: CHART_TOKENS.plotInsetX,
+            paddingRight: CHART_TOKENS.plotInsetX,
+          }}
         >
-          {/* Zone backgrounds with pills */}
-          {zones.map((z, i) => {
-            const left = xPct(toMin(z.start));
-            const right = xPct(toMin(z.end));
-            const tone = ZONE_TONES[z.tone];
-            return (
-              <div
-                key={i}
-                className="absolute"
-                style={{
-                  top: 0,
-                  bottom: 24,
-                  left: `${left}%`,
-                  width: `${right - left}%`,
-                  background: tone.bg,
-                  borderLeft:
-                    i > 0 ? `1px dashed ${BRAND.slate200}` : undefined,
-                  borderRight:
-                    i < zones.length - 1
-                      ? `1px dashed ${BRAND.slate200}`
-                      : undefined,
-                }}
-              >
+          {/* Zone backgrounds + pills. Wrapper occupies the exact plot area so
+              0–100% maps cleanly onto the SVG/dot coords. The zone pill sits
+              inside the reserved header strip so it can never collide with
+              the curve or the top edge. */}
+          <div
+            className="absolute"
+            style={{
+              top: 0,
+              bottom: X_AXIS,
+              left: CHART_TOKENS.plotInsetX,
+              right: CHART_TOKENS.plotInsetX,
+              pointerEvents: "none",
+            }}
+          >
+            {zones.map((z, i) => {
+              const left = xPct(toMin(z.start));
+              const right = xPct(toMin(z.end));
+              const tone = ZONE_TONES[z.tone];
+              return (
                 <div
-                  className="absolute"
+                  key={i}
+                  className="absolute top-0 bottom-0"
                   style={{
-                    top: 4,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    background: tone.pillBg,
-                    color: tone.pillFg,
-                    padding: "4px 12px",
-                    borderRadius: 999,
-                    fontSize: "clamp(10px, 1.15cqi, 13px)",
-                    fontWeight: 800,
-                    whiteSpace: "nowrap",
+                    left: `${left}%`,
+                    width: `${right - left}%`,
+                    background: tone.bg,
+                    borderLeft:
+                      i > 0 ? `1px dashed ${BRAND.slate200}` : undefined,
+                    borderRight:
+                      i < zones.length - 1
+                        ? `1px dashed ${BRAND.slate200}`
+                        : undefined,
                   }}
                 >
-                  {z.label}
+                  <div
+                    className="absolute"
+                    style={{
+                      top: Math.max(2, (HEADER - 22) / 2),
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: tone.pillBg,
+                      color: tone.pillFg,
+                      padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX + 2}px`,
+                      borderRadius: CHART_TOKENS.pill.radius,
+                      fontSize: CHART_TOKENS.zoneLabel.fontSize,
+                      fontWeight: CHART_TOKENS.zoneLabel.fontWeight,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {z.label}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
 
-          {/* SVG curve */}
+          {/* SVG curve — explicit width:100% guards against SVG falling back to
+              its 300px intrinsic width when only inset-x-0 is applied. */}
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            className="absolute inset-x-0"
-            style={{ top: 30, bottom: 24, height: "calc(100% - 54px)", overflow: "visible" }}
+            className="absolute"
+            style={{
+              top: HEADER,
+              bottom: X_AXIS,
+              left: CHART_TOKENS.plotInsetX,
+              right: CHART_TOKENS.plotInsetX,
+              width: `calc(100% - ${CHART_TOKENS.plotInsetX * 2}px)`,
+              height: `calc(100% - ${HEADER + X_AXIS}px)`,
+              overflow: "visible",
+              pointerEvents: "none",
+            }}
           >
             <defs>
               <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={BRAND.purps} stopOpacity={0.22} />
                 <stop offset="100%" stopColor={BRAND.purps} stopOpacity={0} />
               </linearGradient>
+              {/* Reveal mask — animates from left to right to draw the curve in.
+                  Using a clip rect avoids the dashed-stroke artifact you get
+                  when framer-motion's pathLength animation is combined with
+                  vector-effect: non-scaling-stroke and a stretched viewBox. */}
+              <clipPath id="dailyReveal" clipPathUnits="objectBoundingBox">
+                <motion.rect
+                  x={0}
+                  y={0}
+                  height={1}
+                  initial={{ width: 0 }}
+                  animate={{ width: 1 }}
+                  transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                />
+              </clipPath>
             </defs>
-            <motion.path
-              d={areaPath}
-              fill="url(#dailyFill)"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-            />
-            <motion.path
-              d={path}
-              fill="none"
-              stroke={BRAND.purps}
-              strokeWidth={3}
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            />
+            {areaPath && (
+              <motion.path
+                d={areaPath}
+                fill="url(#dailyFill)"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              />
+            )}
+            {linePath && (
+              <path
+                d={linePath}
+                fill="none"
+                stroke={BRAND.purps}
+                strokeWidth={2.5}
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                clipPath="url(#dailyReveal)"
+              />
+            )}
           </svg>
 
           {/* Dots */}
           <div
-            className="absolute inset-x-0"
-            style={{ top: 30, bottom: 24, height: "calc(100% - 54px)" }}
+            className="absolute"
+            style={{
+              top: HEADER,
+              bottom: X_AXIS,
+              left: CHART_TOKENS.plotInsetX,
+              right: CHART_TOKENS.plotInsetX,
+            }}
           >
             {points.map((p, i) => {
-              const x = xPct(xs[i]);
-              const y = yPct(p.crowd);
+              const c = coords[i];
+              if (!c) return null;
               const isHovered = hovered === i;
               return (
                 <div
                   key={i}
                   className="absolute"
                   style={{
-                    left: `${x}%`,
-                    top: `${y}%`,
+                    left: `${c.x}%`,
+                    top: `${c.y}%`,
                     transform: "translate(-50%, -50%)",
                     width: 18,
                     height: 18,
@@ -191,8 +271,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                     animate={{ scale: 1 }}
                     transition={{ delay: 1.0 + i * 0.05, duration: 0.3 }}
                     style={{
-                      width: 9,
-                      height: 9,
+                      width: CHART_TOKENS.dot.diameter,
+                      height: CHART_TOKENS.dot.diameter,
                       borderRadius: "50%",
                       background: BRAND.purps,
                       border: "2px solid white",
@@ -210,7 +290,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                     <div
                       className="absolute pointer-events-none z-30"
                       style={{
-                        bottom: "calc(50% + 12px)",
+                        bottom: `calc(50% + ${CHART_TOKENS.dot.labelOffset + 4}px)`,
                         left: "50%",
                         transform: "translateX(-50%)",
                         background: BRAND.slate900,
@@ -222,7 +302,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {fmtClock(p.time)} · {p.crowd}/{yMax}
+                      {fmtClock(p.time)} · {p.crowd}/{Math.max(...points.map((pt) => pt.crowd))}
                     </div>
                   )}
                 </div>
@@ -232,8 +312,13 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
 
           {/* X-axis labels */}
           <div
-            className="absolute inset-x-0 flex justify-between"
-            style={{ bottom: 0, height: 18 }}
+            className="absolute flex justify-between"
+            style={{
+              bottom: 0,
+              left: CHART_TOKENS.plotInsetX,
+              right: CHART_TOKENS.plotInsetX,
+              height: 18,
+            }}
           >
             {points.map((p, i) => {
               // Show first, last, and every nth label to avoid crowding.
@@ -249,8 +334,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                   key={i}
                   style={{
                     color: BRAND.slate900,
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 800,
+                    fontSize: CHART_TOKENS.axisLabel.fontSize,
+                    fontWeight: CHART_TOKENS.axisLabel.fontWeight,
                     whiteSpace: "nowrap",
                   }}
                 >

@@ -76,7 +76,4 @@ body.embed-mode {
   overflow: hidden;
 }
 
-/* Fixed 16:10 aspect ratio frame for chart cards */
-.aspect-1610 {
-  aspect-ratio: 16 / 10;
-}
+/* Per-chart-type frame proportions are defined in src/pages/CeDetail.tsx */
