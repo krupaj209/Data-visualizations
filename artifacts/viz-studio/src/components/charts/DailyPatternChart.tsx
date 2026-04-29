@@ -5,12 +5,12 @@ import { ChartCard } from "@/components/ChartCard";
 import {
   BAND_TONE,
   BRAND,
-  CHART_TOKENS,
   getDotStyle,
   type BandToneKey,
 } from "@/lib/brand";
 import {
   CALLOUT_PILL,
+  CHART_DOT,
   CHART_LAYOUT,
   CHART_TYPE,
 } from "@/lib/chart-system";
@@ -123,8 +123,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
           style={{
             paddingTop: HEADER,
             paddingBottom: X_AXIS,
-            paddingLeft: CHART_TOKENS.plotInsetX,
-            paddingRight: CHART_TOKENS.plotInsetX,
+            paddingLeft: CHART_LAYOUT.plotInsetX,
+            paddingRight: CHART_LAYOUT.plotInsetX,
           }}
         >
           <div
@@ -132,8 +132,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             style={{
               top: 0,
               bottom: X_AXIS,
-              left: CHART_TOKENS.plotInsetX,
-              right: CHART_TOKENS.plotInsetX,
+              left: CHART_LAYOUT.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
               pointerEvents: "none",
             }}
           >
@@ -187,9 +187,9 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             style={{
               top: HEADER,
               bottom: X_AXIS,
-              left: CHART_TOKENS.plotInsetX,
-              right: CHART_TOKENS.plotInsetX,
-              width: `calc(100% - ${CHART_TOKENS.plotInsetX * 2}px)`,
+              left: CHART_LAYOUT.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
+              width: `calc(100% - ${CHART_LAYOUT.plotInsetX * 2}px)`,
               height: `calc(100% - ${HEADER + X_AXIS}px)`,
               overflow: "visible",
               pointerEvents: "none",
@@ -240,8 +240,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             style={{
               top: HEADER,
               bottom: X_AXIS,
-              left: CHART_TOKENS.plotInsetX,
-              right: CHART_TOKENS.plotInsetX,
+              left: CHART_LAYOUT.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
             }}
           >
             {points.map((p, i) => {
@@ -273,8 +273,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                       // brand fill — the centralized "soft default, vivid
                       // on callout" dot rhythm.
                       ...getDotStyle(isPeak ? "callout" : "default"),
-                      width: CHART_TOKENS.dot.diameter,
-                      height: CHART_TOKENS.dot.diameter,
+                      width: CHART_DOT.diameter,
+                      height: CHART_DOT.diameter,
                       borderRadius: "50%",
                       boxShadow: isHovered
                         ? `0 0 0 4px ${BRAND.purpsSoft}`
@@ -289,7 +289,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                   {isHovered && (
                     <ChartTooltip
                       anchorXPct={c.x}
-                      offset={CHART_TOKENS.dot.labelOffset + 4}
+                      offset={CHART_DOT.labelOffset + 4}
                     >
                       {fmtClock(p.time)} · {p.crowd}/
                       {Math.max(...points.map((pt) => pt.crowd))}
@@ -305,8 +305,8 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             className="absolute flex justify-between"
             style={{
               bottom: 0,
-              left: CHART_TOKENS.plotInsetX,
-              right: CHART_TOKENS.plotInsetX,
+              left: CHART_LAYOUT.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
               height: 18,
             }}
           >

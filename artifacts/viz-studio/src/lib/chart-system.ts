@@ -107,6 +107,19 @@ export const CHART_LAYOUT = {
 } as const;
 
 /**
+ * Data dot sizing for line/curve charts (Daily pattern, Tribune density).
+ * Centralizing the diameter and label offset here keeps the dot rhythm
+ * consistent across charts and avoids drift between the dot size and the
+ * "10"-style numeric label that hangs above it.
+ */
+export const CHART_DOT = {
+  /** Default dot diameter in px. */
+  diameter: 8,
+  /** Vertical offset for the small numeric label above each dot. */
+  labelOffset: 9,
+} as const;
+
+/**
  * One callout pill shape for the entire system: pill (radius 999), shared
  * padding, shared font weight. Used by <CalloutPill> and by any inline pill
  * that can't go through the component (e.g. the SeasonalCurve animated

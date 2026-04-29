@@ -2,8 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND, CHART_TOKENS } from "@/lib/brand";
-import { CALLOUT_PILL } from "@/lib/chart-system";
+import { BRAND } from "@/lib/brand";
+import {
+  CALLOUT_PILL,
+  CHART_DOT,
+  CHART_LAYOUT,
+  CHART_TYPE,
+} from "@/lib/chart-system";
 import { ChartTooltip } from "@/components/charts/system";
 import { type TribuneDensitySpec } from "@/lib/chart-spec";
 import { ChipButton } from "./interactions/ChipButton";
@@ -115,7 +120,7 @@ export function TribuneDensityChart({
   const [selection, setSelection] = useState<Selection | null>(null);
 
   const HEADER = compact ? 28 : 56;
-  const X_AXIS = CHART_TOKENS.xAxisStripPx;
+  const X_AXIS = CHART_LAYOUT.xAxisStripPx;
   const Y_TICK_W = compact ? 16 : 22;
 
   const { xs, dMin, dMax, range, yMax } = useMemo(() => {
@@ -252,8 +257,8 @@ export function TribuneDensityChart({
             <div
               style={{
                 color: BRAND.slate700,
-                fontSize: CHART_TOKENS.axisLabel.fontSize,
-                fontWeight: CHART_TOKENS.axisLabel.fontWeight,
+                fontSize: CHART_TYPE.axisTick.fontSize,
+                fontWeight: CHART_TYPE.axisTick.fontWeight,
                 lineHeight: 1.2,
                 whiteSpace: "nowrap",
               }}
@@ -284,7 +289,7 @@ export function TribuneDensityChart({
           className="relative flex-1 min-h-0"
           style={{
             paddingLeft: Y_TICK_W,
-            paddingRight: CHART_TOKENS.plotInsetX,
+            paddingRight: CHART_LAYOUT.plotInsetX,
           }}
         >
           {/* Y-axis ticks */}
@@ -325,7 +330,7 @@ export function TribuneDensityChart({
               top: 0,
               bottom: X_AXIS,
               left: Y_TICK_W,
-              right: CHART_TOKENS.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
             }}
           >
             {zones.map((z, i) => {
@@ -375,8 +380,8 @@ export function TribuneDensityChart({
                       left: "50%",
                       transform: "translateX(-50%)",
                       color: tone.label,
-                      fontSize: CHART_TOKENS.zoneLabel.fontSize,
-                      fontWeight: CHART_TOKENS.zoneLabel.fontWeight,
+                      fontSize: CHART_TYPE.zoneLabel.fontSize,
+                      fontWeight: CHART_TYPE.zoneLabel.fontWeight,
                       whiteSpace: "nowrap",
                       pointerEvents: "none",
                     }}
@@ -397,8 +402,8 @@ export function TribuneDensityChart({
               top: HEADER,
               bottom: X_AXIS,
               left: Y_TICK_W,
-              right: CHART_TOKENS.plotInsetX,
-              width: `calc(100% - ${Y_TICK_W + CHART_TOKENS.plotInsetX}px)`,
+              right: CHART_LAYOUT.plotInsetX,
+              width: `calc(100% - ${Y_TICK_W + CHART_LAYOUT.plotInsetX}px)`,
               height: `calc(100% - ${HEADER + X_AXIS}px)`,
               overflow: "visible",
               pointerEvents: "none",
@@ -479,7 +484,7 @@ export function TribuneDensityChart({
               top: HEADER,
               bottom: X_AXIS,
               left: Y_TICK_W,
-              right: CHART_TOKENS.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
             }}
           >
             {points.map((p, i) => {
@@ -537,12 +542,12 @@ export function TribuneDensityChart({
                   <div
                     className="absolute pointer-events-none"
                     style={{
-                      bottom: `calc(50% + ${CHART_TOKENS.dot.labelOffset}px)`,
+                      bottom: `calc(50% + ${CHART_DOT.labelOffset}px)`,
                       left: "50%",
                       transform: "translateX(-50%)",
                       color: BRAND.slate900,
-                      fontSize: CHART_TOKENS.dotLabel.fontSize,
-                      fontWeight: CHART_TOKENS.dotLabel.fontWeight,
+                      fontSize: CHART_TYPE.dotLabel.fontSize,
+                      fontWeight: CHART_TYPE.dotLabel.fontWeight,
                     }}
                   >
                     {p.density}
@@ -587,7 +592,7 @@ export function TribuneDensityChart({
                 top: 0,
                 bottom: X_AXIS,
                 left: Y_TICK_W,
-                right: CHART_TOKENS.plotInsetX,
+                right: CHART_LAYOUT.plotInsetX,
                 pointerEvents: "none",
               }}
             >
@@ -643,7 +648,7 @@ export function TribuneDensityChart({
             className="absolute flex justify-between"
             style={{
               left: Y_TICK_W,
-              right: CHART_TOKENS.plotInsetX,
+              right: CHART_LAYOUT.plotInsetX,
               bottom: 0,
               height: 18,
             }}
@@ -663,8 +668,8 @@ export function TribuneDensityChart({
                   key={i}
                   style={{
                     color: BRAND.slate700,
-                    fontSize: CHART_TOKENS.axisLabel.fontSize,
-                    fontWeight: CHART_TOKENS.axisLabel.fontWeight,
+                    fontSize: CHART_TYPE.axisTick.fontSize,
+                    fontWeight: CHART_TYPE.axisTick.fontWeight,
                     whiteSpace: "nowrap",
                   }}
                 >
