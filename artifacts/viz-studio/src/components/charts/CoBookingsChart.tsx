@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Landmark,
@@ -8,7 +7,6 @@ import {
   Trees,
   Gem,
   MapPin,
-  BookOpen,
 } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
@@ -35,19 +33,6 @@ const ICON_MAP: Record<
 export function CoBookingsChart({ spec, context, compact = false }: Props) {
   const { items, highlight_top = 2 } = spec;
   const max = Math.max(...items.map((i) => i.share), 1);
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [lockedIdx, setLockedIdx] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (lockedIdx === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLockedIdx(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [lockedIdx]);
-
-  const locked = lockedIdx !== null ? items[lockedIdx] : null;
 
   return (
     <ChartCard
@@ -84,9 +69,6 @@ export function CoBookingsChart({ spec, context, compact = false }: Props) {
             const fill = isHi ? BRAND.purps : BRAND.purpsSoft;
             const widthPct = Math.max((item.share / max) * 100, 3);
             const Icon = ICON_MAP[item.icon];
-            const isHovered = hovered === i;
-            const isLocked = lockedIdx === i;
-            const dim = lockedIdx !== null && !isLocked;
             return (
               <Row
                 key={i}
@@ -96,130 +78,11 @@ export function CoBookingsChart({ spec, context, compact = false }: Props) {
                 item={item}
                 fill={fill}
                 widthPct={widthPct}
-                isHi={isHi}
-                isHovered={isHovered}
-                isLocked={isLocked}
-                dim={dim}
                 compact={compact}
-                onEnter={() => setHovered(i)}
-                onLeave={() => setHovered(null)}
-                onToggle={() =>
-                  setLockedIdx((p) => (p === i ? null : i))
-                }
               />
             );
           })}
         </div>
-
-        {!compact && locked && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            style={{ overflow: "hidden", marginTop: 10 }}
-            role="region"
-            aria-label={`${locked.name} pairing detail`}
-          >
-            <div
-              style={{
-                padding: "10px 12px",
-                background: BRAND.purpsSoft,
-                borderRadius: 10,
-                border: `1px solid ${BRAND.purps}25`,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  marginBottom: 6,
-                }}
-              >
-                <div
-                  style={{
-                    color: BRAND.purps,
-                    fontWeight: 800,
-                    fontSize: "clamp(12px, 1.35cqi, 14px)",
-                  }}
-                >
-                  {locked.name} · {Math.round(locked.share)}% co-book
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLockedIdx(null)}
-                  aria-label="Close pairing detail"
-                  style={{
-                    background: "white",
-                    color: BRAND.purps,
-                    border: `1px solid ${BRAND.purps}25`,
-                    padding: "2px 9px",
-                    borderRadius: 999,
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    outline: "none",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-              {locked.pairing && (
-                <div
-                  style={{
-                    color: BRAND.slate900,
-                    fontSize: "clamp(10px, 1.1cqi, 12px)",
-                    fontWeight: 600,
-                    lineHeight: 1.4,
-                    marginBottom: 4,
-                  }}
-                >
-                  <strong style={{ fontWeight: 800 }}>Pair:</strong>{" "}
-                  {locked.pairing}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {locked.walk && (
-                  <span
-                    style={{
-                      background: "white",
-                      color: BRAND.slate700,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      fontSize: "clamp(9px, 1cqi, 11px)",
-                      fontWeight: 700,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <MapPin size={10} strokeWidth={2.5} />
-                    {locked.walk}
-                  </span>
-                )}
-                {locked.on_library && (
-                  <span
-                    style={{
-                      background: BRAND.purps,
-                      color: "white",
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      fontSize: "clamp(9px, 1cqi, 11px)",
-                      fontWeight: 800,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <BookOpen size={10} strokeWidth={2.5} />
-                    On library
-                  </span>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
       </div>
     </ChartCard>
   );
@@ -232,14 +95,7 @@ function Row({
   item,
   fill,
   widthPct,
-  isHi,
-  isHovered,
-  isLocked,
-  dim,
   compact,
-  onEnter,
-  onLeave,
-  onToggle,
 }: {
   index: number;
   rank: number;
@@ -247,34 +103,13 @@ function Row({
   item: CoBookingsSpec["items"][number];
   fill: string;
   widthPct: number;
-  isHi: boolean;
-  isHovered: boolean;
-  isLocked: boolean;
-  dim: boolean;
   compact: boolean;
-  onEnter: () => void;
-  onLeave: () => void;
-  onToggle: () => void;
 }) {
   const rankSize = compact ? 18 : 24;
   const iconCircle = compact ? 22 : 32;
   const iconSize = compact ? 12 : 18;
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-      onFocus={onEnter}
-      onBlur={onLeave}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onToggle();
-        }
-      }}
-      aria-label={`Toggle ${item.name} pairing detail (${Math.round(item.share)}%)`}
-      aria-pressed={isLocked}
+    <div
       style={{
         display: "grid",
         gridTemplateColumns: compact
@@ -282,21 +117,8 @@ function Row({
           : `${rankSize + 4}px ${iconCircle + 4}px minmax(0, 150px) 1fr`,
         alignItems: "center",
         columnGap: compact ? 8 : 10,
-        background: "transparent",
-        border: "none",
         padding: 4,
         margin: -4,
-        textAlign: "left",
-        cursor: "pointer",
-        opacity: dim ? 0.4 : 1,
-        outline: "none",
-        borderRadius: 10,
-        boxShadow: isLocked
-          ? `0 0 0 2px ${BRAND.purps}`
-          : isHovered
-            ? `0 0 0 2px ${BRAND.purps}33`
-            : "none",
-        transition: "opacity .2s ease, box-shadow .15s ease",
         flex: 1,
       }}
     >
@@ -335,7 +157,7 @@ function Row({
       <div className="min-w-0">
         <div
           style={{
-            color: isLocked ? BRAND.purps : BRAND.slate900,
+            color: BRAND.slate900,
             fontWeight: 800,
             fontSize: compact
               ? "clamp(10px, 1.1cqi, 12px)"
@@ -400,6 +222,6 @@ function Row({
           {Math.round(item.share)}%
         </span>
       </div>
-    </button>
+    </div>
   );
 }

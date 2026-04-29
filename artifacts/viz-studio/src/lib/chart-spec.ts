@@ -328,12 +328,6 @@ export interface CoBookingsSpec {
       | "building"
       | "trees"
       | "gem";
-    /** Pairing logic, e.g. "Same day · 8 min walk". Shown when row is locked. */
-    pairing?: string;
-    /** Walking distance / minutes from the host venue. */
-    walk?: string;
-    /** Whether this venue is also in the curated library. */
-    on_library?: boolean;
   }[];
   /** How many top items to highlight in solid Purps (rest stay pale). */
   highlight_top?: number;
