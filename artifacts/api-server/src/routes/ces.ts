@@ -188,7 +188,11 @@ router.get("/ces/:slug", async (req, res): Promise<void> => {
  * by the AI-generation pipeline. The Regenerate button on the UI should also
  * be hidden for these, but the route guard is the source of truth.
  */
-const LOCKED_CE_SLUGS = new Set(["galleria-dellaccademia"]);
+const LOCKED_CE_SLUGS = new Set([
+  "galleria-dellaccademia",
+  "galleria-degli-uffizi",
+  "duomo-di-firenze",
+]);
 
 router.delete("/ces/:slug", async (req, res): Promise<void> => {
   const params = GetCeParams.safeParse(req.params);
