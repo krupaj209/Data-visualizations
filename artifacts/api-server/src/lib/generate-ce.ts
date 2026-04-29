@@ -37,8 +37,14 @@ CHART TYPE MENU — each entry lists (a) the visitor intent it answers, (b) good
    Bad: "Is it crowded?" / "When should I go?"
    Schema:
    { "type": "weekly_pattern",
-     "days": [ { "day": "<mon|tue|wed|thu|fri|sat|sun>", "level": "<closed|quietest|quiet|busy|busiest>", "score": <0-100 int>, "note"?: "..." }, ... 7 items ] }
+     "days": [ { "day": "<mon|tue|wed|thu|fri|sat|sun>", "level": "<closed|quietest|quiet|busy|busiest>", "score": <0-100 int>, "note"?: "..." }, ... 7 items ],
+     "day_notes"?: [ { "label": "Mon closed", "kind": "<closed|free|info>" }, ... up to 4 ] }
    Include all 7 days. Use "closed" + score 0 for closed days. Use exactly one "busiest" and one "quietest" if possible.
+   day_notes is OPTIONAL chips shown beneath the chart for genuine, well-known day-of-week context. Only populate when you can defend each chip from common public knowledge about THIS venue. Aim for 0–3 chips (max 4); leave empty when there is nothing notable. Do NOT invent facts.
+     - kind "closed": weekly closure days — e.g. "Mon closed", "Closed Tue & Wed".
+     - kind "free": recurring free-entry days — e.g. "First Sun free — expect doubled lines", "Free after 18:00 Fri".
+     - kind "info": predictable spillover or rhythm notes — e.g. "Tue spikes from Mon backlog", "Quietest right after lunch on Wed", "Religious service Sun morning".
+   Keep each label ≤ 60 chars and in sentence case. Make sure chips stay consistent with the prose insight and the bars (e.g. if Mon is "closed", a "Mon closed" chip is welcome but not required).
 
 2) hourly_heatmap — "Which hour of which day is calmest / busiest?"
    Good questions: "What time of day are crowds lightest?" / "When does the lunchtime rush start at <CE name>?" / "Which hour has the shortest waits all week?"

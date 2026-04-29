@@ -48,7 +48,7 @@ export const weeklyPatternSpec = z.object({
         kind: z.enum(["closed", "free", "info"]),
       }),
     )
-    .max(6)
+    .max(4)
     .optional(),
 });
 
