@@ -12,23 +12,27 @@ interface Props {
   compact?: boolean;
 }
 
+// Soft default, vivid only on callout — same rhythm as the Weekly pattern
+// and Seasonal curve charts. The "Peak" band (`packed`) is the explicitly
+// labeled extreme so it keeps the saturated candy tint; the supporting
+// "Best window" / "Quieter again" bands drop to a calmer green wash.
 const ZONE_TONES: Record<
   TribuneDensitySpec["zones"][number]["tone"],
   { bg: string; bgActive: string; label: string }
 > = {
   quiet: {
-    bg: "rgba(21, 216, 118, 0.10)",
-    bgActive: "rgba(21, 216, 118, 0.22)",
+    bg: "rgba(21, 216, 118, 0.05)",
+    bgActive: "rgba(21, 216, 118, 0.20)",
     label: "#0E8F4E",
   },
   packed: {
-    bg: "rgba(255, 0, 118, 0.10)",
-    bgActive: "rgba(255, 0, 118, 0.22)",
+    bg: "rgba(255, 0, 118, 0.12)",
+    bgActive: "rgba(255, 0, 118, 0.24)",
     label: BRAND.candy,
   },
   second_window: {
-    bg: "rgba(21, 216, 118, 0.10)",
-    bgActive: "rgba(21, 216, 118, 0.22)",
+    bg: "rgba(21, 216, 118, 0.05)",
+    bgActive: "rgba(21, 216, 118, 0.20)",
     label: "#0E8F4E",
   },
 };
@@ -508,12 +512,12 @@ export function TribuneDensityChart({
                       width: isFocusAt ? 12 : isCallout ? 10 : 7,
                       height: isFocusAt ? 12 : isCallout ? 10 : 7,
                       borderRadius: "50%",
-                      background: BRAND.purps,
-                      border: isFocusAt
-                        ? `2px solid white`
-                        : isCallout
-                          ? `2px solid ${BRAND.purps}`
-                          : "2px solid white",
+                      // Hollow ring by default, saturated fill only on the
+                      // callout/focused points — same "soft default, vivid
+                      // on callout" rhythm as the Weekly pattern bars.
+                      background:
+                        isFocusAt || isCallout ? BRAND.purps : "white",
+                      border: `2px solid ${BRAND.purps}`,
                       boxShadow: isFocusAt
                         ? `0 0 0 4px ${BRAND.purps}40`
                         : isCallout

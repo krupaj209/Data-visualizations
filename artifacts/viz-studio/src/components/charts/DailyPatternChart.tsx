@@ -11,22 +11,25 @@ interface Props {
   compact?: boolean;
 }
 
+// Soft default, vivid only on the explicitly labeled extreme. The "Peak"
+// band is the loud callout; "Best" / "2nd best" recede to a calmer wash so
+// the chart matches the rhythm of the Weekly pattern + Seasonal curve.
 const ZONE_TONES: Record<
   DailyPatternSpec["zones"][number]["tone"],
   { bg: string; pillBg: string; pillFg: string }
 > = {
   best: {
-    bg: "rgba(21, 216, 118, 0.10)",
+    bg: "rgba(21, 216, 118, 0.05)",
     pillBg: BRAND.bgMint,
     pillFg: "#0E8F4E",
   },
   peak: {
-    bg: "rgba(255, 0, 118, 0.10)",
+    bg: "rgba(255, 0, 118, 0.12)",
     pillBg: BRAND.candySoft,
     pillFg: BRAND.candy,
   },
   second_best: {
-    bg: "rgba(21, 216, 118, 0.10)",
+    bg: "rgba(21, 216, 118, 0.05)",
     pillBg: BRAND.bgMint,
     pillFg: "#0E8F4E",
   },
@@ -65,6 +68,17 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
       yMax: yMaxLocal,
     };
   }, [points]);
+
+  // Range of the explicitly-labeled "Peak" zone, used to decide which dots
+  // wear the saturated fill. Other dots stay hollow so the chart reads as a
+  // calm curve with one loud crest, matching Weekly pattern's rhythm.
+  const peakRange = useMemo<[number, number] | null>(() => {
+    const peakZone = zones.find((z) => z.tone === "peak");
+    if (!peakZone) return null;
+    return [toMin(peakZone.start), toMin(peakZone.end)];
+  }, [zones]);
+  const inPeak = (mins: number) =>
+    peakRange !== null && mins >= peakRange[0] && mins <= peakRange[1];
 
   const xPct = (mins: number) => ((mins - dMin) / range) * 100;
   const yPct = (v: number) => 100 - (v / yMax) * 100;
@@ -232,6 +246,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
               const c = coords[i];
               if (!c) return null;
               const isHovered = hovered === i;
+              const isPeak = inPeak(xs[i]);
               return (
                 <div
                   key={i}
@@ -254,8 +269,13 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                       width: CHART_TOKENS.dot.diameter,
                       height: CHART_TOKENS.dot.diameter,
                       borderRadius: "50%",
-                      background: BRAND.purps,
-                      border: "2px solid white",
+                      // Hollow ring by default; only the dots inside the
+                      // explicitly-labeled "Peak" zone get the saturated
+                      // brand fill, matching the chart's color rhythm.
+                      background: isPeak ? BRAND.purps : "white",
+                      border: isPeak
+                        ? "2px solid white"
+                        : `2px solid ${BRAND.purps}`,
                       boxShadow: isHovered
                         ? `0 0 0 4px ${BRAND.purpsSoft}`
                         : "none",

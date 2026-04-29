@@ -11,6 +11,12 @@ interface Props {
   compact?: boolean;
 }
 
+// Soft default, vivid only on the highlighted lane — same rhythm as the
+// Weekly pattern + Seasonal curve charts. The two "loud" tones (candy /
+// purps) signal the highlighted "Reserved" / "Walk-up" lanes and keep
+// their saturated brand color; "okay" / "slate" are supporting lanes and
+// drop to a calmer companion tint. The pill foreground (`pillFg`) stays
+// readable enough to anchor the locked-state ring on every lane.
 const TONES: Record<
   EntranceLanesSpec["lanes"][number]["tone"],
   { dot: string; pillBg: string; pillFg: string; bar: string }
@@ -28,16 +34,16 @@ const TONES: Record<
     bar: BRAND.purps,
   },
   okay: {
-    dot: "#15A85F",
+    dot: BRAND.subtleGreen,
     pillBg: BRAND.bgMint,
     pillFg: "#0E8F4E",
-    bar: "#15A85F",
+    bar: BRAND.subtleGreen,
   },
   slate: {
-    dot: BRAND.purps,
-    pillBg: BRAND.purpsSoft,
-    pillFg: BRAND.purps,
-    bar: BRAND.purps,
+    dot: BRAND.slate300,
+    pillBg: BRAND.slate100,
+    pillFg: BRAND.slate700,
+    bar: BRAND.slate300,
   },
 };
 
@@ -251,7 +257,7 @@ export function EntranceLanesChart({
                         alignItems: "flex-start",
                         justifyContent: "center",
                         boxShadow: isLocked
-                          ? `0 0 0 3px ${tone.dot}`
+                          ? `0 0 0 3px ${tone.pillFg}`
                           : isHovered
                             ? `0 0 0 3px ${tone.pillBg}`
                             : "none",
