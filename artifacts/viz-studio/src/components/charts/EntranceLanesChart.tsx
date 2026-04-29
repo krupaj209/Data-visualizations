@@ -113,11 +113,15 @@ export function EntranceLanesChart({
   const { shared_caption, lanes } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
+  // Intentionally do NOT forward `context` to ChartCard: this chart has its
+  // own illustrated title strip below the ESTIMATED pill that already shows
+  // `shared_caption` (which is the same string the spec puts in
+  // header.subtitle). Passing it again would render the caption twice — once
+  // faintly next to the pill, once boldly with the doorway illustration.
+  void context;
+
   return (
-    <ChartCard
-      context={context ?? "Entrance lane comparison"}
-      compact={compact}
-    >
+    <ChartCard compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         {/* Title strip — illustrated; hidden in compact (host supplies its own copy) */}
         {!compact && (
