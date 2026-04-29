@@ -66,12 +66,11 @@ export const ACCENT_FG: Record<AccentKey, string> = {
 
 /**
  * Lane-style accent bundle for the Entrance lanes chart. Each accent
- * coordinates the lane's color bar, dot fill, and pill (bg + fg). The
- * "loud" accents (candy / purps) keep the saturated brand color for the
- * bar/dot — those are the *highlighted* lanes. The "soft" accents
- * (okay / slate) drop to a muted companion (subtleGreen / slate300) so
- * supporting lanes recede, matching the chart family's "soft default,
- * vivid only on callout" rhythm.
+ * coordinates the lane's color bar, dot fill, and pill (bg + fg). All
+ * lanes use a saturated, readable color so every lane stays legible at
+ * iframe widths down to ~320px — the previous "supporting lane" mute
+ * (subtleGreen / slate300) made the green and slate boxes nearly
+ * invisible against ChartCard's white background.
  */
 export const ACCENT_LANE: Record<
   AccentKey,
@@ -96,14 +95,14 @@ export const ACCENT_LANE: Record<
     pillFg: BRAND.hola,
   },
   okay: {
-    dot: BRAND.subtleGreen,
-    bar: BRAND.subtleGreen,
+    dot: BRAND.okayGreen,
+    bar: BRAND.okayGreen,
     pillBg: BRAND.bgMint,
     pillFg: BRAND.okayInk,
   },
   slate: {
-    dot: BRAND.slate300,
-    bar: BRAND.slate300,
+    dot: BRAND.slate500,
+    bar: BRAND.slate500,
     pillBg: BRAND.slate100,
     pillFg: BRAND.slate700,
   },

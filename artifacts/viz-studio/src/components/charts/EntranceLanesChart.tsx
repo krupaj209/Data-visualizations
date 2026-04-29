@@ -125,14 +125,15 @@ export function EntranceLanesChart({
             <div
               style={{
                 writingMode: "vertical-rl",
-                color: BRAND.slate700,
-                fontSize: "clamp(9px, 1cqi, 11px)",
-                fontWeight: 700,
+                color: BRAND.slate900,
+                fontSize: "clamp(11px, 1.25cqi, 13px)",
+                fontWeight: 800,
+                letterSpacing: 0.2,
               }}
             >
               Longer wait
             </div>
-            <ArrowDown size={14} strokeWidth={2.2} color={BRAND.slate500} />
+            <ArrowDown size={18} strokeWidth={2.6} color={BRAND.slate900} />
           </div>
 
           {lanes.map((lane, i) => {
