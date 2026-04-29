@@ -44,10 +44,19 @@ Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. 
 
 ## Embed contract
 
-Embeds live at `${origin}/studio/embed/:chartId` and render the single chart fluidly into whatever size the host iframe provides (no fixed aspect ratio). The `Embed` page applies a 400px `minHeight` floor — body has `overflow: hidden` in embed mode, so any iframe shorter than 400px clips rather than collapses to an unreadable strip. The CMS layout currently uses a 3-cards-per-row grid (~320×400 per card); all 8 Accademia chart types verified to render cleanly at 320×400. CMS embed snippet:
+Embeds live at `${origin}/studio/embed/:chartId` and render the single chart fluidly into whatever size the host iframe provides (no fixed aspect ratio). The `Embed` page applies a height floor — body has `overflow: hidden` in embed mode, so any iframe shorter than the floor clips rather than collapses to an unreadable strip.
+
+Two modes via URL flag:
+
+- **Default** (no flag) — full chrome including ESTIMATED pill, context subtitle, chart, and any per-type footer (insight paragraph, calendar chips, legend). Floor: **400px**. Use when the iframe is the only content the host shows for that chart.
+- **Compact** (`?compact=1`) — drops footer chrome that hosts typically duplicate as bullet copy beneath the card. Floor: **260px**. Use when the host CMS renders its own bullets/explanation outside the iframe and only the visualization should live inside.
+
+Compact behavior is implemented in `SeasonalCurveChart` (hides `metric_insights` paragraph, `calendar_notes` chip rail, and fallback legend). The flag is wired through `ChartRenderer` so other chart types can opt in incrementally as their host layouts demand it.
+
+CMS embed snippet (compact mode for short card slots ~320×320):
 
 ```html
-<iframe src="https://<host>/studio/embed/<chartId>" width="320" height="400" frameborder="0"></iframe>
+<iframe src="https://<host>/studio/embed/<chartId>?compact=1" width="320" height="320" frameborder="0"></iframe>
 ```
 
 Curated Florence cluster CEs (currently `galleria-dellaccademia`; `uffizi`, `duomo` planned) are listed in `LOCKED_CE_SLUGS` (`artifacts/api-server/src/routes/ces.ts`) which blocks delete/regenerate so curated chart specs in `scripts/src/data/*.mjs` remain canonical.

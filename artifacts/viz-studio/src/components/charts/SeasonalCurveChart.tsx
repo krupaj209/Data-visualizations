@@ -17,6 +17,13 @@ import {
 interface Props {
   spec: SeasonalCurveSpec;
   context?: string;
+  /**
+   * Embed compact mode: drop the metric_insights paragraph, calendar_notes
+   * chip rail, and fallback legend so the chart visualization fills the
+   * card. Hosts typically render the equivalent copy as bullet points
+   * outside the iframe.
+   */
+  compact?: boolean;
 }
 
 type MetricKey = "crowd" | "weather" | "price";
@@ -57,7 +64,7 @@ const CHIP_TONE: Record<
   info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
 };
 
-export function SeasonalCurveChart({ spec, context }: Props) {
+export function SeasonalCurveChart({ spec, context, compact }: Props) {
   const data: MonthDatum[] = useMemo(() => {
     const byMonth = new Map(spec.months.map((m) => [m.month, m]));
     return MONTH_ORDER.map((m) => {
@@ -331,7 +338,7 @@ export function SeasonalCurveChart({ spec, context }: Props) {
           ))}
         </div>
 
-        {hasUpgrade && spec.metric_insights?.[metric] && (
+        {!compact && hasUpgrade && spec.metric_insights?.[metric] && (
           <motion.p
             key={metric}
             initial={{ opacity: 0, y: 4 }}
@@ -349,7 +356,8 @@ export function SeasonalCurveChart({ spec, context }: Props) {
           </motion.p>
         )}
 
-        {hasUpgrade &&
+        {!compact &&
+          hasUpgrade &&
           spec.calendar_notes &&
           spec.calendar_notes.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -375,7 +383,7 @@ export function SeasonalCurveChart({ spec, context }: Props) {
             </div>
           )}
 
-        {!hasUpgrade && (
+        {!compact && !hasUpgrade && (
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
             {(
               [

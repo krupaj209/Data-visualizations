@@ -21,9 +21,16 @@ interface Props {
   header?: ChartHeader;
   /** CE name (or other proper nouns) preserved during sentence-casing. */
   preserve?: string;
+  /**
+   * When true, charts strip footer chrome (insight paragraphs, chip rails,
+   * legends) that hosts typically duplicate as their own bullet copy beneath
+   * the embed card. Currently honored by `seasonal_curve`; other charts
+   * accept the flag but ignore it for now.
+   */
+  compact?: boolean;
 }
 
-export function ChartRenderer({ spec, header, preserve }: Props) {
+export function ChartRenderer({ spec, header, preserve, compact }: Props) {
   const context = header?.subtitle
     ? toSentenceCase(header.subtitle, { preserve })
     : undefined;
@@ -43,7 +50,9 @@ export function ChartRenderer({ spec, header, preserve }: Props) {
     case "donut_breakdown":
       return <DonutBreakdownChart spec={spec} context={context} />;
     case "seasonal_curve":
-      return <SeasonalCurveChart spec={spec} context={context} />;
+      return (
+        <SeasonalCurveChart spec={spec} context={context} compact={compact} />
+      );
     case "ticket_ladder":
       return <TicketLadderChart spec={spec} context={context} />;
     case "daily_pattern":

@@ -12,6 +12,11 @@ export default function Embed() {
   const isValid = !Number.isNaN(idNum) && idNum > 0;
   const { data, isLoading, error } = useGetChart(isValid ? idNum : 0);
 
+  // `?compact=1` strips footer chrome that hosts typically duplicate as bullet
+  // copy below the card (insight paragraph, calendar chips), and lowers the
+  // height floor so the chart fits short CMS card slots (~320×320).
+  const compact = readCompactFlag();
+
   useEffect(() => {
     document.body.classList.add("embed-mode");
     return () => document.body.classList.remove("embed-mode");
@@ -35,15 +40,14 @@ export default function Embed() {
   const spec = chart.spec as unknown as ChartSpec;
   const ceName = ce?.name;
 
-  // Fill whatever the host iframe gives us, but enforce a minimum height
-  // so the chart never collapses to an unreadable strip when an embedder
-  // picks a too-short iframe (e.g. mobile responsive `iframe { height: auto }`
-  // or a CMS that sets ~250px). Body has `overflow: hidden` in embed mode,
-  // so below the floor content is clipped — the floor (400px) is sized to
-  // accommodate the chart with the most chrome (seasonal_curve: toggle +
-  // bars + months + insight + chips). Charts use container queries for font
-  // sizing and percentage-based geometry, so they fill any aspect ratio
-  // cleanly above the floor.
+  // Fill whatever the host iframe gives us, but enforce a minimum height so
+  // the chart never collapses to an unreadable strip when an embedder picks a
+  // too-short iframe. Body has `overflow: hidden` in embed mode, so below the
+  // floor content is clipped. Default floor (400px) accommodates the chart
+  // with the most chrome (seasonal_curve: toggle + bars + months + insight +
+  // chips). Compact floor (260px) accommodates just the visualization for
+  // hosts that supply their own footer copy.
+  const minHeight = compact ? 260 : 400;
   return (
     <div
       style={{
@@ -56,7 +60,7 @@ export default function Embed() {
       <div
         style={{
           width: "100%",
-          minHeight: 400,
+          minHeight,
           height: "100vh",
           display: "flex",
         }}
@@ -64,6 +68,7 @@ export default function Embed() {
         <ChartRenderer
           spec={spec}
           preserve={ceName}
+          compact={compact}
           header={{
             title: chart.title,
             subtitle: chart.subtitle || undefined,
@@ -74,6 +79,12 @@ export default function Embed() {
       </div>
     </div>
   );
+}
+
+function readCompactFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  const v = new URLSearchParams(window.location.search).get("compact");
+  return v === "1" || v === "true";
 }
 
 function FullCenter({ children }: { children: React.ReactNode }) {
