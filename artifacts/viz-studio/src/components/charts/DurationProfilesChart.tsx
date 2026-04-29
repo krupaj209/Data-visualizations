@@ -8,6 +8,7 @@ import { type DurationProfilesSpec } from "@/lib/chart-spec";
 interface Props {
   spec: DurationProfilesSpec;
   context?: string;
+  compact?: boolean;
 }
 
 /** Lucide doesn't have all of these as semantic icons — use small inline SVGs. */
@@ -43,41 +44,59 @@ function fmtRange(min: number, max: number) {
   return `${min}–${max} min`;
 }
 
-export function DurationProfilesChart({ spec, context }: Props) {
+/** Compact-mode short forms for scale tick labels: "30 min" → "30m", "1 hr" → "1h". */
+function shortLabel(label: string): string {
+  return label
+    .replace(/(\d+)\s*min/g, "$1m")
+    .replace(/(\d+)\s*hr/g, "$1h")
+    .replace(/\s+/g, "");
+}
+
+export function DurationProfilesChart({
+  spec,
+  context,
+  compact = false,
+}: Props) {
   const { headline, scale_min, profiles, tip } = spec;
   const maxScale = Math.max(...scale_min.map((s) => s.minutes), 1);
   const [hovered, setHovered] = useState<number | null>(null);
 
   return (
-    <ChartCard context={context ?? "Time spent at the venue"} pill="Estimated">
+    <ChartCard
+      context={context ?? "Time spent at the venue"}
+      pill="Estimated"
+      compact={compact}
+    >
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Headline strip */}
-        <div className="flex items-center gap-3 mb-3">
-          <span
-            className="flex items-center justify-center shrink-0"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: "50%",
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-            }}
-          >
-            <Timer size={18} strokeWidth={2.5} />
-          </span>
-          <div className="min-w-0">
-            <div
+        {/* Headline strip — hidden in compact (host supplies its own copy) */}
+        {!compact && (
+          <div className="flex items-center gap-3 mb-3">
+            <span
+              className="flex items-center justify-center shrink-0"
               style={{
-                fontSize: "clamp(14px, 1.7cqi, 19px)",
-                fontWeight: 800,
-                color: BRAND.slate900,
-                lineHeight: 1.15,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
               }}
             >
-              {headline}
+              <Timer size={18} strokeWidth={2.5} />
+            </span>
+            <div className="min-w-0">
+              <div
+                style={{
+                  fontSize: "clamp(14px, 1.7cqi, 19px)",
+                  fontWeight: 800,
+                  color: BRAND.slate900,
+                  lineHeight: 1.15,
+                }}
+              >
+                {headline}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Profile rows + scale */}
         <div className="flex-1 min-h-0 flex flex-col">
@@ -168,7 +187,7 @@ export function DurationProfilesChart({ spec, context }: Props) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {s.label}
+                      {compact ? shortLabel(s.label) : s.label}
                     </div>
                   </div>
                 );
@@ -177,8 +196,8 @@ export function DurationProfilesChart({ spec, context }: Props) {
           </div>
         </div>
 
-        {/* Tip footer */}
-        {tip && (
+        {/* Tip footer — hidden in compact (host supplies its own copy) */}
+        {!compact && tip && (
           <div className="flex items-center gap-2 mt-3">
             <span
               className="flex items-center justify-center shrink-0"

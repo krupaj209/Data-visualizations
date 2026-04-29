@@ -6,6 +6,7 @@ import { type BookingWindowSpec } from "@/lib/chart-spec";
 interface Props {
   spec: BookingWindowSpec;
   context?: string;
+  compact?: boolean;
 }
 
 interface Bucket {
@@ -44,7 +45,7 @@ function bucketize(spec: BookingWindowSpec): Bucket[] {
   });
 }
 
-export function BookingWindowChart({ spec, context }: Props) {
+export function BookingWindowChart({ spec, context, compact = false }: Props) {
   const buckets = bucketize(spec);
   const hasData = buckets.some((b) => b.share > 0);
   const maxShare = Math.max(...buckets.map((b) => b.share), 1);
@@ -58,31 +59,33 @@ export function BookingWindowChart({ spec, context }: Props) {
     : -1;
 
   return (
-    <ChartCard context={context ?? "Booking lead time"}>
+    <ChartCard context={context ?? "Booking lead time"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex items-end justify-between mb-2">
-          <div
-            style={{
-              fontSize: "clamp(11px, 1.25cqi, 13px)",
-              color: BRAND.slate700,
-              fontWeight: 700,
-            }}
-          >
-            % of bookings
+        {!compact && (
+          <div className="flex items-end justify-between mb-2">
+            <div
+              style={{
+                fontSize: "clamp(11px, 1.25cqi, 13px)",
+                color: BRAND.slate700,
+                fontWeight: 700,
+              }}
+            >
+              % of bookings
+            </div>
+            <div
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: "clamp(10px, 1.1cqi, 12px)",
+                fontWeight: 800,
+              }}
+            >
+              Sweet spot · {spec.sweet_spot.label}
+            </div>
           </div>
-          <div
-            style={{
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-              padding: "4px 10px",
-              borderRadius: 999,
-              fontSize: "clamp(10px, 1.1cqi, 12px)",
-              fontWeight: 800,
-            }}
-          >
-            Sweet spot · {spec.sweet_spot.label}
-          </div>
-        </div>
+        )}
 
         <div
           className="flex-1 grid items-end min-h-0"
@@ -189,7 +192,7 @@ export function BookingWindowChart({ spec, context }: Props) {
           ))}
         </div>
 
-        {spec.sold_out_risk && (
+        {!compact && spec.sold_out_risk && (
           <div className="mt-3 flex items-center gap-2">
             <span
               style={{

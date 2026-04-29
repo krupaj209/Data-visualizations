@@ -8,6 +8,7 @@ import { type TribuneDensitySpec } from "@/lib/chart-spec";
 interface Props {
   spec: TribuneDensitySpec;
   context?: string;
+  compact?: boolean;
 }
 
 const ZONE_TONES: Record<
@@ -45,7 +46,11 @@ function toMin(t: string) {
   return h * 60 + (m || 0);
 }
 
-export function TribuneDensityChart({ spec, context }: Props) {
+export function TribuneDensityChart({
+  spec,
+  context,
+  compact = false,
+}: Props) {
   const { points, zones, arrow_callout, context_pills, scope, y_label } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -90,6 +95,7 @@ export function TribuneDensityChart({ spec, context }: Props) {
       context={context ?? `${scope}`}
       pill="Estimated"
       pillTone="purps"
+      compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
         <div
@@ -326,7 +332,7 @@ export function TribuneDensityChart({ spec, context }: Props) {
                   </div>
                 </div>
                 {/* Helper text — pinned near start of "quiet" zone */}
-                {arrow_callout.helper && (
+                {!compact && arrow_callout.helper && (
                   <div
                     className="absolute pointer-events-none z-20"
                     style={{
@@ -356,13 +362,21 @@ export function TribuneDensityChart({ spec, context }: Props) {
             )}
           </div>
 
-          {/* X-axis labels */}
+          {/* X-axis labels — sparser sample in compact to avoid collisions */}
           <div
             className="absolute left-[22px] right-[8px] flex justify-between"
             style={{ bottom: 0, height: 18 }}
           >
             {points
-              .filter((_, i) => i % Math.max(1, Math.floor(points.length / 12)) === 0)
+              .filter(
+                (_, i) =>
+                  i %
+                    Math.max(
+                      1,
+                      Math.floor(points.length / (compact ? 5 : 12)),
+                    ) ===
+                  0,
+              )
               .map((p, i) => (
                 <div
                   key={i}
@@ -379,8 +393,8 @@ export function TribuneDensityChart({ spec, context }: Props) {
           </div>
         </div>
 
-        {/* Context pills */}
-        {context_pills.length > 0 && (
+        {/* Context pills — hidden in compact (host supplies its own copy) */}
+        {!compact && context_pills.length > 0 && (
           <div
             className="grid mt-3"
             style={{

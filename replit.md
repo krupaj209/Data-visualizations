@@ -48,10 +48,21 @@ Embeds live at `${origin}/studio/embed/:chartId` and render the single chart flu
 
 Two modes via URL flag:
 
-- **Default** (no flag) — full chrome including ESTIMATED pill, context subtitle, chart, and any per-type footer (insight paragraph, calendar chips, legend). Floor: **400px**. Use when the iframe is the only content the host shows for that chart.
-- **Compact** (`?compact=1`) — drops footer chrome that hosts typically duplicate as bullet copy beneath the card. Floor: **260px**. Use when the host CMS renders its own bullets/explanation outside the iframe and only the visualization should live inside.
+- **Default** (no flag) — full chrome including ESTIMATED pill, context subtitle, chart, and any per-type footer (insight paragraph, calendar chips, legend, helper callouts). Floor: **400px**. Use when the iframe is the only content the host shows for that chart.
+- **Compact** (`?compact=1`) — drops the ChartCard header (ESTIMATED pill + subtitle) **and** any per-chart footer chrome that hosts typically duplicate as bullet copy beneath the card. Tightens outer padding and per-chart row/tick density so the visualization fills the available space cleanly from 320×260 up to 960×400+. Floor: **260px**. Use when the host CMS renders its own bullets/explanation outside the iframe and only the visualization should live inside.
 
-Compact behavior is implemented in `SeasonalCurveChart` (hides `metric_insights` paragraph, `calendar_notes` chip rail, and fallback legend). The flag is wired through `ChartRenderer` so other chart types can opt in incrementally as their host layouts demand it.
+Compact is honored by all 8 chart types used by the curated Florence cluster (the only CEs the CMS embeds — see `LOCKED_CE_SLUGS`). `ChartCard` strips its header (ESTIMATED pill + subtitle) and tightens padding for every chart. Per-component footer/secondary-chrome gating:
+
+- **SeasonalCurveChart** — hides `metric_insights` paragraph, `calendar_notes` chip rail, fallback legend.
+- **BookingWindowChart** — hides "Sweet spot ·" pill in header strip and `sold_out_risk` insight footer.
+- **DurationProfilesChart** — hides headline strip and `tip` footer; shortens scale-tick labels (e.g. "30 min" → "30m").
+- **TribuneDensityChart** — hides `context_pills` rail, `arrow_callout.helper`; samples sparser x-axis labels (~5 vs ~12).
+- **CoBookingsChart** — hides headline strip; tightens row gap, rank/icon size, name font; hides `badge` chip on each row.
+- **WeeklyPatternChart** — hides level legend and `day_notes` chips.
+- **DailyPatternChart** — hides opening-hours `caption` pill; samples sparser x-axis labels (~5 vs ~9).
+- **EntranceLanesChart** — hides venue title strip (Landmark icon + name + caption).
+
+Legacy chart types (`hourly_heatmap`, `compare_zones`, `ticket_ladder`, `stat_grid`) and currently-unused types (`month_calendar`, `donut_breakdown`) **do not** accept a `compact` prop and `ChartRenderer` does not pass it to them. They predate the curated Florence cluster, are not part of the CMS embed contract, and may clip at the 260px floor. If a future curated CE adopts one of these types, add the `compact?: boolean` prop and gate its chrome before forwarding from `ChartRenderer`.
 
 CMS embed snippet (compact mode for short card slots ~320×320):
 

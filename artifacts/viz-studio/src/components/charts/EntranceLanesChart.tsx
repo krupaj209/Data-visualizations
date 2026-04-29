@@ -8,6 +8,7 @@ import { type EntranceLanesSpec } from "@/lib/chart-spec";
 interface Props {
   spec: EntranceLanesSpec;
   context?: string;
+  compact?: boolean;
 }
 
 const TONES: Record<
@@ -40,51 +41,60 @@ const TONES: Record<
   },
 };
 
-export function EntranceLanesChart({ spec, context }: Props) {
+export function EntranceLanesChart({
+  spec,
+  context,
+  compact = false,
+}: Props) {
   const { venue_label, shared_caption, lanes } = spec;
   const maxDots = Math.max(...lanes.map((l) => l.dots), 1);
   const [hovered, setHovered] = useState<number | null>(null);
 
   return (
-    <ChartCard context={context ?? "Entrance lane comparison"}>
+    <ChartCard
+      context={context ?? "Entrance lane comparison"}
+      compact={compact}
+    >
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Title strip */}
-        <div
-          className="flex items-center gap-3 px-4 py-3 mb-4"
-          style={{
-            background: BRAND.purpsSoft,
-            borderRadius: 12,
-          }}
-        >
-          <span
-            className="flex items-center justify-center shrink-0"
-            style={{ color: BRAND.purps }}
+        {/* Title strip — hidden in compact (host supplies its own copy) */}
+        {!compact && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 mb-4"
+            style={{
+              background: BRAND.purpsSoft,
+              borderRadius: 12,
+            }}
           >
-            <Landmark size={26} strokeWidth={1.7} />
-          </span>
-          <div>
-            <div
-              style={{
-                fontSize: "clamp(13px, 1.6cqi, 17px)",
-                fontWeight: 800,
-                color: BRAND.slate900,
-                lineHeight: 1.15,
-              }}
+            <span
+              className="flex items-center justify-center shrink-0"
+              style={{ color: BRAND.purps }}
             >
-              {venue_label}
-            </div>
-            <div
-              style={{
-                fontSize: "clamp(10px, 1.1cqi, 12px)",
-                color: BRAND.slate700,
-                fontWeight: 600,
-                lineHeight: 1.2,
-              }}
-            >
-              {shared_caption}
+              <Landmark size={26} strokeWidth={1.7} />
+            </span>
+            <div>
+              <div
+                style={{
+                  fontSize: "clamp(13px, 1.6cqi, 17px)",
+                  fontWeight: 800,
+                  color: BRAND.slate900,
+                  lineHeight: 1.15,
+                }}
+              >
+                {venue_label}
+              </div>
+              <div
+                style={{
+                  fontSize: "clamp(10px, 1.1cqi, 12px)",
+                  color: BRAND.slate700,
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                }}
+              >
+                {shared_caption}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Lane comparison: Y-axis arrow + 4 lane boxes */}
         <div

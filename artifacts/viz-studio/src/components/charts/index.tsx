@@ -22,10 +22,10 @@ interface Props {
   /** CE name (or other proper nouns) preserved during sentence-casing. */
   preserve?: string;
   /**
-   * When true, charts strip footer chrome (insight paragraphs, chip rails,
-   * legends) that hosts typically duplicate as their own bullet copy beneath
-   * the embed card. Currently honored by `seasonal_curve`; other charts
-   * accept the flag but ignore it for now.
+   * When true, charts strip the ChartCard header (Estimated pill + subtitle)
+   * and any footer chrome (insight paragraphs, chip rails, legends, helper
+   * captions) that hosts typically duplicate as their own bullet copy beneath
+   * the embed card. Honored by all chart types.
    */
   compact?: boolean;
 }
@@ -36,13 +36,17 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
     : undefined;
   switch (spec.type) {
     case "weekly_pattern":
-      return <WeeklyPatternChart spec={spec} context={context} />;
+      return (
+        <WeeklyPatternChart spec={spec} context={context} compact={compact} />
+      );
     case "hourly_heatmap":
       return <HourlyHeatmapChart spec={spec} context={context} />;
     case "month_calendar":
       return <MonthCalendarChart spec={spec} context={context} />;
     case "booking_window":
-      return <BookingWindowChart spec={spec} context={context} />;
+      return (
+        <BookingWindowChart spec={spec} context={context} compact={compact} />
+      );
     case "stat_grid":
       return <StatGridChart spec={spec} context={context} />;
     case "compare_zones":
@@ -56,15 +60,29 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
     case "ticket_ladder":
       return <TicketLadderChart spec={spec} context={context} />;
     case "daily_pattern":
-      return <DailyPatternChart spec={spec} context={context} />;
+      return (
+        <DailyPatternChart spec={spec} context={context} compact={compact} />
+      );
     case "tribune_density":
-      return <TribuneDensityChart spec={spec} context={context} />;
+      return (
+        <TribuneDensityChart spec={spec} context={context} compact={compact} />
+      );
     case "duration_profiles":
-      return <DurationProfilesChart spec={spec} context={context} />;
+      return (
+        <DurationProfilesChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
     case "entrance_lanes":
-      return <EntranceLanesChart spec={spec} context={context} />;
+      return (
+        <EntranceLanesChart spec={spec} context={context} compact={compact} />
+      );
     case "co_bookings":
-      return <CoBookingsChart spec={spec} context={context} />;
+      return (
+        <CoBookingsChart spec={spec} context={context} compact={compact} />
+      );
     default: {
       const exhaustive: never = spec;
       void exhaustive;

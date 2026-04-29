@@ -165,7 +165,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
   const maxValue = Math.max(...bars.map((b) => b.value), 1);
 
   return (
-    <ChartCard context={context ?? "Crowd level by month"}>
+    <ChartCard context={context ?? "Crowd level by month"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         {hasUpgrade && availableMetrics.length > 1 && (
           <MetricToggle

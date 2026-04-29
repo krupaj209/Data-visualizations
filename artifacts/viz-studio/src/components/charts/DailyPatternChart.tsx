@@ -8,6 +8,7 @@ import { type DailyPatternSpec } from "@/lib/chart-spec";
 interface Props {
   spec: DailyPatternSpec;
   context?: string;
+  compact?: boolean;
 }
 
 const ZONE_TONES: Record<
@@ -44,7 +45,7 @@ function fmtClock(t: string) {
   return `${hh}${mm}${ap}`;
 }
 
-export function DailyPatternChart({ spec, context }: Props) {
+export function DailyPatternChart({ spec, context, compact = false }: Props) {
   const { points, zones, caption } = spec;
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -78,7 +79,7 @@ export function DailyPatternChart({ spec, context }: Props) {
   const areaPath = path ? `${path} L 100 100 L 0 100 Z` : "";
 
   return (
-    <ChartCard context={context ?? "Typical daily pattern"}>
+    <ChartCard context={context ?? "Typical daily pattern"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         <div
           className="relative flex-1 min-h-0"
@@ -235,8 +236,12 @@ export function DailyPatternChart({ spec, context }: Props) {
             style={{ bottom: 0, height: 18 }}
           >
             {points.map((p, i) => {
-              // Show first, last, and every nth label to avoid crowding
-              const step = Math.max(1, Math.floor(points.length / 9));
+              // Show first, last, and every nth label to avoid crowding.
+              // Sparser sampling in compact mode (~5 labels) to fit narrow widths.
+              const step = Math.max(
+                1,
+                Math.floor(points.length / (compact ? 5 : 9)),
+              );
               const show = i === 0 || i === points.length - 1 || i % step === 0;
               if (!show) return <div key={i} />;
               return (
@@ -256,8 +261,8 @@ export function DailyPatternChart({ spec, context }: Props) {
           </div>
         </div>
 
-        {/* Caption pill */}
-        {caption && (caption.opens || caption.last_entry) && (
+        {/* Caption pill — hidden in compact (host supplies its own copy) */}
+        {!compact && caption && (caption.opens || caption.last_entry) && (
           <div className="flex justify-center mt-2">
             <div
               className="flex items-center gap-2"

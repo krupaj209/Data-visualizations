@@ -10,6 +10,7 @@ import {
 interface Props {
   spec: WeeklyPatternSpec;
   context?: string;
+  compact?: boolean;
 }
 
 const DAY_NOTE_TONE: Record<
@@ -21,7 +22,7 @@ const DAY_NOTE_TONE: Record<
   info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
 };
 
-export function WeeklyPatternChart({ spec, context }: Props) {
+export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
   const byDay = new Map(spec.days.map((d) => [d.day, d]));
   const ordered = DAY_ORDER.map(
     (code) =>
@@ -33,7 +34,7 @@ export function WeeklyPatternChart({ spec, context }: Props) {
   );
 
   return (
-    <ChartCard context={context ?? "Crowd level by day"}>
+    <ChartCard context={context ?? "Crowd level by day"} compact={compact}>
       <div className="flex-1 grid grid-cols-7 gap-2 items-end pt-6">
         {ordered.map((d, i) => {
           const isClosed = d.level === "closed";
@@ -123,52 +124,58 @@ export function WeeklyPatternChart({ spec, context }: Props) {
         ))}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-        {(["quietest", "quiet", "busy", "busiest"] as LevelKey[]).map((lvl) => (
-          <div key={lvl} className="flex items-center gap-1.5">
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 3,
-                background: LEVEL_FILL[lvl],
-              }}
-            />
-            <span
-              style={{
-                color: BRAND.slate700,
-                fontSize: "clamp(9px, 1cqi, 11px)",
-                fontWeight: 600,
-              }}
-            >
-              {LEVEL_LABEL[lvl]}
-            </span>
+      {!compact && (
+        <>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+            {(["quietest", "quiet", "busy", "busiest"] as LevelKey[]).map(
+              (lvl) => (
+                <div key={lvl} className="flex items-center gap-1.5">
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 3,
+                      background: LEVEL_FILL[lvl],
+                    }}
+                  />
+                  <span
+                    style={{
+                      color: BRAND.slate700,
+                      fontSize: "clamp(9px, 1cqi, 11px)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {LEVEL_LABEL[lvl]}
+                  </span>
+                </div>
+              ),
+            )}
           </div>
-        ))}
-      </div>
 
-      {spec.day_notes && spec.day_notes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {spec.day_notes.map((note, i) => {
-            const tone = DAY_NOTE_TONE[note.kind];
-            return (
-              <span
-                key={`${note.label}-${i}`}
-                style={{
-                  background: tone.bg,
-                  color: tone.fg,
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  fontSize: "clamp(9px, 0.95cqi, 11px)",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {note.label}
-              </span>
-            );
-          })}
-        </div>
+          {spec.day_notes && spec.day_notes.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {spec.day_notes.map((note, i) => {
+                const tone = DAY_NOTE_TONE[note.kind];
+                return (
+                  <span
+                    key={`${note.label}-${i}`}
+                    style={{
+                      background: tone.bg,
+                      color: tone.fg,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: "clamp(9px, 0.95cqi, 11px)",
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {note.label}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </ChartCard>
   );

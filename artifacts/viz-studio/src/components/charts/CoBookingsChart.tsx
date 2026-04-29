@@ -8,6 +8,7 @@ import { type CoBookingsSpec } from "@/lib/chart-spec";
 interface Props {
   spec: CoBookingsSpec;
   context?: string;
+  compact?: boolean;
 }
 
 const ICON_MAP: Record<CoBookingsSpec["items"][number]["icon"], React.ElementType> = {
@@ -19,7 +20,7 @@ const ICON_MAP: Record<CoBookingsSpec["items"][number]["icon"], React.ElementTyp
   gem: Gem,
 };
 
-export function CoBookingsChart({ spec, context }: Props) {
+export function CoBookingsChart({ spec, context, compact = false }: Props) {
   const { items, highlight_top = 2 } = spec;
   const max = Math.max(...items.map((i) => i.share), 1);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -28,31 +29,35 @@ export function CoBookingsChart({ spec, context }: Props) {
     <ChartCard
       context={context ?? "Most co-booked nearby landmarks"}
       pill="Estimated"
+      compact={compact}
     >
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Optional headline strip with map pin */}
-        <div className="flex items-center gap-2 mb-3">
-          <span
-            className="flex items-center justify-center"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-            }}
-          >
-            <MapPin size={14} strokeWidth={2.5} />
-          </span>
-        </div>
+        {/* Optional headline strip with map pin — hidden in compact */}
+        {!compact && (
+          <div className="flex items-center gap-2 mb-3">
+            <span
+              className="flex items-center justify-center"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+              }}
+            >
+              <MapPin size={14} strokeWidth={2.5} />
+            </span>
+          </div>
+        )}
 
         <div
           className="flex-1 grid items-center min-h-0"
           style={{
-            gridTemplateColumns:
-              "28px 36px minmax(0, 150px) 1fr",
-            columnGap: 10,
-            rowGap: "clamp(6px, 0.9cqi, 10px)",
+            gridTemplateColumns: compact
+              ? "22px 26px minmax(0, 110px) 1fr"
+              : "28px 36px minmax(0, 150px) 1fr",
+            columnGap: compact ? 8 : 10,
+            rowGap: compact ? "clamp(2px, 0.4cqi, 5px)" : "clamp(6px, 0.9cqi, 10px)",
             alignContent: "stretch",
           }}
         >
@@ -73,6 +78,7 @@ export function CoBookingsChart({ spec, context }: Props) {
                 widthPct={widthPct}
                 isHi={isHi}
                 isHovered={isHovered}
+                compact={compact}
                 onEnter={() => setHovered(i)}
                 onLeave={() => setHovered(null)}
               />
@@ -93,6 +99,7 @@ function RowFragment({
   widthPct,
   isHi,
   isHovered,
+  compact,
   onEnter,
   onLeave,
 }: {
@@ -104,9 +111,13 @@ function RowFragment({
   widthPct: number;
   isHi: boolean;
   isHovered: boolean;
+  compact: boolean;
   onEnter: () => void;
   onLeave: () => void;
 }) {
+  const rankSize = compact ? 18 : 24;
+  const iconCircle = compact ? 22 : 32;
+  const iconSize = compact ? 12 : 18;
   return (
     <>
       {/* Rank circle */}
@@ -114,13 +125,13 @@ function RowFragment({
         <div
           className="flex items-center justify-center"
           style={{
-            width: 24,
-            height: 24,
+            width: rankSize,
+            height: rankSize,
             borderRadius: "50%",
             background: BRAND.purps,
             color: "white",
             fontWeight: 800,
-            fontSize: 12,
+            fontSize: compact ? 10 : 12,
           }}
         >
           {rank}
@@ -132,14 +143,14 @@ function RowFragment({
         <div
           className="flex items-center justify-center"
           style={{
-            width: 32,
-            height: 32,
+            width: iconCircle,
+            height: iconCircle,
             borderRadius: "50%",
             background: BRAND.purpsSoft,
             color: BRAND.purps,
           }}
         >
-          <Icon size={18} strokeWidth={1.7} />
+          <Icon size={iconSize} strokeWidth={1.7} />
         </div>
       </div>
 
@@ -149,8 +160,10 @@ function RowFragment({
           style={{
             color: BRAND.slate900,
             fontWeight: 800,
-            fontSize: "clamp(11px, 1.3cqi, 14px)",
-            lineHeight: 1.15,
+            fontSize: compact
+              ? "clamp(10px, 1.1cqi, 12px)"
+              : "clamp(11px, 1.3cqi, 14px)",
+            lineHeight: 1.1,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -158,7 +171,7 @@ function RowFragment({
         >
           {item.name}
         </div>
-        {item.badge && (
+        {!compact && item.badge && (
           <div
             className="inline-block mt-1"
             style={{
@@ -179,7 +192,11 @@ function RowFragment({
       {/* Bar with % */}
       <div
         className="relative flex items-center"
-        style={{ height: "clamp(22px, 2.8cqi, 30px)" }}
+        style={{
+          height: compact
+            ? "clamp(14px, 1.8cqi, 20px)"
+            : "clamp(22px, 2.8cqi, 30px)",
+        }}
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
       >
