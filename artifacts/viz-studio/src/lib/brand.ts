@@ -59,6 +59,25 @@ export const LEVEL_FILL: Record<LevelKey, string> = {
   busiest: BRAND.candy,
 };
 
+/**
+ * Soft-tint companion to LEVEL_FILL. Use this as the *default* bar fill so
+ * the chart reads as a calm field of muted color, and reserve the saturated
+ * LEVEL_FILL above for the bars that carry an explicit callout pill
+ * (Busiest / Quietest). Pick between them with `getLevelFill(level, isCallout)`.
+ */
+export const LEVEL_FILL_SOFT: Record<LevelKey, string> = {
+  closed: "transparent",
+  quietest: BRAND.bgMint,
+  quiet: BRAND.bgSage,
+  busy: BRAND.holaSoft,
+  busiest: BRAND.candySoft,
+};
+
+export function getLevelFill(level: LevelKey, isCallout: boolean): string {
+  if (level === "closed") return "transparent";
+  return isCallout ? LEVEL_FILL[level] : LEVEL_FILL_SOFT[level];
+}
+
 export const LEVEL_LABEL: Record<LevelKey, string> = {
   closed: "Closed",
   quietest: "Quietest",
@@ -82,6 +101,20 @@ export const SEASON_FILL: Record<SeasonKey, string> = {
   moderate: BRAND.bgCream,
   busy: BRAND.holaSoft,
   peak: BRAND.candySoft,
+};
+
+/**
+ * Saturated companion to SEASON_FILL for the seasonal bars that carry an
+ * explicit callout (Peak / Quietest / Best balance). The default fills above
+ * stay soft so the chart reads as a calm field; only callouts pop.
+ */
+export const SEASON_FILL_ACCENT: Record<SeasonKey, string> = {
+  closed: BRAND.slate300,
+  very_quiet: BRAND.okayGreen,
+  quiet: BRAND.subtleGreen,
+  moderate: BRAND.joyMustard,
+  busy: BRAND.hola,
+  peak: BRAND.candy,
 };
 
 export const SEASON_DOT: Record<SeasonKey, string> = {

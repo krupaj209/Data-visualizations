@@ -5,6 +5,7 @@ import {
   BRAND,
   SEASON_DOT,
   SEASON_FILL,
+  SEASON_FILL_ACCENT,
   SEASON_LABEL,
   type SeasonKey,
 } from "@/lib/brand";
@@ -139,7 +140,16 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
       let fill: string;
       if (metric === "crowd") {
         value = d.score;
-        fill = SEASON_FILL[d.status];
+        // Soft-tint by default; saturate only the bars that wear a callout.
+        // Peak / Quietest pick up their level's saturated accent; Best balance
+        // borrows the brand purple so it matches its callout pill.
+        if (i === peakIdx || i === quietestIdx) {
+          fill = SEASON_FILL_ACCENT[d.status];
+        } else if (i === balanceIdx) {
+          fill = BRAND.purps;
+        } else {
+          fill = SEASON_FILL[d.status];
+        }
       } else if (metric === "weather") {
         value = d.weather ?? 0;
         fill = i === bestIdx ? METRIC_BEST_FILL.weather : METRIC_FILL.weather;
@@ -149,7 +159,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
       }
       return { value, fill };
     });
-  }, [data, metric, bestIdx]);
+  }, [data, metric, bestIdx, peakIdx, quietestIdx, balanceIdx]);
 
   const maxValue = Math.max(...bars.map((b) => b.value), 1);
 
@@ -168,7 +178,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
           className="flex-1 grid items-end min-h-0"
           style={{
             gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-            columnGap: "clamp(3px, 0.5cqi, 6px)",
+            columnGap: "clamp(5px, 1cqi, 11px)",
             paddingTop: compact ? 14 : 22,
           }}
         >
@@ -280,6 +290,8 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
                   }}
                   className="w-full"
                   style={{
+                    maxWidth: 22,
+                    margin: "0 auto",
                     borderTopLeftRadius: 8,
                     borderTopRightRadius: 8,
                     borderBottomLeftRadius: 3,
@@ -298,7 +310,7 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
           className="grid mt-1.5"
           style={{
             gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-            columnGap: "clamp(3px, 0.5cqi, 6px)",
+            columnGap: "clamp(5px, 1cqi, 11px)",
             borderTop: `1px solid ${BRAND.slate100}`,
             paddingTop: 5,
           }}

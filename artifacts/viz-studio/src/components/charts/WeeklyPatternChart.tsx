@@ -5,7 +5,9 @@ import {
   BRAND,
   CHART_TOKENS,
   LEVEL_FILL,
+  LEVEL_FILL_SOFT,
   LEVEL_LABEL,
+  getLevelFill,
   type LevelKey,
 } from "@/lib/brand";
 import {
@@ -89,7 +91,7 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       <div
         className="flex-1 grid grid-cols-7 items-end"
         style={{
-          gap: "clamp(6px, 1.2cqi, 14px)",
+          gap: "clamp(10px, 2.2cqi, 22px)",
           paddingTop: PILL_HEADROOM,
         }}
         role="tablist"
@@ -97,7 +99,11 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       >
         {ordered.map((d, i) => {
           const isClosed = d.level === "closed";
-          const fill = LEVEL_FILL[d.level];
+          // "Soft tint by default; saturate only the called-out extremes."
+          // The two pill-bearing levels (busiest, quietest) are the only
+          // bars that get the vivid LEVEL_FILL — everything else stays muted.
+          const isCallout = d.level === "busiest" || d.level === "quietest";
+          const fill = getLevelFill(d.level, isCallout);
           const rawPct = Math.max(d.score, isClosed ? 60 : 0);
           const heightPct = rawPct * MAX_BAR_FILL;
           const isActive = selectedIdx === i;
@@ -156,7 +162,7 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                 }}
                 className="w-full"
                 style={{
-                  maxWidth: 96,
+                  maxWidth: 56,
                   margin: "0 auto",
                   backgroundColor: isClosed ? "transparent" : fill,
                   backgroundImage: isClosed
@@ -181,7 +187,7 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       <div
         className="grid grid-cols-7"
         style={{
-          gap: "clamp(6px, 1.2cqi, 14px)",
+          gap: "clamp(10px, 2.2cqi, 22px)",
           borderTop: `1px solid ${BRAND.slate100}`,
           marginTop: 8,
           paddingTop: 6,
@@ -309,27 +315,36 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
             style={{ marginTop: 8 }}
           >
             {(["quietest", "quiet", "busy", "busiest"] as LevelKey[]).map(
-              (lvl) => (
-                <div key={lvl} className="flex items-center gap-1.5">
-                  <span
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: 3,
-                      background: LEVEL_FILL[lvl],
-                    }}
-                  />
-                  <span
-                    style={{
-                      color: BRAND.slate700,
-                      fontSize: CHART_TOKENS.axisLabel.fontSize,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {LEVEL_LABEL[lvl]}
-                  </span>
-                </div>
-              ),
+              (lvl) => {
+                // Mirror what's on the chart: extreme levels (quietest, busiest)
+                // always render as the called-out vivid swatch; middle levels
+                // (quiet, busy) live in the soft tint as background bars.
+                const swatch =
+                  lvl === "quietest" || lvl === "busiest"
+                    ? LEVEL_FILL[lvl]
+                    : LEVEL_FILL_SOFT[lvl];
+                return (
+                  <div key={lvl} className="flex items-center gap-1.5">
+                    <span
+                      style={{
+                        width: 9,
+                        height: 9,
+                        borderRadius: 3,
+                        background: swatch,
+                      }}
+                    />
+                    <span
+                      style={{
+                        color: BRAND.slate700,
+                        fontSize: CHART_TOKENS.axisLabel.fontSize,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {LEVEL_LABEL[lvl]}
+                    </span>
+                  </div>
+                );
+              },
             )}
           </div>
 
