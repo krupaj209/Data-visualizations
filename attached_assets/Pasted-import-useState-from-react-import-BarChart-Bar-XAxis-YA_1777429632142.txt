@@ -1,0 +1,495 @@
+import { useState } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, Cell, LineChart, Line, ReferenceLine
+} from "recharts";
+
+const palette = {
+  bg: "#FAF7F2",
+  card: "#FFFFFF",
+  terracotta: "#C0522B",
+  terracottaLight: "#E8956A",
+  gold: "#C9A84C",
+  green: "#4A7C59",
+  stone: "#8B7355",
+  ink: "#1A1208",
+  muted: "#9A8E7E",
+  border: "#EDE5D8",
+  highlight: "#FFF3E8",
+};
+
+const monthData = [
+  { month: "Jan", crowd: 2, weather: 3, price: 1, label: "Jan" },
+  { month: "Feb", crowd: 2, weather: 3, price: 1, label: "Feb" },
+  { month: "Mar", crowd: 4, weather: 5, price: 2, label: "Mar" },
+  { month: "Apr", crowd: 6, weather: 7, price: 3, label: "Apr" },
+  { month: "May", crowd: 7, weather: 8, price: 3, label: "May" },
+  { month: "Jun", crowd: 9, weather: 7, price: 4, label: "Jun" },
+  { month: "Jul", crowd: 10, weather: 6, price: 5, label: "Jul" },
+  { month: "Aug", crowd: 10, weather: 6, price: 5, label: "Aug" },
+  { month: "Sep", crowd: 8, weather: 8, price: 4, label: "Sep" },
+  { month: "Oct", crowd: 6, weather: 7, price: 3, label: "Oct" },
+  { month: "Nov", crowd: 3, weather: 4, price: 2, label: "Nov" },
+  { month: "Dec", crowd: 4, weather: 3, price: 2, label: "Dec" },
+];
+
+const dayData = [
+  { day: "Mon", crowd: 0, label: "Closed", closed: true },
+  { day: "Tue", crowd: 85, label: "Very Busy" },
+  { day: "Wed", crowd: 45, label: "Quieter" },
+  { day: "Thu", crowd: 42, label: "Quieter" },
+  { day: "Fri", crowd: 48, label: "Quieter" },
+  { day: "Sat", crowd: 80, label: "Busy" },
+  { day: "Sun", crowd: 90, label: "Very Busy" },
+];
+
+const hourData = [
+  { hour: "8am", crowd: 10 }, { hour: "9am", crowd: 22 },
+  { hour: "10am", crowd: 58 }, { hour: "11am", crowd: 82 },
+  { hour: "12pm", crowd: 90 }, { hour: "1pm", crowd: 88 },
+  { hour: "2pm", crowd: 85 }, { hour: "3pm", crowd: 75 },
+  { hour: "4pm", crowd: 55 }, { hour: "5pm", crowd: 35 },
+  { hour: "6pm", crowd: 18 },
+];
+
+const monthlyVisitors = [
+  { month: "Jan", visitors: 90 }, { month: "Feb", visitors: 95 },
+  { month: "Mar", visitors: 155 }, { month: "Apr", visitors: 205 },
+  { month: "May", visitors: 220 }, { month: "Jun", visitors: 235 },
+  { month: "Jul", visitors: 240 }, { month: "Aug", visitors: 230 },
+  { month: "Sep", visitors: 210 }, { month: "Oct", visitors: 175 },
+  { month: "Nov", visitors: 110 }, { month: "Dec", visitors: 135 },
+];
+
+const leadTimeData = [
+  { range: "Same day", pct: 8 },
+  { range: "1–3 days", pct: 11 },
+  { range: "4–7 days", pct: 16 },
+  { range: "8–14 days", pct: 20 },
+  { range: "15–30 days", pct: 22 },
+  { range: "31–60 days", pct: 15 },
+  { range: "60+ days", pct: 8 },
+];
+
+const waitData = [
+  { type: "Walk-up (peak)", wait: 105, color: "#C0522B" },
+  { type: "Walk-up (off-peak)", wait: 40, color: "#E8956A" },
+  { type: "Pre-booked entry", wait: 18, color: "#C9A84C" },
+  { type: "Guided tour", wait: 8, color: "#4A7C59" },
+];
+
+const durationData = [
+  { range: "< 45 min", pct: 18, label: "Quick visit" },
+  { range: "45–60 min", pct: 22, label: "Core highlights" },
+  { range: "60–90 min", pct: 35, label: "Most visitors" },
+  { range: "90–120 min", pct: 18, label: "Deep dive" },
+  { range: "2hr+", pct: 7, label: "Art enthusiast" },
+];
+
+const alsoBookData = [
+  { venue: "Uffizi Gallery", pct: 72, icon: "🖼️" },
+  { venue: "Florence Duomo", pct: 58, icon: "⛪" },
+  { venue: "Palazzo Vecchio", pct: 41, icon: "🏛️" },
+  { venue: "Bargello Museum", pct: 28, icon: "🗿" },
+  { venue: "Boboli Gardens", pct: 24, icon: "🌿" },
+  { venue: "Medici Chapels", pct: 19, icon: "💎" },
+];
+
+const Tag = ({ children, color = palette.terracotta }) => (
+  <span style={{
+    display: "inline-block", background: color + "18",
+    color, border: `1px solid ${color}40`,
+    borderRadius: 4, padding: "2px 8px", fontSize: 11,
+    fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase"
+  }}>{children}</span>
+);
+
+const SectionHeader = ({ number, title, subtitle, badge }) => (
+  <div style={{ marginBottom: 28 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+      <span style={{
+        fontFamily: "'Playfair Display', Georgia, serif",
+        fontSize: 13, fontWeight: 700, color: palette.terracotta,
+        letterSpacing: "0.12em", opacity: 0.7
+      }}>0{number}</span>
+      {badge && <Tag>{badge}</Tag>}
+    </div>
+    <h2 style={{
+      fontFamily: "'Playfair Display', Georgia, serif",
+      fontSize: 26, fontWeight: 700, color: palette.ink,
+      margin: "0 0 6px 0", lineHeight: 1.2
+    }}>{title}</h2>
+    {subtitle && <p style={{ color: palette.muted, fontSize: 14, margin: 0, lineHeight: 1.6 }}>{subtitle}</p>}
+  </div>
+);
+
+const Card = ({ children, style = {} }) => (
+  <div style={{
+    background: palette.card, borderRadius: 16,
+    border: `1px solid ${palette.border}`,
+    padding: "32px 36px", marginBottom: 24,
+    boxShadow: "0 2px 12px rgba(26,18,8,0.05)",
+    ...style
+  }}>{children}</div>
+);
+
+const InsightPill = ({ emoji, text }) => (
+  <div style={{
+    display: "flex", alignItems: "center", gap: 8,
+    background: palette.highlight, border: `1px solid ${palette.terracotta}25`,
+    borderRadius: 8, padding: "8px 14px", marginTop: 8
+  }}>
+    <span style={{ fontSize: 16 }}>{emoji}</span>
+    <span style={{ fontSize: 13, color: palette.terracotta, fontWeight: 600 }}>{text}</span>
+  </div>
+);
+
+const MonthChart = () => {
+  const [metric, setMetric] = useState("crowd");
+  const metrics = {
+    crowd: { label: "Crowd Level", color: palette.terracotta, desc: "How busy the gallery is (1=quiet, 10=packed)" },
+    weather: { label: "Weather Score", color: palette.gold, desc: "Florence weather quality (1=poor, 10=ideal)" },
+    price: { label: "Price Index", color: palette.green, desc: "Relative ticket demand & pricing pressure" },
+  };
+  const m = metrics[metric];
+
+  const bestMonth = monthData.reduce((a, b) =>
+    metric === "crowd" ? (a[metric] < b[metric] ? a : b) :
+    (a[metric] > b[metric] ? a : b)
+  );
+
+  return (
+    <Card>
+      <SectionHeader number={1} title="When should I visit?" subtitle="Crowd levels, weather quality, and pricing pressure by month — all in one view." badge="Best Time" />
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+        {Object.entries(metrics).map(([key, val]) => (
+          <button key={key} onClick={() => setMetric(key)} style={{
+            padding: "7px 16px", borderRadius: 20, border: "none", cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13,
+            background: metric === key ? val.color : palette.border,
+            color: metric === key ? "#fff" : palette.muted,
+            transition: "all 0.2s"
+          }}>{val.label}</button>
+        ))}
+      </div>
+      <p style={{ fontSize: 13, color: palette.muted, marginBottom: 16 }}>{m.desc}</p>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={monthData} barSize={28}>
+          <XAxis dataKey="label" tick={{ fontSize: 12, fill: palette.muted }} axisLine={false} tickLine={false} />
+          <YAxis hide domain={[0, 10]} />
+          <Tooltip
+            contentStyle={{ borderRadius: 8, border: `1px solid ${palette.border}`, fontSize: 13 }}
+            cursor={{ fill: palette.highlight }}
+          />
+          <Bar dataKey={metric} radius={[4, 4, 0, 0]}>
+            {monthData.map((entry, i) => (
+              <Cell key={i} fill={entry.label === bestMonth.label ? m.color : m.color + "55"} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {metric === "crowd"
+          ? <InsightPill emoji="✅" text="Jan–Feb and Nov are the least crowded months. Avoid July–August." />
+          : metric === "weather"
+          ? <InsightPill emoji="🌤" text="May, September and October offer the best weather for visiting." />
+          : <InsightPill emoji="💶" text="Jan–Mar sees lowest pricing pressure. Summer months see highest demand." />
+        }
+      </div>
+    </Card>
+  );
+};
+
+const DayChart = () => (
+  <Card>
+    <SectionHeader number={2} title="Which day of the week?" subtitle="Crowd index by day — lower is calmer, 0 means closed." badge="Day Guide" />
+    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 16 }}>
+      {dayData.map(d => (
+        <div key={d.day} style={{ textAlign: "center", flex: 1 }}>
+          <div style={{
+            height: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 4
+          }}>
+            <div style={{
+              width: "70%", height: d.closed ? 4 : `${d.crowd}%`,
+              background: d.closed ? palette.border
+                : d.crowd > 75 ? palette.terracotta
+                : d.crowd < 55 ? palette.green
+                : palette.gold,
+              borderRadius: "4px 4px 0 0",
+              transition: "height 0.4s ease",
+              position: "relative"
+            }}>
+              {!d.closed && d.crowd < 55 && (
+                <div style={{
+                  position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)",
+                  fontSize: 10, color: palette.green, fontWeight: 700, whiteSpace: "nowrap"
+                }}>✓ Best</div>
+              )}
+            </div>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: d.closed ? palette.muted : palette.ink }}>{d.day}</div>
+          <div style={{ fontSize: 10, color: palette.muted, marginTop: 2 }}>{d.label}</div>
+        </div>
+      ))}
+    </div>
+    <InsightPill emoji="📅" text="Wed, Thu, Fri are consistently the quietest days. Avoid Tuesday — it carries Monday's overflow." />
+  </Card>
+);
+
+const HourChart = () => (
+  <Card>
+    <SectionHeader number={3} title="Best time of day?" subtitle="Estimated hourly crowd pressure throughout the day. Timed-entry slots open every 15 minutes." badge="Hourly" />
+    <ResponsiveContainer width="100%" height={180}>
+      <AreaChart data={hourData}>
+        <defs>
+          <linearGradient id="crowdGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={palette.terracotta} stopOpacity={0.3} />
+            <stop offset="95%" stopColor={palette.terracotta} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="hour" tick={{ fontSize: 12, fill: palette.muted }} axisLine={false} tickLine={false} />
+        <YAxis hide domain={[0, 100]} />
+        <Tooltip contentStyle={{ borderRadius: 8, border: `1px solid ${palette.border}`, fontSize: 13 }} cursor={{ stroke: palette.terracotta, strokeWidth: 1 }} />
+        <ReferenceLine x="8am" stroke={palette.green} strokeDasharray="3 3" label={{ value: "🟢 Open", position: "top", fontSize: 10, fill: palette.green }} />
+        <ReferenceLine x="5pm" stroke={palette.gold} strokeDasharray="3 3" label={{ value: "🟡 Calms", position: "top", fontSize: 10, fill: palette.gold }} />
+        <Area type="monotone" dataKey="crowd" stroke={palette.terracotta} strokeWidth={2.5} fill="url(#crowdGrad)" />
+      </AreaChart>
+    </ResponsiveContainer>
+    <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+      <InsightPill emoji="🌅" text="8:15–9:00 AM: near-empty. Arrive at opening." />
+      <InsightPill emoji="🕔" text="After 4:30 PM: second-best window." />
+    </div>
+  </Card>
+);
+
+const VisitorVolumeChart = () => (
+  <Card>
+    <SectionHeader number={4} title="How popular is it?" subtitle="Accademia crossed 2 million annual visitors for the first time in 2023 — and broke it again in 2024." badge="Volume" />
+    <div style={{ display: "flex", gap: 24, marginBottom: 24, flexWrap: "wrap" }}>
+      {[
+        { label: "Annual visitors (2024)", value: "2.1M", sub: "↑ all-time record", color: palette.terracotta },
+        { label: "Avg visitors per day", value: "~7,000", sub: "200 cap at any one time", color: palette.gold },
+        { label: "Revenue (2024)", value: "€17.1M", sub: "gross ticket revenue", color: palette.green },
+      ].map(s => (
+        <div key={s.label} style={{ flex: 1, minWidth: 120, background: palette.highlight, borderRadius: 12, padding: "16px 20px" }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: s.color }}>{s.value}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: palette.ink, marginTop: 2 }}>{s.label}</div>
+          <div style={{ fontSize: 11, color: palette.muted, marginTop: 2 }}>{s.sub}</div>
+        </div>
+      ))}
+    </div>
+    <p style={{ fontSize: 13, color: palette.muted, marginBottom: 8 }}>Estimated monthly visitor distribution (thousands)</p>
+    <ResponsiveContainer width="100%" height={150}>
+      <BarChart data={monthlyVisitors} barSize={22}>
+        <XAxis dataKey="month" tick={{ fontSize: 11, fill: palette.muted }} axisLine={false} tickLine={false} />
+        <YAxis hide />
+        <Tooltip contentStyle={{ borderRadius: 8, border: `1px solid ${palette.border}`, fontSize: 13 }} cursor={{ fill: palette.highlight }} formatter={(v) => [`${v}K`, "Visitors"]} />
+        <Bar dataKey="visitors" radius={[3, 3, 0, 0]}>
+          {monthlyVisitors.map((e, i) => (
+            <Cell key={i} fill={e.visitors >= 220 ? palette.terracotta : e.visitors < 120 ? palette.green : palette.gold + "99"} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  </Card>
+);
+
+const LeadTimeChart = () => {
+  const cumulative = leadTimeData.reduce((acc, item, i) => {
+    const prev = i === 0 ? 0 : acc[i - 1].cum;
+    acc.push({ ...item, cum: prev + item.pct });
+    return acc;
+  }, []);
+  return (
+    <Card>
+      <SectionHeader number={5} title="How far ahead should I book?" subtitle="Distribution of when visitors actually purchase their tickets before the visit date." badge="Booking Lead" />
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, alignItems: "flex-end" }}>
+        {leadTimeData.map((d, i) => (
+          <div key={i} style={{ flex: 1, textAlign: "center" }}>
+            <div style={{
+              height: 100, display: "flex", alignItems: "flex-end", justifyContent: "center"
+            }}>
+              <div style={{
+                width: "75%",
+                height: `${d.pct * 4}px`,
+                background: d.range === "15–30 days" ? palette.terracotta
+                  : d.range === "Same day" ? palette.stone + "60"
+                  : palette.terracotta + "55",
+                borderRadius: "3px 3px 0 0", position: "relative"
+              }}>
+                {d.range === "15–30 days" && (
+                  <div style={{
+                    position: "absolute", top: -22, left: "50%", transform: "translateX(-50%)",
+                    fontSize: 9, color: palette.terracotta, fontWeight: 800, whiteSpace: "nowrap"
+                  }}>SWEET SPOT</div>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: palette.muted, marginTop: 4, lineHeight: 1.3 }}>{d.range}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: palette.ink }}>{d.pct}%</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <InsightPill emoji="📆" text="Median booking: ~18 days ahead. But summer peak slots go 45–60 days out." />
+        <InsightPill emoji="⚠️" text="Only 8% successfully book same-day. Don't risk it." />
+      </div>
+    </Card>
+  );
+};
+
+const WaitTimeChart = () => (
+  <Card>
+    <SectionHeader number={6} title="Queue times — with and without pre-booking" subtitle="Average wait at entry by ticket type. Peak season (Jun–Aug) figures shown." badge="Wait Times" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
+      {waitData.map((d) => (
+        <div key={d.type}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: palette.ink }}>{d.type}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: d.color }}>{d.wait} min</span>
+          </div>
+          <div style={{ background: palette.border, borderRadius: 4, height: 10, overflow: "hidden" }}>
+            <div style={{
+              width: `${(d.wait / 120) * 100}%`, height: "100%",
+              background: d.color, borderRadius: 4,
+              transition: "width 0.8s ease"
+            }} />
+          </div>
+        </div>
+      ))}
+    </div>
+    <div style={{ marginTop: 20, background: palette.highlight, borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 13, color: palette.ink, fontWeight: 600, marginBottom: 4 }}>The skip-the-line myth</div>
+      <div style={{ fontSize: 13, color: palette.muted, lineHeight: 1.6 }}>
+        Pre-booked tickets don't mean zero wait — there's still a mandatory security screening that takes 10–20 min. "Skip the line" means skipping the <em>ticket purchase</em> queue, not the entry queue.
+      </div>
+    </div>
+  </Card>
+);
+
+const DurationChart = () => (
+  <Card>
+    <SectionHeader number={7} title="How long should I plan for?" subtitle="Based on visitor reports and review data — what people actually spend, not what the brochure says." badge="Duration" />
+    <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+      {durationData.map((d, i) => (
+        <div key={i} style={{
+          flex: 1, minWidth: 90,
+          background: d.range === "60–90 min" ? palette.terracotta : palette.highlight,
+          border: `1.5px solid ${d.range === "60–90 min" ? palette.terracotta : palette.border}`,
+          borderRadius: 12, padding: "14px 12px", textAlign: "center"
+        }}>
+          <div style={{
+            fontFamily: "'Playfair Display', serif",
+            fontSize: 26, fontWeight: 700,
+            color: d.range === "60–90 min" ? "#fff" : palette.ink
+          }}>{d.pct}%</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: d.range === "60–90 min" ? "#fff" : palette.ink, marginTop: 2 }}>{d.range}</div>
+          <div style={{ fontSize: 11, color: d.range === "60–90 min" ? "rgba(255,255,255,0.8)" : palette.muted, marginTop: 2 }}>{d.label}</div>
+          {d.range === "60–90 min" && (
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#fff", marginTop: 4, letterSpacing: "0.08em" }}>MOST COMMON</div>
+          )}
+        </div>
+      ))}
+    </div>
+    <InsightPill emoji="⏱️" text="Plan 90 min. The gallery is compact but the Prisoners + Musical Instruments wing are often missed." />
+  </Card>
+);
+
+const AlsoBookedChart = () => (
+  <Card>
+    <SectionHeader number={8} title="What do visitors also book?" subtitle="Of people who visit Accademia, what else they book on the same Florence trip." badge="Co-bookings" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+      {alsoBookData.map((d, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20, width: 28 }}>{d.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: palette.ink }}>{d.venue}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: i === 0 ? palette.terracotta : palette.stone }}>{d.pct}%</span>
+            </div>
+            <div style={{ background: palette.border, borderRadius: 4, height: 8 }}>
+              <div style={{
+                width: `${d.pct}%`, height: "100%",
+                background: i === 0 ? palette.terracotta : i === 1 ? palette.gold : palette.stone + "80",
+                borderRadius: 4
+              }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div style={{ marginTop: 20, background: palette.highlight, borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 13, color: palette.ink, fontWeight: 600, marginBottom: 4 }}>The Classic Pairing</div>
+      <div style={{ fontSize: 13, color: palette.muted, lineHeight: 1.6 }}>
+        <strong>Accademia (morning) → Uffizi (afternoon)</strong> is the most common same-day combo. The Accademia takes 90 min, the Uffizi 3–4 hrs — do them in this order so you're fresh for David.
+      </div>
+    </div>
+  </Card>
+);
+
+export default function AccademiaInsights() {
+  return (
+    <div style={{
+      fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
+      background: palette.bg,
+      minHeight: "100vh",
+      padding: "0 0 60px 0"
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{
+        background: palette.ink,
+        padding: "48px 48px 40px",
+        marginBottom: 36
+      }}>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <Tag color={palette.terracottaLight}>Florence, Italy</Tag>
+            <span style={{ color: palette.muted, fontSize: 13 }}>·</span>
+            <span style={{ color: palette.muted, fontSize: 13 }}>Data-driven visitor guide</span>
+          </div>
+          <h1 style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            color: "#FAF7F2", fontSize: 40, fontWeight: 700,
+            margin: "0 0 10px 0", lineHeight: 1.15
+          }}>
+            Galleria dell'Accademia
+          </h1>
+          <p style={{ color: palette.stone, fontSize: 16, margin: 0, lineHeight: 1.6, maxWidth: 560 }}>
+            Everything you need to plan your visit — crowd patterns, booking windows, wait times and more — answered with data, not guesswork.
+          </p>
+          <div style={{ display: "flex", gap: 24, marginTop: 24, flexWrap: "wrap" }}>
+            {[
+              { label: "Annual visitors", value: "2.1M" },
+              { label: "Entry capacity", value: "200 at a time" },
+              { label: "Recommended visit", value: "60–90 min" },
+              { label: "Book ahead by", value: "2–4 weeks" },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: palette.terracottaLight }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: palette.muted, marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 24px" }}>
+        <MonthChart />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <DayChart />
+          <HourChart />
+        </div>
+        <VisitorVolumeChart />
+        <LeadTimeChart />
+        <WaitTimeChart />
+        <DurationChart />
+        <AlsoBookedChart />
+      </div>
+    </div>
+  );
+}
