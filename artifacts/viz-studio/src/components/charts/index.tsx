@@ -8,6 +8,11 @@ import { CompareZonesChart } from "./CompareZonesChart";
 import { DonutBreakdownChart } from "./DonutBreakdownChart";
 import { SeasonalCurveChart } from "./SeasonalCurveChart";
 import { TicketLadderChart } from "./TicketLadderChart";
+import { DailyPatternChart } from "./DailyPatternChart";
+import { TribuneDensityChart } from "./TribuneDensityChart";
+import { DurationProfilesChart } from "./DurationProfilesChart";
+import { EntranceLanesChart } from "./EntranceLanesChart";
+import { CoBookingsChart } from "./CoBookingsChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -41,6 +46,16 @@ export function ChartRenderer({ spec, header, preserve }: Props) {
       return <SeasonalCurveChart spec={spec} context={context} />;
     case "ticket_ladder":
       return <TicketLadderChart spec={spec} context={context} />;
+    case "daily_pattern":
+      return <DailyPatternChart spec={spec} context={context} />;
+    case "tribune_density":
+      return <TribuneDensityChart spec={spec} context={context} />;
+    case "duration_profiles":
+      return <DurationProfilesChart spec={spec} context={context} />;
+    case "entrance_lanes":
+      return <EntranceLanesChart spec={spec} context={context} />;
+    case "co_bookings":
+      return <CoBookingsChart spec={spec} context={context} />;
     default: {
       const exhaustive: never = spec;
       void exhaustive;
@@ -69,4 +84,9 @@ export const CHART_TYPE_META: Record<
   donut_breakdown: { label: "Breakdown", emoji: "🍩" },
   seasonal_curve: { label: "Seasonal curve", emoji: "🌤" },
   ticket_ladder: { label: "Ticket tiers", emoji: "🎫" },
+  daily_pattern: { label: "Daily pattern", emoji: "⏰" },
+  tribune_density: { label: "Tribune density", emoji: "🌊" },
+  duration_profiles: { label: "Visit duration", emoji: "⏱" },
+  entrance_lanes: { label: "Entrance lanes", emoji: "🚪" },
+  co_bookings: { label: "Pairs with", emoji: "🔗" },
 };

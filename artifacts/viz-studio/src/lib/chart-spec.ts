@@ -175,6 +175,117 @@ export interface TicketLadderSpec {
   }[];
 }
 
+/** Smooth daily-pattern curve with Best/Peak/2nd best zone backgrounds. */
+export interface DailyPatternSpec {
+  type: "daily_pattern";
+  /** Time-of-day points. `time` is "HH:MM" 24h. `crowd` is 0–10. */
+  points: { time: string; crowd: number }[];
+  /** Background zones, in display order. Edges given in "HH:MM" 24h. */
+  zones: {
+    label: string;
+    tone: "best" | "peak" | "second_best";
+    start: string;
+    end: string;
+  }[];
+  /** Optional caption pill at the bottom (e.g., "Opens 8:15am · Last entry 6:20pm"). */
+  caption?: { opens?: string; last_entry?: string };
+}
+
+/** Annotated peak-season crowd density line (e.g. "Tribune only"). */
+export interface TribuneDensitySpec {
+  type: "tribune_density";
+  /** Which area / scope is this measuring. Shown as small caption. */
+  scope: string;
+  /** Y-axis label, e.g. "Crowd density in Tribune". */
+  y_label: string;
+  /** Data points, "HH:MM" 24h, 0–10 density. */
+  points: { time: string; density: number }[];
+  /** Three colored zone backgrounds spanning time ranges. */
+  zones: {
+    label: string;
+    tone: "quiet" | "packed" | "second_window";
+    start: string;
+    end: string;
+  }[];
+  /** Optional callout pill anchored at a specific time/value. */
+  arrow_callout?: {
+    label: string;
+    /** "HH:MM" 24h — anchors the arrow tip to this point. */
+    at: string;
+    /** Optional secondary helper text near the start of the zone. */
+    helper?: string;
+  };
+  /** Bottom row of context pills. */
+  context_pills: {
+    icon: "calendar" | "people" | "people_full" | "sun" | "clock";
+    title: string;
+    subtitle: string;
+    tone: "candy" | "okay" | "purps";
+  }[];
+}
+
+/** 5-row visitor-profile horizontal time bars with persona icons. */
+export interface DurationProfilesSpec {
+  type: "duration_profiles";
+  /** Headline value, e.g. "Most visitors stay 60–90 minutes". */
+  headline: string;
+  /** Tick stops on the time scale (minutes). */
+  scale_min: { label: string; minutes: number }[];
+  profiles: {
+    name: string;
+    icon: "stopwatch" | "head" | "column" | "lyre" | "bust" | "bench";
+    /** Inclusive range in minutes (max may equal min for a single value). */
+    range_min: number;
+    range_max: number;
+    note?: string;
+    /** Highlight as the recommended/most-common profile. */
+    highlight?: boolean;
+  }[];
+  /** Optional candy-pill tip at the bottom. */
+  tip?: string;
+}
+
+/** 4-lane entrance comparison shown as colored dot grids. */
+export interface EntranceLanesSpec {
+  type: "entrance_lanes";
+  /** Title strip, e.g. "Accademia Gallery entrance". */
+  venue_label: string;
+  /** Sub-strip caption, e.g. "All four lanes share the same doorway". */
+  shared_caption: string;
+  lanes: {
+    name: string;
+    /** Tag pill text, e.g. "10–20 min", "Variable", "Priority". */
+    wait_label: string;
+    tone: "candy" | "purps" | "okay" | "slate";
+    /** Number of dots to render — visualises relative wait length. */
+    dots: number;
+    /** Whether the box should have a dashed (vs solid) border. */
+    dashed?: boolean;
+  }[];
+}
+
+/** Ranked horizontal "what visitors pair with" bars. */
+export interface CoBookingsSpec {
+  type: "co_bookings";
+  items: {
+    name: string;
+    /** % of visitors who also book this. */
+    share: number;
+    /** Optional small badge under the name, e.g. "Top pairing". */
+    badge?: string;
+    /** Lucide icon name to draw inside the rank circle. */
+    icon:
+      | "landmark"
+      | "church"
+      | "castle"
+      | "building"
+      | "trees"
+      | "gem";
+  }[];
+  /** How many top items to highlight in solid Purps (rest stay pale). */
+  highlight_top?: number;
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -184,7 +295,12 @@ export type ChartSpec =
   | CompareZonesSpec
   | DonutBreakdownSpec
   | SeasonalCurveSpec
-  | TicketLadderSpec;
+  | TicketLadderSpec
+  | DailyPatternSpec
+  | TribuneDensitySpec
+  | DurationProfilesSpec
+  | EntranceLanesSpec
+  | CoBookingsSpec;
 
 export interface ChartHeader {
   title: string;

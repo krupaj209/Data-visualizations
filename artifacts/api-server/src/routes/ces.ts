@@ -183,10 +183,25 @@ router.get("/ces/:slug", async (req, res): Promise<void> => {
   });
 });
 
+/**
+ * CEs whose chart sets are hand-curated and must NOT be replaced or removed
+ * by the AI-generation pipeline. The Regenerate button on the UI should also
+ * be hidden for these, but the route guard is the source of truth.
+ */
+const LOCKED_CE_SLUGS = new Set(["galleria-dellaccademia"]);
+
 router.delete("/ces/:slug", async (req, res): Promise<void> => {
   const params = GetCeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (LOCKED_CE_SLUGS.has(params.data.slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and cannot be deleted.",
+    });
     return;
   }
 
@@ -206,6 +221,14 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
   const params = GetCeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (LOCKED_CE_SLUGS.has(params.data.slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and cannot be regenerated.",
+    });
     return;
   }
 

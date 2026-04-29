@@ -25,6 +25,8 @@ import { toSentenceCase } from "@/lib/text";
 
 const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
+const LOCKED_SLUGS = new Set(["galleria-dellaccademia"]);
+
 export default function CeDetail() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
@@ -60,6 +62,7 @@ export default function CeDetail() {
   }
 
   const { ce, charts } = data;
+  const isLocked = LOCKED_SLUGS.has(ce.slug);
 
   return (
     <div className="min-h-screen" style={{ background: BRAND.bgShell }}>
@@ -126,41 +129,62 @@ export default function CeDetail() {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              if (
-                !confirm(
-                  "Replace these charts with a freshly generated set? The current ones will be discarded.",
+          {isLocked ? (
+            <span
+              title="This deck is hand-curated and locked from regeneration."
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: `1px solid ${BRAND.purps}`,
+                padding: "8px 14px",
+                borderRadius: 12,
+                fontWeight: 800,
+                fontSize: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                letterSpacing: "0.02em",
+              }}
+            >
+              ✦ Curated deck
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  !confirm(
+                    "Replace these charts with a freshly generated set? The current ones will be discarded.",
+                  )
                 )
-              )
-                return;
-              await regenMut.mutateAsync({ slug });
-              qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
-              qc.invalidateQueries({ queryKey: getListCesQueryKey() });
-            }}
-            disabled={regenMut.isPending}
-            style={{
-              background: regenMut.isPending ? BRAND.slate100 : "white",
-              color: BRAND.slate950,
-              border: `1px solid ${BRAND.slate200}`,
-              padding: "8px 14px",
-              borderRadius: 12,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: regenMut.isPending ? "wait" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {regenMut.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
-            Regenerate
-          </button>
+                  return;
+                await regenMut.mutateAsync({ slug });
+                qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+                qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+              }}
+              disabled={regenMut.isPending}
+              style={{
+                background: regenMut.isPending ? BRAND.slate100 : "white",
+                color: BRAND.slate950,
+                border: `1px solid ${BRAND.slate200}`,
+                padding: "8px 14px",
+                borderRadius: 12,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: regenMut.isPending ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {regenMut.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Regenerate
+            </button>
+          )}
         </div>
       </header>
 
