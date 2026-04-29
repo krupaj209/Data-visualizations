@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import {
+  ACCENT_FG,
+  ACCENT_SOFT,
   BRAND,
   CHART_TOKENS,
   LEVEL_FILL,
@@ -26,9 +28,9 @@ const DAY_NOTE_TONE: Record<
   "closed" | "free" | "info",
   { bg: string; fg: string }
 > = {
-  closed: { bg: BRAND.slate100 as string, fg: BRAND.slate700 as string },
-  free: { bg: BRAND.bgMint as string, fg: "#0E8F4E" },
-  info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
+  closed: { bg: ACCENT_SOFT.slate, fg: ACCENT_FG.slate },
+  free: { bg: ACCENT_SOFT.okay, fg: ACCENT_FG.okay },
+  info: { bg: ACCENT_SOFT.purps, fg: ACCENT_FG.purps },
 };
 
 const PILL_HEADROOM = 26;
@@ -139,8 +141,13 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                   <div
                     style={{
                       backgroundColor:
-                        d.level === "busiest" ? BRAND.candySoft : BRAND.bgMint,
-                      color: d.level === "busiest" ? BRAND.candy : "#0E8F4E",
+                        d.level === "busiest"
+                          ? ACCENT_SOFT.candy
+                          : ACCENT_SOFT.okay,
+                      color:
+                        d.level === "busiest"
+                          ? ACCENT_FG.candy
+                          : ACCENT_FG.okay,
                       padding: `${CHART_TOKENS.pill.paddingY}px ${CHART_TOKENS.pill.paddingX}px`,
                       borderRadius: CHART_TOKENS.pill.radius,
                       fontSize: CHART_TOKENS.pill.fontSize,
@@ -280,10 +287,10 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                 style={{
                   color:
                     delta > 0
-                      ? BRAND.candy
+                      ? ACCENT_FG.candy
                       : delta < 0
-                        ? "#0E8F4E"
-                        : BRAND.slate700,
+                        ? ACCENT_FG.okay
+                        : ACCENT_FG.slate,
                   fontWeight: 800,
                   fontSize: "clamp(10px, 1.1cqi, 12px)",
                 }}

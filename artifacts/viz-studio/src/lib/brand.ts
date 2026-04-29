@@ -8,6 +8,9 @@ export const BRAND = {
   holaSoft: "#FFF1D9",
   joyMustard: "#FFBC00",
   okayGreen: "#15D876",
+  /** Deep green ink for text/labels on the bgMint / okayGreen soft surfaces.
+   *  BRAND.okayGreen itself is too bright to read as type. */
+  okayInk: "#0E8F4E",
   subtleGreen: "#CDF280",
   bgMint: "#D2FDEB",
   bgSage: "#DBF9DB",
@@ -43,6 +46,130 @@ export const ACCENT_SOFT: Record<AccentKey, string> = {
   okay: BRAND.bgMint,
   slate: BRAND.slate100,
 };
+
+/**
+ * Readable foreground color for each accent. Pair with `ACCENT_SOFT` to
+ * render the "soft pill, vivid label" pattern used by callout chips
+ * (Busiest, Quietest, Peak, Best balance, etc.) — this *is* the centralized
+ * spelling of "soft default + vivid only on callout" for type-on-bg.
+ *
+ * The okay variant uses BRAND.okayInk (deep green) rather than
+ * BRAND.okayGreen, which is too bright to read as type on bgMint.
+ */
+export const ACCENT_FG: Record<AccentKey, string> = {
+  purps: BRAND.purps,
+  candy: BRAND.candy,
+  hola: BRAND.hola,
+  okay: BRAND.okayInk,
+  slate: BRAND.slate700,
+};
+
+/**
+ * Lane-style accent bundle for the Entrance lanes chart. Each accent
+ * coordinates the lane's color bar, dot fill, and pill (bg + fg). The
+ * "loud" accents (candy / purps) keep the saturated brand color for the
+ * bar/dot — those are the *highlighted* lanes. The "soft" accents
+ * (okay / slate) drop to a muted companion (subtleGreen / slate300) so
+ * supporting lanes recede, matching the chart family's "soft default,
+ * vivid only on callout" rhythm.
+ */
+export const ACCENT_LANE: Record<
+  AccentKey,
+  { dot: string; bar: string; pillBg: string; pillFg: string }
+> = {
+  purps: {
+    dot: BRAND.purps,
+    bar: BRAND.purps,
+    pillBg: BRAND.purpsSoft,
+    pillFg: BRAND.purps,
+  },
+  candy: {
+    dot: BRAND.candy,
+    bar: BRAND.candy,
+    pillBg: BRAND.candySoft,
+    pillFg: BRAND.candy,
+  },
+  hola: {
+    dot: BRAND.hola,
+    bar: BRAND.hola,
+    pillBg: BRAND.holaSoft,
+    pillFg: BRAND.hola,
+  },
+  okay: {
+    dot: BRAND.subtleGreen,
+    bar: BRAND.subtleGreen,
+    pillBg: BRAND.bgMint,
+    pillFg: BRAND.okayInk,
+  },
+  slate: {
+    dot: BRAND.slate300,
+    bar: BRAND.slate300,
+    pillBg: BRAND.slate100,
+    pillFg: BRAND.slate700,
+  },
+};
+
+/**
+ * Background-band tone families for line/curve charts (Tribune density,
+ * Daily pattern). These wash the plot area into "calm" supporting zones
+ * and the single "loud" peak zone, expressing the same soft-default
+ * rhythm the bar charts get from `ACCENT_SOFT` + `ACCENT_FG`.
+ *
+ *  - bg: resting wash (very low alpha so the line still dominates)
+ *  - bgActive: hover/locked wash
+ *  - label: zone label text color
+ *  - pillBg / pillFg: chip colors for the band's label pill
+ */
+export type BandToneKey = "calm" | "loud";
+
+export const BAND_TONE: Record<
+  BandToneKey,
+  {
+    bg: string;
+    bgActive: string;
+    label: string;
+    pillBg: string;
+    pillFg: string;
+  }
+> = {
+  calm: {
+    bg: "rgba(21, 216, 118, 0.05)",
+    bgActive: "rgba(21, 216, 118, 0.20)",
+    label: BRAND.okayInk,
+    pillBg: BRAND.bgMint,
+    pillFg: BRAND.okayInk,
+  },
+  loud: {
+    bg: "rgba(255, 0, 118, 0.12)",
+    bgActive: "rgba(255, 0, 118, 0.24)",
+    label: BRAND.candy,
+    pillBg: BRAND.candySoft,
+    pillFg: BRAND.candy,
+  },
+};
+
+/**
+ * Hollow-vs-filled dot pattern shared by the line/curve charts (Daily
+ * pattern, Tribune density). The default dot is a hollow ring in the
+ * brand accent; only dots that wear an explicit callout flip to a
+ * saturated fill with a thin white separator border.
+ *
+ * Returns just `background` + `border` so callers can stack their own
+ * `boxShadow` on top (hover halos, focus rings). Charts that need a
+ * different border treatment on the callout state (e.g. Tribune density
+ * keeps an accent-colored border + white boxShadow ring) should
+ * override `border` after spreading the result.
+ */
+export type DotRole = "default" | "callout";
+
+export function getDotStyle(
+  role: DotRole,
+  accent: string = BRAND.purps,
+): { background: string; border: string } {
+  return role === "callout"
+    ? { background: accent, border: "2px solid white" }
+    : { background: "white", border: `2px solid ${accent}` };
+}
 
 export type LevelKey =
   | "closed"

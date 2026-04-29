@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND, CHART_TOKENS } from "@/lib/brand";
+import {
+  BAND_TONE,
+  BRAND,
+  CHART_TOKENS,
+  getDotStyle,
+  type BandToneKey,
+} from "@/lib/brand";
 import { type DailyPatternSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -11,28 +17,17 @@ interface Props {
   compact?: boolean;
 }
 
-// Soft default, vivid only on the explicitly labeled extreme. The "Peak"
-// band is the loud callout; "Best" / "2nd best" recede to a calmer wash so
-// the chart matches the rhythm of the Weekly pattern + Seasonal curve.
-const ZONE_TONES: Record<
+// Map this chart's spec-level zone tones onto the shared BAND_TONE family
+// (`calm` = soft green wash, `loud` = saturated candy wash) so the rhythm
+// stays in sync with the Tribune density chart. The "Peak" band is the
+// only loud callout; "Best" / "2nd best" recede to calm.
+const ZONE_BAND: Record<
   DailyPatternSpec["zones"][number]["tone"],
-  { bg: string; pillBg: string; pillFg: string }
+  BandToneKey
 > = {
-  best: {
-    bg: "rgba(21, 216, 118, 0.05)",
-    pillBg: BRAND.bgMint,
-    pillFg: "#0E8F4E",
-  },
-  peak: {
-    bg: "rgba(255, 0, 118, 0.12)",
-    pillBg: BRAND.candySoft,
-    pillFg: BRAND.candy,
-  },
-  second_best: {
-    bg: "rgba(21, 216, 118, 0.05)",
-    pillBg: BRAND.bgMint,
-    pillFg: "#0E8F4E",
-  },
+  best: "calm",
+  peak: "loud",
+  second_best: "calm",
 };
 
 function toMin(t: string) {
@@ -139,7 +134,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
             {zones.map((z, i) => {
               const left = xPct(toMin(z.start));
               const right = xPct(toMin(z.end));
-              const tone = ZONE_TONES[z.tone];
+              const tone = BAND_TONE[ZONE_BAND[z.tone]];
               return (
                 <div
                   key={i}
@@ -266,16 +261,14 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                     animate={{ scale: 1 }}
                     transition={{ delay: 1.0 + i * 0.05, duration: 0.3 }}
                     style={{
+                      // Hollow ring by default; only the dots inside the
+                      // explicitly-labeled "Peak" zone flip to the saturated
+                      // brand fill — the centralized "soft default, vivid
+                      // on callout" dot rhythm.
+                      ...getDotStyle(isPeak ? "callout" : "default"),
                       width: CHART_TOKENS.dot.diameter,
                       height: CHART_TOKENS.dot.diameter,
                       borderRadius: "50%",
-                      // Hollow ring by default; only the dots inside the
-                      // explicitly-labeled "Peak" zone get the saturated
-                      // brand fill, matching the chart's color rhythm.
-                      background: isPeak ? BRAND.purps : "white",
-                      border: isPeak
-                        ? "2px solid white"
-                        : `2px solid ${BRAND.purps}`,
                       boxShadow: isHovered
                         ? `0 0 0 4px ${BRAND.purpsSoft}`
                         : "none",

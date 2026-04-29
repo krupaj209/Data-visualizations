@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND } from "@/lib/brand";
+import { ACCENT_LANE, BRAND } from "@/lib/brand";
 import { type EntranceLanesSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -11,41 +11,12 @@ interface Props {
   compact?: boolean;
 }
 
-// Soft default, vivid only on the highlighted lane — same rhythm as the
-// Weekly pattern + Seasonal curve charts. The two "loud" tones (candy /
-// purps) signal the highlighted "Reserved" / "Walk-up" lanes and keep
-// their saturated brand color; "okay" / "slate" are supporting lanes and
-// drop to a calmer companion tint. The pill foreground (`pillFg`) stays
-// readable enough to anchor the locked-state ring on every lane.
-const TONES: Record<
-  EntranceLanesSpec["lanes"][number]["tone"],
-  { dot: string; pillBg: string; pillFg: string; bar: string }
-> = {
-  candy: {
-    dot: BRAND.candy,
-    pillBg: BRAND.candySoft,
-    pillFg: BRAND.candy,
-    bar: BRAND.candy,
-  },
-  purps: {
-    dot: BRAND.purps,
-    pillBg: BRAND.purpsSoft,
-    pillFg: BRAND.purps,
-    bar: BRAND.purps,
-  },
-  okay: {
-    dot: BRAND.subtleGreen,
-    pillBg: BRAND.bgMint,
-    pillFg: "#0E8F4E",
-    bar: BRAND.subtleGreen,
-  },
-  slate: {
-    dot: BRAND.slate300,
-    pillBg: BRAND.slate100,
-    pillFg: BRAND.slate700,
-    bar: BRAND.slate300,
-  },
-};
+// Lane tones come from the centralized `ACCENT_LANE` bundle. The two
+// "loud" tones (candy / purps) signal the highlighted Reserved / Walk-up
+// lanes and keep their saturated brand color; "okay" / "slate" are
+// supporting lanes and drop to a calmer companion tint — the same
+// "soft default, vivid only on callout" rhythm the rest of the deck uses.
+const TONES = ACCENT_LANE;
 
 function EntranceIllustration({ height = 44 }: { height?: number }) {
   const width = Math.round((height * 96) / 64);

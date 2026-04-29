@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import {
+  ACCENT_FG,
+  ACCENT_SOFT,
   BRAND,
   SEASON_DOT,
   SEASON_FILL,
@@ -53,9 +55,9 @@ const CHIP_TONE: Record<
   "closed" | "free" | "info",
   { bg: string; fg: string }
 > = {
-  closed: { bg: BRAND.slate100 as string, fg: BRAND.slate700 as string },
-  free: { bg: BRAND.bgMint as string, fg: "#0E8F4E" },
-  info: { bg: BRAND.purpsSoft as string, fg: BRAND.purps as string },
+  closed: { bg: ACCENT_SOFT.slate, fg: ACCENT_FG.slate },
+  free: { bg: ACCENT_SOFT.okay, fg: ACCENT_FG.okay },
+  info: { bg: ACCENT_SOFT.purps, fg: ACCENT_FG.purps },
 };
 
 export function SeasonalCurveChart({ spec, context, compact }: Props) {
@@ -188,21 +190,21 @@ export function SeasonalCurveChart({ spec, context, compact }: Props) {
             const heightPct = Math.max((value / maxValue) * 100, 4);
 
             let crowdLabel: string | null = null;
-            let crowdFg: string = BRAND.purps;
-            let crowdBg: string = BRAND.purpsSoft;
+            let crowdFg: string = ACCENT_FG.purps;
+            let crowdBg: string = ACCENT_SOFT.purps;
             if (metric === "crowd") {
               if (i === peakIdx) {
                 crowdLabel = "Peak";
-                crowdFg = BRAND.candy;
-                crowdBg = BRAND.candySoft;
+                crowdFg = ACCENT_FG.candy;
+                crowdBg = ACCENT_SOFT.candy;
               } else if (i === quietestIdx) {
                 crowdLabel = "Quietest";
-                crowdFg = "#0E8F4E";
-                crowdBg = BRAND.bgMint;
+                crowdFg = ACCENT_FG.okay;
+                crowdBg = ACCENT_SOFT.okay;
               } else if (i === balanceIdx) {
                 crowdLabel = "Best balance";
-                crowdFg = BRAND.purps;
-                crowdBg = BRAND.purpsSoft;
+                crowdFg = ACCENT_FG.purps;
+                crowdBg = ACCENT_SOFT.purps;
               }
             }
 
