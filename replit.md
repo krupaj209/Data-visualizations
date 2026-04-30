@@ -11,7 +11,6 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/viz-studio` (web) — Main app: browse/create CEs, view chart library, copy iframe URLs. Embed view at `/studio/embed/:chartId` fills any iframe size (responsive, container-query–driven) with a 400px height floor.
 - `artifacts/api-server` (api) — Express API. POSTs to Gemini for chart generation, persists CEs + charts in Postgres, serves via OpenAPI/Orval-generated hooks.
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
-- `artifacts/weekly-pattern-widget` (web) — Standalone earlier widget (deployed; do not delete).
 
 ### Curated / locked CEs
 
