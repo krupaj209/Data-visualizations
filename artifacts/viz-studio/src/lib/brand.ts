@@ -151,23 +151,31 @@ export const BAND_TONE: Record<
  * Hollow-vs-filled dot pattern shared by the line/curve charts (Daily
  * pattern, Tribune density). The default dot is a hollow ring in the
  * brand accent; only dots that wear an explicit callout flip to a
- * saturated fill with a thin white separator border.
+ * saturated fill.
+ *
+ * The callout's separator border defaults to white (`"white"`), which
+ * works when the callout dot sits flush on the chart background. Pass
+ * `{ calloutBorder: "accent" }` for charts that wrap the callout dot in
+ * a *white* `boxShadow` ring (e.g. Tribune density) — keeping the
+ * border in the brand accent then lets that white ring read as a crisp
+ * separator instead of disappearing into a fill seam.
  *
  * Returns just `background` + `border` so callers can stack their own
- * `boxShadow` on top (hover halos, focus rings). Charts that need a
- * different border treatment on the callout state (e.g. Tribune density
- * keeps an accent-colored border + white boxShadow ring) should
- * override `border` after spreading the result.
+ * `boxShadow` on top (hover halos, focus rings).
  */
 export type DotRole = "default" | "callout";
 
 export function getDotStyle(
   role: DotRole,
   accent: string = BRAND.purps,
+  options: { calloutBorder?: "white" | "accent" } = {},
 ): { background: string; border: string } {
-  return role === "callout"
-    ? { background: accent, border: "2px solid white" }
-    : { background: "white", border: `2px solid ${accent}` };
+  if (role === "callout") {
+    const borderColor =
+      options.calloutBorder === "accent" ? accent : "white";
+    return { background: accent, border: `2px solid ${borderColor}` };
+  }
+  return { background: "white", border: `2px solid ${accent}` };
 }
 
 export type LevelKey =

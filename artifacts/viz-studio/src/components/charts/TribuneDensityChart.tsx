@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { BRAND } from "@/lib/brand";
+import { BRAND, getDotStyle } from "@/lib/brand";
 import {
   CALLOUT_PILL,
   CHART_DOT,
@@ -522,9 +522,14 @@ export function TribuneDensityChart({
                       // Hollow ring by default, saturated fill only on the
                       // callout/focused points — same "soft default, vivid
                       // on callout" rhythm as the Weekly pattern bars.
-                      background:
-                        isFocusAt || isCallout ? BRAND.purps : "white",
-                      border: `2px solid ${BRAND.purps}`,
+                      // `calloutBorder: "accent"` keeps the border in the
+                      // brand accent so the white boxShadow ring below reads
+                      // as a crisp separator instead of a fill seam.
+                      ...getDotStyle(
+                        isFocusAt || isCallout ? "callout" : "default",
+                        BRAND.purps,
+                        { calloutBorder: "accent" },
+                      ),
                       boxShadow: isFocusAt
                         ? `0 0 0 4px ${BRAND.purps}40`
                         : isCallout
