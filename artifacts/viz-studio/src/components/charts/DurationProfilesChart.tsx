@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, Timer } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
-import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
-import { CalloutPill, ChartTooltip } from "@/components/charts/system";
+import { CHART_TYPE } from "@/lib/chart-system";
 import { type DurationProfilesSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -24,13 +22,6 @@ const ICONS: Record<DurationProfilesSpec["profiles"][number]["icon"], string> = 
   bench: "M3 12h18M5 12v8M19 12v8M3 12l3-4h12l3 4",
 };
 
-function fmtMin(m: number) {
-  if (m < 60) return `${m} min`;
-  if (m === 60) return "1 hr";
-  if (m % 60 === 0) return `${m / 60} hr`;
-  return `${Math.round(m / 60)} hr`;
-}
-
 function fmtRange(min: number, max: number) {
   if (min === max) return `${min} min`;
   if (max < 60) return `${min}–${max} min`;
@@ -48,19 +39,6 @@ export function DurationProfilesChart({
 }: Props) {
   const { headline, scale_min, profiles, tip } = spec;
   const maxScale = Math.max(...scale_min.map((s) => s.minutes), 1);
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [lockedIdx, setLockedIdx] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (lockedIdx === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLockedIdx(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [lockedIdx]);
-
-  const locked = lockedIdx !== null ? profiles[lockedIdx] : null;
 
   return (
     <ChartCard
@@ -98,192 +76,103 @@ export function DurationProfilesChart({
           </div>
         )}
 
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div
-            className="flex flex-col"
-            style={{
-              gap: "clamp(6px, 0.9cqi, 12px)",
-              flex: 1,
-            }}
-          >
-            {profiles.map((p, i) => {
-              const isHi = !!p.highlight;
-              const widthPct = Math.min(
-                100,
-                Math.max((p.range_max / maxScale) * 100, 6),
-              );
-              const fill = isHi ? BRAND.purps : BRAND.purpsSoft;
-              const labelColor = isHi ? "white" : BRAND.purps;
-              const isHovered = hovered === i;
-              const isLocked = lockedIdx === i;
-              const dim = lockedIdx !== null && !isLocked;
-              return (
-                <ProfileRow
-                  key={i}
-                  index={i}
-                  profile={p}
-                  fill={fill}
-                  labelColor={labelColor}
-                  widthPct={widthPct}
-                  isHi={isHi}
-                  isHovered={isHovered}
-                  isLocked={isLocked}
-                  dim={dim}
-                  onEnter={() => setHovered(i)}
-                  onLeave={() => setHovered(null)}
-                  onToggle={() =>
-                    setLockedIdx((prev) => (prev === i ? null : i))
-                  }
-                />
-              );
-            })}
-          </div>
-
-          {!compact && (
-            <div
-              className="grid mt-2"
-              style={{
-                gridTemplateColumns: "44px minmax(0, 110px) 1fr",
-                columnGap: 12,
-              }}
-            >
-              <div />
-              <div />
-              <div className="relative" style={{ height: 22 }}>
-                <div
-                  className="absolute inset-x-0"
-                  style={{
-                    top: 6,
-                    height: 1,
-                    background: BRAND.slate200,
-                  }}
-                />
-                {scale_min.map((s, i) => {
-                  const left = (s.minutes / maxScale) * 100;
-                  return (
-                    <div
-                      key={i}
-                      className="absolute"
-                      style={{
-                        left: `${left}%`,
-                        top: 0,
-                        transform: "translateX(-50%)",
-                        textAlign: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          border: `1.5px solid ${BRAND.slate300}`,
-                          background: "white",
-                          margin: "0 auto",
-                        }}
-                      />
-                      <div
-                        style={{
-                          marginTop: 3,
-                          color: CHART_TYPE.axisTick.color,
-                          fontSize: CHART_TYPE.axisTick.fontSize,
-                          fontWeight: CHART_TYPE.axisTick.fontWeight,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {s.label}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        <div
+          className="flex flex-col"
+          style={{
+            gap: "clamp(6px, 0.9cqi, 12px)",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {profiles.map((p, i) => {
+            const isHi = !!p.highlight;
+            const widthPct = Math.min(
+              100,
+              Math.max((p.range_max / maxScale) * 100, 6),
+            );
+            const fill = isHi ? BRAND.purps : BRAND.purpsSoft;
+            const labelColor = isHi ? "white" : BRAND.purps;
+            return (
+              <ProfileRow
+                key={i}
+                index={i}
+                profile={p}
+                fill={fill}
+                labelColor={labelColor}
+                widthPct={widthPct}
+                isHi={isHi}
+              />
+            );
+          })}
         </div>
 
-        {!compact && locked && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            style={{ overflow: "hidden", marginTop: 10 }}
-            role="region"
-            aria-label={`${locked.name} profile detail`}
+        {!compact && (
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: "44px minmax(0, 110px) 1fr",
+              columnGap: 12,
+              marginTop: 8,
+              flexShrink: 0,
+            }}
           >
-            <div
-              style={{
-                padding: "10px 12px",
-                background: BRAND.purpsSoft,
-                borderRadius: 10,
-                border: `1px solid ${BRAND.purps}25`,
-              }}
-            >
+            <div />
+            <div />
+            <div className="relative" style={{ height: 28 }}>
               <div
+                className="absolute inset-x-0"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  marginBottom: 4,
+                  top: 6,
+                  height: 1,
+                  background: BRAND.slate200,
                 }}
-              >
-                <div
-                  style={{
-                    color: BRAND.purps,
-                    fontWeight: 800,
-                    fontSize: "clamp(12px, 1.35cqi, 14px)",
-                  }}
-                >
-                  {locked.name} · {fmtRange(locked.range_min, locked.range_max)}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLockedIdx(null)}
-                  aria-label="Close detail"
-                  style={{
-                    background: "white",
-                    color: BRAND.purps,
-                    border: `1px solid ${BRAND.purps}25`,
-                    padding: "2px 9px",
-                    borderRadius: 999,
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    outline: "none",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-              {locked.description && (
-                <div
-                  style={{
-                    color: BRAND.slate900,
-                    fontSize: "clamp(10px, 1.1cqi, 12px)",
-                    fontWeight: 600,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  {locked.description}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {locked.skips && (
-                  <CalloutPill bg="white" fg={BRAND.slate700}>
-                    Skips: {locked.skips}
-                  </CalloutPill>
-                )}
-                {locked.lane && (
-                  <CalloutPill bg={BRAND.purps} fg="white">
-                    Lane: {locked.lane}
-                  </CalloutPill>
-                )}
-              </div>
+              />
+              {scale_min.map((s, i) => {
+                const left = (s.minutes / maxScale) * 100;
+                return (
+                  <div
+                    key={i}
+                    className="absolute"
+                    style={{
+                      left: `${left}%`,
+                      top: 0,
+                      transform: "translateX(-50%)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        border: `1.5px solid ${BRAND.slate300}`,
+                        background: "white",
+                        margin: "0 auto",
+                      }}
+                    />
+                    <div
+                      style={{
+                        marginTop: 4,
+                        color: CHART_TYPE.axisTick.color,
+                        fontSize: CHART_TYPE.axisTick.fontSize,
+                        fontWeight: CHART_TYPE.axisTick.fontWeight,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {s.label}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {!compact && tip && !locked && (
-          <div className="flex items-center gap-2 mt-3">
+        {!compact && tip && (
+          <div
+            className="flex items-center gap-2"
+            style={{ marginTop: 16, flexShrink: 0 }}
+          >
             <span
               className="flex items-center justify-center shrink-0"
               style={{ color: BRAND.candy }}
@@ -316,12 +205,6 @@ function ProfileRow({
   labelColor,
   widthPct,
   isHi,
-  isHovered,
-  isLocked,
-  dim,
-  onEnter,
-  onLeave,
-  onToggle,
 }: {
   index: number;
   profile: DurationProfilesSpec["profiles"][number];
@@ -329,49 +212,14 @@ function ProfileRow({
   labelColor: string;
   widthPct: number;
   isHi: boolean;
-  isHovered: boolean;
-  isLocked: boolean;
-  dim: boolean;
-  onEnter: () => void;
-  onLeave: () => void;
-  onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-      onFocus={onEnter}
-      onBlur={onLeave}
-      aria-label={`Toggle ${profile.name} detail (${fmtRange(profile.range_min, profile.range_max)})`}
-      aria-pressed={isLocked}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onToggle();
-        }
-      }}
+    <div
       style={{
         display: "grid",
         gridTemplateColumns: "44px minmax(0, 110px) 1fr",
         columnGap: 12,
         alignItems: "center",
-        background: "transparent",
-        border: "none",
-        padding: 4,
-        margin: -4,
-        cursor: "pointer",
-        textAlign: "left",
-        opacity: dim ? 0.4 : 1,
-        transition: "opacity .2s ease",
-        outline: "none",
-        borderRadius: 10,
-        boxShadow: isLocked
-          ? `0 0 0 2px ${BRAND.purps}`
-          : isHovered
-            ? `0 0 0 2px ${BRAND.purps}33`
-            : "none",
       }}
     >
       <div className="flex items-center justify-center">
@@ -400,11 +248,7 @@ function ProfileRow({
       <div className="min-w-0">
         <div
           style={{
-            color: isLocked
-              ? BRAND.purps
-              : isHi
-                ? BRAND.purps
-                : BRAND.slate900,
+            color: isHi ? BRAND.purps : BRAND.slate900,
             fontWeight: 800,
             fontSize: "clamp(11px, 1.3cqi, 14px)",
             lineHeight: 1.15,
@@ -456,16 +300,7 @@ function ProfileRow({
             {fmtRange(profile.range_min, profile.range_max)}
           </span>
         </motion.div>
-        {isHovered && !isLocked && (
-          <ChartTooltip
-            anchorXPct={widthPct / 2}
-            placement="above"
-            offset={6}
-          >
-            {profile.name} · {fmtMin(profile.range_max)}
-          </ChartTooltip>
-        )}
       </div>
-    </button>
+    </div>
   );
 }
