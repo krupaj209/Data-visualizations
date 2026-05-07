@@ -17,6 +17,9 @@
     },
     {
       "path": "./lib/curated-seeds"
+    },
+    {
+      "path": "./lib/question-bank"
     }
   ]
 }

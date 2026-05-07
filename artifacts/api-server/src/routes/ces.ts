@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { CreateCeBody, GetCeParams } from "@workspace/api-zod";
 import { generateCePayload, slugify } from "../lib/generate-ce";
+import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
 
 const router: IRouter = Router();
 
@@ -183,16 +184,8 @@ router.get("/ces/:slug", async (req, res): Promise<void> => {
   });
 });
 
-/**
- * CEs whose chart sets are hand-curated and must NOT be replaced or removed
- * by the AI-generation pipeline. The Regenerate button on the UI should also
- * be hidden for these, but the route guard is the source of truth.
- */
-const LOCKED_CE_SLUGS = new Set([
-  "galleria-dellaccademia",
-  "galleria-degli-uffizi",
-  "duomo-di-firenze",
-]);
+// Locked-CE list lives in `../lib/locked-ces` so both the legacy `/ces`
+// routes and the new research pipeline share a single source of truth.
 
 router.delete("/ces/:slug", async (req, res): Promise<void> => {
   const params = GetCeParams.safeParse(req.params);

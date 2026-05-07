@@ -12,6 +12,24 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/api-server` (api) — Express API. POSTs to Gemini for chart generation, persists CEs + charts in Postgres, serves via OpenAPI/Orval-generated hooks.
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
 
+### Research-grounded chart pipeline (Task #26)
+
+Backend pipeline that adapts a subcategory question bank to a specific CE using its Deep Research Doc (DRD), then generates a draft chart deck with provenance.
+
+- **`lib/question-bank`** workspace lib — pure-data registry of:
+  - `CHART_ARCHETYPES` (mirror of the 9 chart-spec types with metadata + per-subcategory affinity hints)
+  - `CROSS_CUTTING_QUESTIONS` (3 universal questions inherited by every subcategory)
+  - Curated `BankQuestion[]` for 14 of 15 subcategories (`outdoor_activities` and a couple long-tail ones are stubs returning `unratified: true` — orchestrator bootstraps from DRD only)
+  - `SUBCATEGORIES` registry (15 ids: landmarks, museums, sightseeing_cruises, day_trips, guided_tours, theme_parks, walking_tours, hop_on_hop_off, plays, helicopter_tours, cooking_classes, wineries, spa, outdoor_activities, combos)
+- **DRD storage** — `drds` table keyed on `ceSlug` (one canonical latest DRD per CE). Accepts markdown JSON or PDF upload (multer + `unpdf` for extraction). Multipart endpoint exists at runtime but is intentionally omitted from the OpenAPI spec because Orval's Zod generator can't model `Blob` bodies in a Node typecheck context — use `fetch` + `FormData` directly for PDF uploads.
+- **Pipeline** (`artifacts/api-server/src/lib/research-pipeline.ts`):
+  1. **Select questions** — Gemini reads DRD + bank, picks 4-7 questions (one per archetype), drops the rest with reasons, proposes 1-2 hero questions.
+  2. **Generate one chart per question** — Gemini call per chart with the per-archetype JSON snippet (`chart-archetype-prompts.ts`) and `googleSearch` tool enabled for live web grounding. Grounding sources auto-merged into provenance from `response.candidates[0].groundingMetadata`.
+  3. **Verify** — OpenAI (`gpt-5.4`) re-reads DRD and challenges each spec; verifier_notes stored per chart. Soft-fails if `AI_INTEGRATIONS_OPENAI_*` env vars are missing.
+- **Persistence** — `charts` table extended with `status` ("draft"|"published", default "published" for legacy/curated rows) and `provenance` jsonb (`{status, drd_snippets, web_sources, estimates, verifier_notes, source_question, recommended_archetype}`). Each pipeline run **only deletes prior `status='draft'` rows for the CE** — published rows survive untouched so live embeds keep working. New drafts are inserted at `sortOrder >= 1000` to avoid colliding with the published deck. CE `status` is only flipped to `"draft"` when no published charts exist for the CE; otherwise the existing CE status is preserved. Provenance today is chart-level (not per-numeric-field) — per-field tagging is intentional future work.
+- **Endpoints** — `GET/POST/DELETE /api/drds[/:ceSlug]`, `GET /api/research/subcategories`, `POST /api/research/generate`. The Florence cluster CEs are guarded by `lib/locked-ces.ts` (shared by `/ces` and `/research/generate`) — pipeline returns 409 for them so curated decks can never be wiped. Unknown subcategory ids are accepted and bootstrapped as `unratified` (cross-cutting questions only).
+- **Web search at runtime** — uses Gemini's built-in `googleSearch` tool because the workspace `web-search` skill is agent-only (not server-callable from the running api-server).
+
 ### Curated / locked CEs
 
 `lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`). The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.

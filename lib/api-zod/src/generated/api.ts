@@ -77,6 +77,8 @@ export const GetCeResponse = zod.object({
       insight: zod.string(),
       chartType: zod.string(),
       spec: zod.record(zod.string(), zod.unknown()),
+      status: zod.string().optional(),
+      provenance: zod.record(zod.string(), zod.unknown()).nullish(),
       sortOrder: zod.number(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
@@ -124,11 +126,89 @@ export const RegenerateCeResponse = zod.object({
       insight: zod.string(),
       chartType: zod.string(),
       spec: zod.record(zod.string(), zod.unknown()),
+      status: zod.string().optional(),
+      provenance: zod.record(zod.string(), zod.unknown()).nullish(),
       sortOrder: zod.number(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),
   ),
+});
+
+/**
+ * @summary Get the latest DRD uploaded for a CE
+ */
+export const GetDrdParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+export const GetDrdResponse = zod.object({
+  id: zod.number(),
+  ceSlug: zod.string(),
+  sourceType: zod.string(),
+  sourceFilename: zod.string().nullish(),
+  sources: zod.array(zod.record(zod.string(), zod.unknown())),
+  markdownPreview: zod.string(),
+  markdownLength: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete the DRD for a CE
+ */
+export const DeleteDrdParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+/**
+ * Two ways to upload:
+  1. application/json with `{ ceSlug, markdown, sourceFilename?, sources? }`
+  2. multipart/form-data with `ceSlug` and a `file` field (PDF). The
+     multipart variant is intentionally omitted from the OpenAPI spec
+     because Orval's Zod generator can't model a binary `Blob` body in
+     a Node typecheck context. Use plain `fetch` with `FormData` for
+     PDF uploads.
+
+ * @summary Upload or replace the DRD for a CE (markdown JSON or PDF multipart)
+ */
+export const UploadDrdBody = zod.object({
+  ceSlug: zod.string(),
+  markdown: zod.string(),
+  sourceFilename: zod.string().optional(),
+  sources: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+});
+
+/**
+ * @summary List the supported subcategories with their descriptions
+ */
+export const ListSubcategoriesResponseItem = zod.object({
+  id: zod.string(),
+  label: zod.string(),
+  description: zod.string(),
+});
+export const ListSubcategoriesResponse = zod.array(
+  ListSubcategoriesResponseItem,
+);
+
+/**
+ * Subcategory ids that aren't in the curated bank are accepted and
+bootstrapped as `unratified` — only cross-cutting and DRD-derived
+hero questions are used. Locked curated CEs (Florence cluster)
+return 409 to protect their hand-curated decks.
+
+ * @summary Run the research-grounded pipeline to produce a draft deck
+ */
+export const GenerateFromResearchBody = zod.object({
+  ceSlug: zod.string(),
+  subcategoryId: zod.string(),
+  subcategoryLabel: zod.string().optional(),
+  subcategoryDescription: zod.string().optional(),
+  name: zod.string().optional(),
+  city: zod.string().optional(),
+  country: zod.string().optional(),
+  category: zod.string().optional(),
+  writerTopics: zod.array(zod.string()).optional(),
 });
 
 /**
@@ -149,6 +229,8 @@ export const GetChartResponse = zod.object({
     insight: zod.string(),
     chartType: zod.string(),
     spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string().optional(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
     sortOrder: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),

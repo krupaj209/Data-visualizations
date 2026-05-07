@@ -14,6 +14,10 @@ tags:
     description: Combined Entity (attraction/experience) operations
   - name: charts
     description: Chart operations
+  - name: drds
+    description: Deep Research Document upload and retrieval
+  - name: research
+    description: Research-grounded chart generation pipeline
 paths:
   /healthz:
     get:
@@ -144,6 +148,142 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /drds/{ceSlug}:
+    get:
+      operationId: getDrd
+      tags: [drds]
+      summary: Get the latest DRD uploaded for a CE
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: DRD
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Drd"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteDrd
+      tags: [drds]
+      summary: Delete the DRD for a CE
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /drds:
+    post:
+      operationId: uploadDrd
+      tags: [drds]
+      summary: Upload or replace the DRD for a CE (markdown JSON or PDF multipart)
+      description: |
+        Two ways to upload:
+          1. application/json with `{ ceSlug, markdown, sourceFilename?, sources? }`
+          2. multipart/form-data with `ceSlug` and a `file` field (PDF). The
+             multipart variant is intentionally omitted from the OpenAPI spec
+             because Orval's Zod generator can't model a binary `Blob` body in
+             a Node typecheck context. Use plain `fetch` with `FormData` for
+             PDF uploads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DrdMarkdownUpload"
+      responses:
+        "201":
+          description: Created or replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Drd"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /research/subcategories:
+    get:
+      operationId: listSubcategories
+      tags: [research]
+      summary: List the supported subcategories with their descriptions
+      responses:
+        "200":
+          description: Subcategory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subcategory"
+  /research/generate:
+    post:
+      operationId: generateFromResearch
+      tags: [research]
+      summary: Run the research-grounded pipeline to produce a draft deck
+      description: |
+        Subcategory ids that aren't in the curated bank are accepted and
+        bootstrapped as `unratified` — only cross-cutting and DRD-derived
+        hero questions are used. Locked curated CEs (Florence cluster)
+        return 409 to protect their hand-curated decks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchGenerateInput"
+      responses:
+        "201":
+          description: Draft deck created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchGenerateResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is locked from automated generation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "412":
+          description: No DRD uploaded for the CE yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Pipeline failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /charts/{id}:
     get:
       operationId: getChart
@@ -246,6 +386,12 @@ components:
         spec:
           type: object
           additionalProperties: true
+        status:
+          type: string
+        provenance:
+          type: object
+          nullable: true
+          additionalProperties: true
         sortOrder:
           type: integer
         createdAt:
@@ -287,6 +433,128 @@ components:
       required:
         - ce
         - charts
+    Drd:
+      type: object
+      properties:
+        id:
+          type: integer
+        ceSlug:
+          type: string
+        sourceType:
+          type: string
+        sourceFilename:
+          type: string
+          nullable: true
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        markdownPreview:
+          type: string
+        markdownLength:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - ceSlug
+        - sourceType
+        - sources
+        - markdownPreview
+        - markdownLength
+        - createdAt
+        - updatedAt
+    DrdMarkdownUpload:
+      type: object
+      properties:
+        ceSlug:
+          type: string
+        markdown:
+          type: string
+        sourceFilename:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+        - ceSlug
+        - markdown
+    Subcategory:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - label
+        - description
+    ResearchGenerateInput:
+      type: object
+      properties:
+        ceSlug:
+          type: string
+        subcategoryId:
+          type: string
+        subcategoryLabel:
+          type: string
+        subcategoryDescription:
+          type: string
+        name:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        category:
+          type: string
+        writerTopics:
+          type: array
+          items:
+            type: string
+      required:
+        - ceSlug
+        - subcategoryId
+    ResearchGenerateResult:
+      type: object
+      properties:
+        ce:
+          $ref: "#/components/schemas/Ce"
+        charts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chart"
+        publishedChartsKept:
+          type: integer
+        droppedQuestions:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              reason:
+                type: string
+            required: [question, reason]
+        proposedHeroQuestions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+        - ce
+        - charts
+        - publishedChartsKept
+        - droppedQuestions
+        - proposedHeroQuestions
     CeInput:
       type: object
       properties:

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ChartProvenance } from "./chartProvenance";
 import type { ChartSpec } from "./chartSpec";
 
 export interface Chart {
@@ -17,6 +18,8 @@ export interface Chart {
   insight: string;
   chartType: string;
   spec: ChartSpec;
+  status?: string;
+  provenance?: ChartProvenance;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

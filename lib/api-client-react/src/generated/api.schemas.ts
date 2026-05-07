@@ -30,6 +30,8 @@ export interface Ce {
 
 export type ChartSpec = { [key: string]: unknown };
 
+export type ChartProvenance = { [key: string]: unknown } | null;
+
 export interface Chart {
   id: number;
   ceId: number;
@@ -40,6 +42,8 @@ export interface Chart {
   insight: string;
   chartType: string;
   spec: ChartSpec;
+  status?: string;
+  provenance?: ChartProvenance;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +57,64 @@ export interface ChartWithCe {
 export interface CeWithCharts {
   ce: Ce;
   charts: Chart[];
+}
+
+export type DrdSourcesItem = { [key: string]: unknown };
+
+export interface Drd {
+  id: number;
+  ceSlug: string;
+  sourceType: string;
+  sourceFilename?: string | null;
+  sources: DrdSourcesItem[];
+  markdownPreview: string;
+  markdownLength: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DrdMarkdownUploadSourcesItem = { [key: string]: unknown };
+
+export interface DrdMarkdownUpload {
+  ceSlug: string;
+  markdown: string;
+  sourceFilename?: string;
+  sources?: DrdMarkdownUploadSourcesItem[];
+}
+
+export interface Subcategory {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface ResearchGenerateInput {
+  ceSlug: string;
+  subcategoryId: string;
+  subcategoryLabel?: string;
+  subcategoryDescription?: string;
+  name?: string;
+  city?: string;
+  country?: string;
+  category?: string;
+  writerTopics?: string[];
+}
+
+export type ResearchGenerateResultDroppedQuestionsItem = {
+  question: string;
+  reason: string;
+};
+
+export type ResearchGenerateResultProposedHeroQuestionsItem = {
+  [key: string]: unknown;
+};
+
+export interface ResearchGenerateResult {
+  ce: Ce;
+  charts: Chart[];
+  publishedChartsKept: number;
+  droppedQuestions: ResearchGenerateResultDroppedQuestionsItem[];
+  proposedHeroQuestions: ResearchGenerateResultProposedHeroQuestionsItem[];
 }
 
 export interface CeInput {

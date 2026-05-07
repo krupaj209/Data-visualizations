@@ -22,7 +22,12 @@ import type {
   CeInput,
   CeWithCharts,
   ChartWithCe,
+  Drd,
+  DrdMarkdownUpload,
   HealthStatus,
+  ResearchGenerateInput,
+  ResearchGenerateResult,
+  Subcategory,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -502,6 +507,425 @@ export const useRegenerateCe = <
   TContext
 > => {
   return useMutation(getRegenerateCeMutationOptions(options));
+};
+
+/**
+ * @summary Get the latest DRD uploaded for a CE
+ */
+export const getGetDrdUrl = (ceSlug: string) => {
+  return `/api/drds/${ceSlug}`;
+};
+
+export const getDrd = async (
+  ceSlug: string,
+  options?: RequestInit,
+): Promise<Drd> => {
+  return customFetch<Drd>(getGetDrdUrl(ceSlug), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDrdQueryKey = (ceSlug: string) => {
+  return [`/api/drds/${ceSlug}`] as const;
+};
+
+export const getGetDrdQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDrd>>,
+  TError = ErrorType<ApiError>,
+>(
+  ceSlug: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getDrd>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDrdQueryKey(ceSlug);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDrd>>> = ({
+    signal,
+  }) => getDrd(ceSlug, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!ceSlug,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getDrd>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetDrdQueryResult = NonNullable<Awaited<ReturnType<typeof getDrd>>>;
+export type GetDrdQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get the latest DRD uploaded for a CE
+ */
+
+export function useGetDrd<
+  TData = Awaited<ReturnType<typeof getDrd>>,
+  TError = ErrorType<ApiError>,
+>(
+  ceSlug: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getDrd>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDrdQueryOptions(ceSlug, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Delete the DRD for a CE
+ */
+export const getDeleteDrdUrl = (ceSlug: string) => {
+  return `/api/drds/${ceSlug}`;
+};
+
+export const deleteDrd = async (
+  ceSlug: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteDrdUrl(ceSlug), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDrdMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDrd>>,
+    TError,
+    { ceSlug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteDrd>>,
+  TError,
+  { ceSlug: string },
+  TContext
+> => {
+  const mutationKey = ["deleteDrd"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteDrd>>,
+    { ceSlug: string }
+  > = (props) => {
+    const { ceSlug } = props ?? {};
+
+    return deleteDrd(ceSlug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteDrdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteDrd>>
+>;
+
+export type DeleteDrdMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Delete the DRD for a CE
+ */
+export const useDeleteDrd = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDrd>>,
+    TError,
+    { ceSlug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteDrd>>,
+  TError,
+  { ceSlug: string },
+  TContext
+> => {
+  return useMutation(getDeleteDrdMutationOptions(options));
+};
+
+/**
+ * Two ways to upload:
+  1. application/json with `{ ceSlug, markdown, sourceFilename?, sources? }`
+  2. multipart/form-data with `ceSlug` and a `file` field (PDF). The
+     multipart variant is intentionally omitted from the OpenAPI spec
+     because Orval's Zod generator can't model a binary `Blob` body in
+     a Node typecheck context. Use plain `fetch` with `FormData` for
+     PDF uploads.
+
+ * @summary Upload or replace the DRD for a CE (markdown JSON or PDF multipart)
+ */
+export const getUploadDrdUrl = () => {
+  return `/api/drds`;
+};
+
+export const uploadDrd = async (
+  drdMarkdownUpload: DrdMarkdownUpload,
+  options?: RequestInit,
+): Promise<Drd> => {
+  return customFetch<Drd>(getUploadDrdUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(drdMarkdownUpload),
+  });
+};
+
+export const getUploadDrdMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadDrd>>,
+    TError,
+    { data: BodyType<DrdMarkdownUpload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadDrd>>,
+  TError,
+  { data: BodyType<DrdMarkdownUpload> },
+  TContext
+> => {
+  const mutationKey = ["uploadDrd"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadDrd>>,
+    { data: BodyType<DrdMarkdownUpload> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadDrd(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadDrdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadDrd>>
+>;
+export type UploadDrdMutationBody = BodyType<DrdMarkdownUpload>;
+export type UploadDrdMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Upload or replace the DRD for a CE (markdown JSON or PDF multipart)
+ */
+export const useUploadDrd = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadDrd>>,
+    TError,
+    { data: BodyType<DrdMarkdownUpload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadDrd>>,
+  TError,
+  { data: BodyType<DrdMarkdownUpload> },
+  TContext
+> => {
+  return useMutation(getUploadDrdMutationOptions(options));
+};
+
+/**
+ * @summary List the supported subcategories with their descriptions
+ */
+export const getListSubcategoriesUrl = () => {
+  return `/api/research/subcategories`;
+};
+
+export const listSubcategories = async (
+  options?: RequestInit,
+): Promise<Subcategory[]> => {
+  return customFetch<Subcategory[]>(getListSubcategoriesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSubcategoriesQueryKey = () => {
+  return [`/api/research/subcategories`] as const;
+};
+
+export const getListSubcategoriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSubcategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSubcategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSubcategoriesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSubcategories>>
+  > = ({ signal }) => listSubcategories({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSubcategories>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSubcategoriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSubcategories>>
+>;
+export type ListSubcategoriesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List the supported subcategories with their descriptions
+ */
+
+export function useListSubcategories<
+  TData = Awaited<ReturnType<typeof listSubcategories>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSubcategories>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSubcategoriesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Subcategory ids that aren't in the curated bank are accepted and
+bootstrapped as `unratified` — only cross-cutting and DRD-derived
+hero questions are used. Locked curated CEs (Florence cluster)
+return 409 to protect their hand-curated decks.
+
+ * @summary Run the research-grounded pipeline to produce a draft deck
+ */
+export const getGenerateFromResearchUrl = () => {
+  return `/api/research/generate`;
+};
+
+export const generateFromResearch = async (
+  researchGenerateInput: ResearchGenerateInput,
+  options?: RequestInit,
+): Promise<ResearchGenerateResult> => {
+  return customFetch<ResearchGenerateResult>(getGenerateFromResearchUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(researchGenerateInput),
+  });
+};
+
+export const getGenerateFromResearchMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromResearch>>,
+    TError,
+    { data: BodyType<ResearchGenerateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateFromResearch>>,
+  TError,
+  { data: BodyType<ResearchGenerateInput> },
+  TContext
+> => {
+  const mutationKey = ["generateFromResearch"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateFromResearch>>,
+    { data: BodyType<ResearchGenerateInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateFromResearch(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateFromResearchMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateFromResearch>>
+>;
+export type GenerateFromResearchMutationBody = BodyType<ResearchGenerateInput>;
+export type GenerateFromResearchMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Run the research-grounded pipeline to produce a draft deck
+ */
+export const useGenerateFromResearch = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromResearch>>,
+    TError,
+    { data: BodyType<ResearchGenerateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateFromResearch>>,
+  TError,
+  { data: BodyType<ResearchGenerateInput> },
+  TContext
+> => {
+  return useMutation(getGenerateFromResearchMutationOptions(options));
 };
 
 /**
