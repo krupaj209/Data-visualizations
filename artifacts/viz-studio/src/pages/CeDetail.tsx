@@ -1590,6 +1590,9 @@ function IdeationPanel({
   const [showContext, setShowContext] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [pendingEcho, setPendingEcho] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledByUserRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1597,7 +1600,18 @@ function IdeationPanel({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages.length, isSending]);
+  }, [messages.length, isSending, pendingEcho]);
+
+  function restoreInputs(
+    text: string,
+    ctxText: string,
+    ctxPdf: File | null,
+  ) {
+    setDraft(text);
+    setContextText(ctxText);
+    setContextPdf(ctxPdf);
+    if (ctxText || ctxPdf) setShowContext(true);
+  }
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -1607,6 +1621,24 @@ function IdeationPanel({
     const ctxPdf = contextPdf;
     setSendError(null);
     setIsSending(true);
+    // Optimistically clear inputs and echo the user's message so the
+    // panel never looks blank while waiting.
+    setDraft("");
+    setContextText("");
+    setContextPdf(null);
+    setShowContext(false);
+    setPendingEcho(text);
+
+    cancelledByUserRef.current = false;
+    let timedOut = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const CLIENT_TIMEOUT_MS = 60_000;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CLIENT_TIMEOUT_MS);
+
     try {
       const url = `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation`;
       let res: Response;
@@ -1615,12 +1647,17 @@ function IdeationPanel({
         fd.append("message", text);
         if (ctxText) fd.append("contextText", ctxText);
         if (ctxPdf) fd.append("contextPdf", ctxPdf);
-        res = await fetch(url, { method: "POST", body: fd });
+        res = await fetch(url, {
+          method: "POST",
+          body: fd,
+          signal: controller.signal,
+        });
       } else {
         res = await fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ message: text }),
+          signal: controller.signal,
         });
       }
       if (!res.ok) {
@@ -1633,17 +1670,33 @@ function IdeationPanel({
         }
         throw new Error(msg);
       }
-      // Success — now clear inputs and refresh transcript.
-      setDraft("");
-      setContextText("");
-      setContextPdf(null);
-      setShowContext(false);
       qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+      setPendingEcho(null);
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "Failed to send");
+      const aborted =
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && err.name === "AbortError");
+      const msg = cancelledByUserRef.current
+        ? "Cancelled — your draft has been restored."
+        : timedOut || aborted
+          ? "The model didn't respond in time — try again. Your draft has been restored."
+          : err instanceof Error
+            ? err.message
+            : "Failed to send";
+      setSendError(msg);
+      restoreInputs(text, ctxText, ctxPdf);
+      setPendingEcho(null);
     } finally {
+      clearTimeout(timer);
+      abortRef.current = null;
       setIsSending(false);
     }
+  }
+
+  function handleCancel() {
+    cancelledByUserRef.current = true;
+    abortRef.current?.abort();
   }
 
   async function handleClear() {
@@ -1752,6 +1805,30 @@ function IdeationPanel({
             onUseProposal={onUseProposal}
           />
         ))}
+        {pendingEcho && (
+          <div
+            className="flex flex-col gap-1.5"
+            style={{ alignItems: "flex-end" }}
+          >
+            <div
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.slate950,
+                padding: "10px 12px",
+                borderRadius: 14,
+                maxWidth: "92%",
+                fontSize: 13,
+                fontWeight: 500,
+                lineHeight: 1.5,
+                whiteSpace: "pre-wrap",
+                border: `1px solid ${BRAND.purpsSoft}`,
+                opacity: 0.85,
+              }}
+            >
+              {pendingEcho}
+            </div>
+          </div>
+        )}
         {isSending && (
           <div
             style={{
@@ -1761,11 +1838,29 @@ function IdeationPanel({
               padding: "4px 6px",
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
+              gap: 8,
             }}
           >
             <Loader2 size={12} className="animate-spin" />
             Thinking…
+            <button
+              type="button"
+              onClick={handleCancel}
+              style={{
+                background: "transparent",
+                border: `1px solid ${BRAND.slate200}`,
+                color: BRAND.slate700,
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.02em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
           </div>
         )}
       </div>

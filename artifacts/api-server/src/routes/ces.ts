@@ -640,14 +640,41 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     ...llmTranscript,
   ];
 
+  // Default to a real model supported by the AI Integrations OpenAI proxy
+  // (gpt-5 is listed as a general-purpose chat model). Overridable via
+  // env so prod can pin a newer family member without a redeploy.
+  const ideationModel =
+    process.env["IDEATION_MODEL"] ?? process.env["OPENAI_MODEL"] ?? "gpt-5";
+  const parsedTimeout = Number(process.env["IDEATION_TIMEOUT_MS"]);
+  const ideationTimeoutMs =
+    Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : 45_000;
+  const startedAt = Date.now();
+  req.log.info(
+    {
+      ceSlug: ce.slug,
+      model: ideationModel,
+      hasContextText: Boolean(parsed.data.contextText?.trim()),
+      hasPdf: Boolean(req.file),
+      transcriptLen: transcript.length,
+    },
+    "ideation turn started",
+  );
+
   let assistantText = "";
   let proposals: unknown = null;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), ideationTimeoutMs);
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 800,
-      messages,
-    });
+    const response = await openai.chat.completions.create(
+      {
+        model: ideationModel,
+        max_completion_tokens: 800,
+        messages,
+      },
+      { signal: abort.signal },
+    );
     assistantText = response.choices[0]?.message?.content ?? "";
     const fence = assistantText.match(/```(?:json)?\s*([\s\S]+?)```/);
     if (fence?.[1]) {
@@ -660,11 +687,36 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
         // keep proposals null
       }
     }
+    req.log.info(
+      {
+        ceSlug: ce.slug,
+        model: ideationModel,
+        durationMs: Date.now() - startedAt,
+        proposalsCount: Array.isArray(proposals) ? proposals.length : 0,
+      },
+      "ideation turn finished",
+    );
   } catch (err) {
-    req.log.error({ err }, "Ideation OpenAI call failed");
-    const fallback = `Sorry — the ideation model couldn't respond just now (${
-      err instanceof Error ? err.message : "unknown error"
-    }). Try again in a moment.`;
+    const aborted =
+      abort.signal.aborted ||
+      (err instanceof Error &&
+        (err.name === "AbortError" || /aborted|timeout/i.test(err.message)));
+    req.log.error(
+      {
+        err,
+        ceSlug: ce.slug,
+        model: ideationModel,
+        durationMs: Date.now() - startedAt,
+        timedOut: aborted,
+      },
+      "ideation turn failed",
+    );
+    const reason = aborted
+      ? `timed out after ${Math.round(ideationTimeoutMs / 1000)}s`
+      : err instanceof Error
+        ? err.message
+        : "unknown error";
+    const fallback = `Sorry — the ideation model couldn't respond just now (${reason}). Try again in a moment.`;
     const [stored] = await db
       .insert(ideationMessagesTable)
       .values({ ceId: ce.id, role: "assistant", content: fallback })
@@ -675,6 +727,8 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     }
     res.status(200).json(serializeIdeation(stored));
     return;
+  } finally {
+    clearTimeout(timer);
   }
 
   const [stored] = await db
