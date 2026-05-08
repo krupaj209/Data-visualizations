@@ -21,6 +21,9 @@ export interface Chart {
   status?: string;
   provenance?: ChartProvenance;
   sortOrder: number;
+  openFeedbackCount?: number;
+  topFeedbackSeverity?: string | null;
+  editCount?: number;
   createdAt: string;
   updatedAt: string;
 }

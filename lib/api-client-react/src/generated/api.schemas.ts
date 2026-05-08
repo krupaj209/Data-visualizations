@@ -45,6 +45,9 @@ export interface Chart {
   status?: string;
   provenance?: ChartProvenance;
   sortOrder: number;
+  openFeedbackCount?: number;
+  topFeedbackSeverity?: string | null;
+  editCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -117,9 +120,67 @@ export interface ResearchGenerateResult {
   proposedHeroQuestions: ResearchGenerateResultProposedHeroQuestionsItem[];
 }
 
+export interface ChartFeedback {
+  id: number;
+  chartId: number;
+  rating?: number | null;
+  issueCategory?: string | null;
+  note: string;
+  reporterName: string;
+  status: string;
+  severity: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChartFeedbackInput {
+  rating?: number | null;
+  issueCategory?: string | null;
+  note?: string;
+  reporterName?: string;
+}
+
+export interface ChartEditInput {
+  title?: string;
+  subtitle?: string;
+  insight?: string;
+  editorName?: string;
+  summary?: string;
+}
+
+export interface FeedbackUpdate {
+  status: string;
+}
+
+export interface TriageFeedback {
+  feedback: ChartFeedback;
+  chart: Chart;
+  ce: Ce;
+  chartEditCount: number;
+}
+
+export interface QuestionTroubleScore {
+  questionText: string;
+  subcategoryId: string;
+  chartType: string;
+  chartCount: number;
+  openFeedbackCount: number;
+  editCount: number;
+  troubleScore: number;
+  sampleCeSlugs: string[];
+}
+
 export interface CeInput {
   name: string;
   city: string;
   country: string;
   category?: string;
 }
+
+export type EditChart200 = {
+  chart: Chart;
+};
+
+export type ListAllFeedbackParams = {
+  status?: string;
+};

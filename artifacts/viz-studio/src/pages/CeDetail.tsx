@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,11 +8,14 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  Pencil,
   RefreshCw,
+  X,
 } from "lucide-react";
 import {
   useGetCe,
   useRegenerateCe,
+  useEditChart,
   getGetCeQueryKey,
   getListCesQueryKey,
   type Chart,
@@ -21,6 +24,7 @@ import { BRAND } from "@/lib/brand";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import { type ChartSpec } from "@/lib/chart-spec";
 import { toSentenceCase } from "@/lib/text";
 
@@ -93,6 +97,10 @@ export default function CeDetail() {
 
   const { ce, charts } = data;
   const isLocked = LOCKED_SLUGS.has(ce.slug);
+  // Triage rows deep-link here as `/ce/:slug?edit=<chartId>`. We pop the
+  // editor open inline once per navigation, then strip the query so a hard
+  // refresh doesn't re-open it.
+  const editId = useEditQueryParam();
 
   return (
     <div className="min-h-screen" style={{ background: BRAND.bgShell }}>
@@ -236,7 +244,13 @@ export default function CeDetail() {
 
         <div className="flex flex-col gap-12">
           {charts.map((chart) => (
-            <ChartRow key={chart.id} chart={chart} ceName={ce.name} />
+            <ChartRow
+              key={chart.id}
+              chart={chart}
+              ceName={ce.name}
+              ceSlug={ce.slug}
+              autoEdit={editId === chart.id}
+            />
           ))}
         </div>
       </main>
@@ -244,7 +258,39 @@ export default function CeDetail() {
   );
 }
 
-function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
+function useEditQueryParam(): number | null {
+  const [id, setId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = new URLSearchParams(window.location.search).get("edit");
+    const n = v ? Number(v) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  });
+  useEffect(() => {
+    if (id == null) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("edit")) {
+      url.searchParams.delete("edit");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [id]);
+  return id;
+}
+
+function ChartRow({
+  chart,
+  ceName,
+  ceSlug,
+  autoEdit,
+}: {
+  chart: Chart;
+  ceName: string;
+  ceSlug: string;
+  autoEdit?: boolean;
+}) {
+  const [editing, setEditing] = useState(!!autoEdit);
+  useEffect(() => {
+    if (autoEdit) setEditing(true);
+  }, [autoEdit]);
   const spec = chart.spec as unknown as ChartSpec;
   const meta = CHART_TYPE_META[spec.type] ?? {
     label: spec.type,
@@ -286,8 +332,52 @@ function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
             {headline}
           </h3>
         </div>
-        <EmbedActions chartId={chart.id} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            style={{
+              background: editing ? BRAND.purps : "white",
+              color: editing ? "white" : BRAND.slate950,
+              border: `1px solid ${editing ? BRAND.purps : BRAND.slate200}`,
+              padding: "8px 12px",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            title="Edit copy"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+          <FeedbackButton
+            chartId={chart.id}
+            ceSlug={ceSlug}
+            openCount={chart.openFeedbackCount ?? 0}
+            topSeverity={
+              (chart.topFeedbackSeverity as
+                | "high"
+                | "medium"
+                | "low"
+                | null
+                | undefined) ?? null
+            }
+          />
+          <EmbedActions chartId={chart.id} />
+        </div>
       </div>
+
+      {editing && (
+        <ChartEditor
+          chart={chart}
+          ceSlug={ceSlug}
+          onClose={() => setEditing(false)}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start">
         <div
@@ -369,6 +459,168 @@ function ChartRow({ chart, ceName }: { chart: Chart; ceName: string }) {
         </aside>
       </div>
     </section>
+  );
+}
+
+function ChartEditor({
+  chart,
+  ceSlug,
+  onClose,
+}: {
+  chart: Chart;
+  ceSlug: string;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const editMut = useEditChart();
+  const [title, setTitle] = useState(chart.title);
+  const [subtitle, setSubtitle] = useState(chart.subtitle ?? "");
+  const [insight, setInsight] = useState(chart.insight ?? "");
+  const [editor, setEditor] = useState("");
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  async function save() {
+    await editMut.mutateAsync({
+      id: chart.id,
+      data: {
+        title,
+        subtitle,
+        insight,
+        editorName: editor.trim() || undefined,
+      },
+    });
+    qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+    setSavedAt(Date.now());
+    setTimeout(() => setSavedAt(null), 1600);
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        background: "white",
+        border: `1px solid ${BRAND.purpsSoft}`,
+        borderLeft: `4px solid ${BRAND.purps}`,
+        borderRadius: 12,
+        padding: 14,
+      }}
+    >
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <strong style={{ fontSize: 13, color: BRAND.purps }}>
+          Edit copy — counts as writer feedback
+        </strong>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: BRAND.slate500,
+            cursor: "pointer",
+          }}
+          aria-label="Close editor"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <EditField label="Title">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={editorInputStyle}
+        />
+      </EditField>
+      <EditField label="Subtitle">
+        <input
+          value={subtitle}
+          onChange={(e) => setSubtitle(e.target.value)}
+          style={editorInputStyle}
+        />
+      </EditField>
+      <EditField label="Insight">
+        <textarea
+          value={insight}
+          onChange={(e) => setInsight(e.target.value)}
+          rows={3}
+          style={{ ...editorInputStyle, fontFamily: "inherit", resize: "vertical" }}
+        />
+      </EditField>
+      <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
+        <input
+          value={editor}
+          onChange={(e) => setEditor(e.target.value)}
+          placeholder="Your name (optional)"
+          style={{ ...editorInputStyle, flex: 1 }}
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={editMut.isPending}
+          style={{
+            background: savedAt ? BRAND.bgMint : BRAND.purps,
+            color: savedAt ? "#0E8F4E" : "white",
+            border: "none",
+            padding: "10px 16px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: editMut.isPending ? "wait" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          {editMut.isPending ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : savedAt ? (
+            <Check size={14} />
+          ) : null}
+          {savedAt ? "Saved" : "Save edit"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const editorInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: `1px solid ${BRAND.slate200}`,
+  fontSize: 13,
+  fontWeight: 600,
+  marginBottom: 8,
+};
+
+function EditField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label
+      style={{
+        display: "block",
+        marginBottom: 8,
+      }}
+    >
+      <span
+        style={{
+          display: "block",
+          fontSize: 10,
+          fontWeight: 800,
+          color: BRAND.slate500,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 

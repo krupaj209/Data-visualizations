@@ -4,6 +4,8 @@ import Home from "@/pages/Home";
 import CeDetail from "@/pages/CeDetail";
 import Embed from "@/pages/Embed";
 import StyleGuide from "@/pages/StyleGuide";
+import Triage from "@/pages/Triage";
+import TriageQuestions from "@/pages/TriageQuestions";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -22,6 +24,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/ce/:slug" component={CeDetail} />
       <Route path="/embed/:id" component={Embed} />
+      <Route path="/triage/questions" component={TriageQuestions} />
+      <Route path="/triage" component={Triage} />
       <Route path="/style" component={StyleGuide} />
       <Route component={NotFound} />
     </Switch>

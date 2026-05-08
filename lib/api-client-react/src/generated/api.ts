@@ -21,13 +21,21 @@ import type {
   Ce,
   CeInput,
   CeWithCharts,
+  ChartEditInput,
+  ChartFeedback,
+  ChartFeedbackInput,
   ChartWithCe,
   Drd,
   DrdMarkdownUpload,
+  EditChart200,
+  FeedbackUpdate,
   HealthStatus,
+  ListAllFeedbackParams,
+  QuestionTroubleScore,
   ResearchGenerateInput,
   ResearchGenerateResult,
   Subcategory,
+  TriageFeedback,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -1005,6 +1013,617 @@ export function useGetChart<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetChartQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Updates title/subtitle/insight and logs a chart_edits row. The edit
+row counts as a 0.25-weight implicit signal in the trouble score.
+
+ * @summary Edit a chart's writer-controlled copy
+ */
+export const getEditChartUrl = (id: number) => {
+  return `/api/charts/${id}`;
+};
+
+export const editChart = async (
+  id: number,
+  chartEditInput: ChartEditInput,
+  options?: RequestInit,
+): Promise<EditChart200> => {
+  return customFetch<EditChart200>(getEditChartUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chartEditInput),
+  });
+};
+
+export const getEditChartMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editChart>>,
+    TError,
+    { id: number; data: BodyType<ChartEditInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof editChart>>,
+  TError,
+  { id: number; data: BodyType<ChartEditInput> },
+  TContext
+> => {
+  const mutationKey = ["editChart"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof editChart>>,
+    { id: number; data: BodyType<ChartEditInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return editChart(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EditChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof editChart>>
+>;
+export type EditChartMutationBody = BodyType<ChartEditInput>;
+export type EditChartMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Edit a chart's writer-controlled copy
+ */
+export const useEditChart = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editChart>>,
+    TError,
+    { id: number; data: BodyType<ChartEditInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof editChart>>,
+  TError,
+  { id: number; data: BodyType<ChartEditInput> },
+  TContext
+> => {
+  return useMutation(getEditChartMutationOptions(options));
+};
+
+/**
+ * Re-runs the research pipeline for just this chart, replacing its spec
+in place. Requires a DRD uploaded for the CE. Locked CEs return 409.
+
+ * @summary Regenerate the spec for a single chart
+ */
+export const getRegenerateChartUrl = (id: number) => {
+  return `/api/charts/${id}/regenerate`;
+};
+
+export const regenerateChart = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChartWithCe> => {
+  return customFetch<ChartWithCe>(getRegenerateChartUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRegenerateChartMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateChart>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof regenerateChart>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["regenerateChart"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof regenerateChart>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return regenerateChart(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegenerateChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof regenerateChart>>
+>;
+
+export type RegenerateChartMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Regenerate the spec for a single chart
+ */
+export const useRegenerateChart = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateChart>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof regenerateChart>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRegenerateChartMutationOptions(options));
+};
+
+/**
+ * @summary List feedback for a single chart
+ */
+export const getListChartFeedbackUrl = (id: number) => {
+  return `/api/charts/${id}/feedback`;
+};
+
+export const listChartFeedback = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChartFeedback[]> => {
+  return customFetch<ChartFeedback[]>(getListChartFeedbackUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListChartFeedbackQueryKey = (id: number) => {
+  return [`/api/charts/${id}/feedback`] as const;
+};
+
+export const getListChartFeedbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof listChartFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listChartFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListChartFeedbackQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listChartFeedback>>
+  > = ({ signal }) => listChartFeedback(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listChartFeedback>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListChartFeedbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listChartFeedback>>
+>;
+export type ListChartFeedbackQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List feedback for a single chart
+ */
+
+export function useListChartFeedback<
+  TData = Awaited<ReturnType<typeof listChartFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listChartFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListChartFeedbackQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Submit feedback on a chart
+ */
+export const getCreateChartFeedbackUrl = (id: number) => {
+  return `/api/charts/${id}/feedback`;
+};
+
+export const createChartFeedback = async (
+  id: number,
+  chartFeedbackInput: ChartFeedbackInput,
+  options?: RequestInit,
+): Promise<ChartFeedback> => {
+  return customFetch<ChartFeedback>(getCreateChartFeedbackUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chartFeedbackInput),
+  });
+};
+
+export const getCreateChartFeedbackMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createChartFeedback>>,
+    TError,
+    { id: number; data: BodyType<ChartFeedbackInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createChartFeedback>>,
+  TError,
+  { id: number; data: BodyType<ChartFeedbackInput> },
+  TContext
+> => {
+  const mutationKey = ["createChartFeedback"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createChartFeedback>>,
+    { id: number; data: BodyType<ChartFeedbackInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createChartFeedback(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateChartFeedbackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createChartFeedback>>
+>;
+export type CreateChartFeedbackMutationBody = BodyType<ChartFeedbackInput>;
+export type CreateChartFeedbackMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Submit feedback on a chart
+ */
+export const useCreateChartFeedback = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createChartFeedback>>,
+    TError,
+    { id: number; data: BodyType<ChartFeedbackInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createChartFeedback>>,
+  TError,
+  { id: number; data: BodyType<ChartFeedbackInput> },
+  TContext
+> => {
+  return useMutation(getCreateChartFeedbackMutationOptions(options));
+};
+
+/**
+ * @summary List feedback across all charts (for triage)
+ */
+export const getListAllFeedbackUrl = (params?: ListAllFeedbackParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/feedback?${stringifiedParams}`
+    : `/api/feedback`;
+};
+
+export const listAllFeedback = async (
+  params?: ListAllFeedbackParams,
+  options?: RequestInit,
+): Promise<TriageFeedback[]> => {
+  return customFetch<TriageFeedback[]>(getListAllFeedbackUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAllFeedbackQueryKey = (params?: ListAllFeedbackParams) => {
+  return [`/api/feedback`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAllFeedbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAllFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAllFeedbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAllFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAllFeedbackQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAllFeedback>>> = ({
+    signal,
+  }) => listAllFeedback(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAllFeedback>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAllFeedbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAllFeedback>>
+>;
+export type ListAllFeedbackQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List feedback across all charts (for triage)
+ */
+
+export function useListAllFeedback<
+  TData = Awaited<ReturnType<typeof listAllFeedback>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAllFeedbackParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAllFeedback>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAllFeedbackQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a feedback row's status
+ */
+export const getUpdateFeedbackUrl = (id: number) => {
+  return `/api/feedback/${id}`;
+};
+
+export const updateFeedback = async (
+  id: number,
+  feedbackUpdate: FeedbackUpdate,
+  options?: RequestInit,
+): Promise<ChartFeedback> => {
+  return customFetch<ChartFeedback>(getUpdateFeedbackUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(feedbackUpdate),
+  });
+};
+
+export const getUpdateFeedbackMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFeedback>>,
+    TError,
+    { id: number; data: BodyType<FeedbackUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFeedback>>,
+  TError,
+  { id: number; data: BodyType<FeedbackUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateFeedback"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFeedback>>,
+    { id: number; data: BodyType<FeedbackUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateFeedback(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFeedbackMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFeedback>>
+>;
+export type UpdateFeedbackMutationBody = BodyType<FeedbackUpdate>;
+export type UpdateFeedbackMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Update a feedback row's status
+ */
+export const useUpdateFeedback = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFeedback>>,
+    TError,
+    { id: number; data: BodyType<FeedbackUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFeedback>>,
+  TError,
+  { id: number; data: BodyType<FeedbackUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateFeedbackMutationOptions(options));
+};
+
+/**
+ * @summary List per-question trouble scores aggregated from feedback
+ */
+export const getListQuestionTroubleScoresUrl = () => {
+  return `/api/triage/questions`;
+};
+
+export const listQuestionTroubleScores = async (
+  options?: RequestInit,
+): Promise<QuestionTroubleScore[]> => {
+  return customFetch<QuestionTroubleScore[]>(
+    getListQuestionTroubleScoresUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListQuestionTroubleScoresQueryKey = () => {
+  return [`/api/triage/questions`] as const;
+};
+
+export const getListQuestionTroubleScoresQueryOptions = <
+  TData = Awaited<ReturnType<typeof listQuestionTroubleScores>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQuestionTroubleScores>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListQuestionTroubleScoresQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listQuestionTroubleScores>>
+  > = ({ signal }) => listQuestionTroubleScores({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listQuestionTroubleScores>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListQuestionTroubleScoresQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listQuestionTroubleScores>>
+>;
+export type ListQuestionTroubleScoresQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List per-question trouble scores aggregated from feedback
+ */
+
+export function useListQuestionTroubleScores<
+  TData = Awaited<ReturnType<typeof listQuestionTroubleScores>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listQuestionTroubleScores>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListQuestionTroubleScoresQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

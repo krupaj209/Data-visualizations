@@ -80,6 +80,9 @@ export const GetCeResponse = zod.object({
       status: zod.string().optional(),
       provenance: zod.record(zod.string(), zod.unknown()).nullish(),
       sortOrder: zod.number(),
+      openFeedbackCount: zod.number().optional(),
+      topFeedbackSeverity: zod.string().nullish(),
+      editCount: zod.number().optional(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),
@@ -129,6 +132,9 @@ export const RegenerateCeResponse = zod.object({
       status: zod.string().optional(),
       provenance: zod.record(zod.string(), zod.unknown()).nullish(),
       sortOrder: zod.number(),
+      openFeedbackCount: zod.number().optional(),
+      topFeedbackSeverity: zod.string().nullish(),
+      editCount: zod.number().optional(),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),
@@ -232,6 +238,9 @@ export const GetChartResponse = zod.object({
     status: zod.string().optional(),
     provenance: zod.record(zod.string(), zod.unknown()).nullish(),
     sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -250,3 +259,224 @@ export const GetChartResponse = zod.object({
     updatedAt: zod.string(),
   }),
 });
+
+/**
+ * Updates title/subtitle/insight and logs a chart_edits row. The edit
+row counts as a 0.25-weight implicit signal in the trouble score.
+
+ * @summary Edit a chart's writer-controlled copy
+ */
+export const EditChartParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EditChartBody = zod.object({
+  title: zod.string().optional(),
+  subtitle: zod.string().optional(),
+  insight: zod.string().optional(),
+  editorName: zod.string().optional(),
+  summary: zod.string().optional(),
+});
+
+export const EditChartResponse = zod.object({
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string().optional(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * Re-runs the research pipeline for just this chart, replacing its spec
+in place. Requires a DRD uploaded for the CE. Locked CEs return 409.
+
+ * @summary Regenerate the spec for a single chart
+ */
+export const RegenerateChartParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RegenerateChartResponse = zod.object({
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string().optional(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary List feedback for a single chart
+ */
+export const ListChartFeedbackParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListChartFeedbackResponseItem = zod.object({
+  id: zod.number(),
+  chartId: zod.number(),
+  rating: zod.number().nullish(),
+  issueCategory: zod.string().nullish(),
+  note: zod.string(),
+  reporterName: zod.string(),
+  status: zod.string(),
+  severity: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListChartFeedbackResponse = zod.array(
+  ListChartFeedbackResponseItem,
+);
+
+/**
+ * @summary Submit feedback on a chart
+ */
+export const CreateChartFeedbackParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateChartFeedbackBody = zod.object({
+  rating: zod.number().nullish(),
+  issueCategory: zod.string().nullish(),
+  note: zod.string().optional(),
+  reporterName: zod.string().optional(),
+});
+
+/**
+ * @summary List feedback across all charts (for triage)
+ */
+export const ListAllFeedbackQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+});
+
+export const ListAllFeedbackResponseItem = zod.object({
+  feedback: zod.object({
+    id: zod.number(),
+    chartId: zod.number(),
+    rating: zod.number().nullish(),
+    issueCategory: zod.string().nullish(),
+    note: zod.string(),
+    reporterName: zod.string(),
+    status: zod.string(),
+    severity: zod.string(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string().optional(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  chartEditCount: zod.number(),
+});
+export const ListAllFeedbackResponse = zod.array(ListAllFeedbackResponseItem);
+
+/**
+ * @summary Update a feedback row's status
+ */
+export const UpdateFeedbackParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateFeedbackBody = zod.object({
+  status: zod.string(),
+});
+
+export const UpdateFeedbackResponse = zod.object({
+  id: zod.number(),
+  chartId: zod.number(),
+  rating: zod.number().nullish(),
+  issueCategory: zod.string().nullish(),
+  note: zod.string(),
+  reporterName: zod.string(),
+  status: zod.string(),
+  severity: zod.string(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary List per-question trouble scores aggregated from feedback
+ */
+export const ListQuestionTroubleScoresResponseItem = zod.object({
+  questionText: zod.string(),
+  subcategoryId: zod.string(),
+  chartType: zod.string(),
+  chartCount: zod.number(),
+  openFeedbackCount: zod.number(),
+  editCount: zod.number(),
+  troubleScore: zod.number(),
+  sampleCeSlugs: zod.array(zod.string()),
+});
+export const ListQuestionTroubleScoresResponse = zod.array(
+  ListQuestionTroubleScoresResponseItem,
+);

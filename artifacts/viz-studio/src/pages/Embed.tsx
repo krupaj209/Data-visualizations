@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useGetChart } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 import { ChartRenderer } from "@/components/charts";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import { type ChartSpec } from "@/lib/chart-spec";
 
 /**
@@ -32,6 +33,10 @@ export default function Embed() {
   const explicit = readExplicitCompact();
   const auto = useAutoCompact();
   const compact = explicit ?? auto;
+  // `?studio=1` is set by Studio-internal links so internal staff can leave
+  // feedback while previewing. Public CMS iframes never carry it, so the
+  // hosted-on-the-listing-page experience stays clean.
+  const studio = readStudioFlag();
 
   useEffect(() => {
     document.body.classList.add("embed-mode");
@@ -88,8 +93,26 @@ export default function Embed() {
           }}
         />
       </div>
+      {studio && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 60,
+          }}
+        >
+          <FeedbackButton chartId={chart.id} ceSlug={ce?.slug} />
+        </div>
+      )}
     </div>
   );
+}
+
+function readStudioFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  const v = new URLSearchParams(window.location.search).get("studio");
+  return v === "1" || v === "true";
 }
 
 /**

@@ -168,12 +168,12 @@ ${truncate(input.drdMarkdown, 16000)}
 /* Step 2 — Generate one chart spec, grounded in the DRD + web search          */
 /* -------------------------------------------------------------------------- */
 
-interface GeneratedChart {
+export interface GeneratedChart {
   spec: AiChart;
   provenance: ChartProvenance;
 }
 
-async function generateOneChart(
+export async function generateOneChart(
   input: ResearchPipelineInput,
   question: string,
   archetype: ChartArchetypeId,
@@ -482,6 +482,28 @@ export async function runResearchPipeline(
     dropped_questions: selection.dropped,
     proposed_hero_questions: selection.proposed_hero,
   };
+}
+
+/**
+ * Regenerate a SINGLE chart in place. Used by the per-chart regenerate
+ * action in the Triage page. Reuses the same per-archetype prompt + DRD
+ * grounding + OpenAI verifier as the full pipeline so the result is
+ * comparable in quality.
+ */
+export async function regenerateSingleChart(args: {
+  ce: { name: string; city: string; country: string; slug: string };
+  question: string;
+  archetype: ChartArchetypeId;
+  drdMarkdown: string;
+}): Promise<{ chart: AiChart; provenance: ChartProvenance }> {
+  const input: ResearchPipelineInput = {
+    ce: args.ce,
+    subcategoryId: "single_chart_regen",
+    drdMarkdown: args.drdMarkdown,
+  };
+  const generated = await generateOneChart(input, args.question, args.archetype);
+  const provenance = await verifyChart(input, generated.spec, generated.provenance);
+  return { chart: generated.spec, provenance };
 }
 
 /* -------------------------------------------------------------------------- */

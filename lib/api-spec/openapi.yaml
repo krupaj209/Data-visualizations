@@ -18,6 +18,8 @@ tags:
     description: Deep Research Document upload and retrieval
   - name: research
     description: Research-grounded chart generation pipeline
+  - name: feedback
+    description: Chart feedback loop and triage
 paths:
   /healthz:
     get:
@@ -308,6 +310,206 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+    patch:
+      operationId: editChart
+      tags: [charts]
+      summary: Edit a chart's writer-controlled copy
+      description: |
+        Updates title/subtitle/insight and logs a chart_edits row. The edit
+        row counts as a 0.25-weight implicit signal in the trouble score.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartEditInput"
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chart]
+                properties:
+                  chart:
+                    $ref: "#/components/schemas/Chart"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/regenerate:
+    post:
+      operationId: regenerateChart
+      tags: [charts]
+      summary: Regenerate the spec for a single chart
+      description: |
+        Re-runs the research pipeline for just this chart, replacing its spec
+        in place. Requires a DRD uploaded for the CE. Locked CEs return 409.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Regenerated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartWithCe"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is locked from automated regeneration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "412":
+          description: No DRD uploaded for the CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Pipeline failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/feedback:
+    get:
+      operationId: listChartFeedback
+      tags: [feedback]
+      summary: List feedback for a single chart
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Feedback list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChartFeedback"
+    post:
+      operationId: createChartFeedback
+      tags: [feedback]
+      summary: Submit feedback on a chart
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartFeedbackInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartFeedback"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Chart not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /feedback:
+    get:
+      operationId: listAllFeedback
+      tags: [feedback]
+      summary: List feedback across all charts (for triage)
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Triage feedback rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TriageFeedback"
+  /feedback/{id}:
+    patch:
+      operationId: updateFeedback
+      tags: [feedback]
+      summary: Update a feedback row's status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartFeedback"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /triage/questions:
+    get:
+      operationId: listQuestionTroubleScores
+      tags: [feedback]
+      summary: List per-question trouble scores aggregated from feedback
+      responses:
+        "200":
+          description: Trouble scores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuestionTroubleScore"
 components:
   schemas:
     HealthStatus:
@@ -393,6 +595,13 @@ components:
           nullable: true
           additionalProperties: true
         sortOrder:
+          type: integer
+        openFeedbackCount:
+          type: integer
+        topFeedbackSeverity:
+          type: string
+          nullable: true
+        editCount:
           type: integer
         createdAt:
           type: string
@@ -555,6 +764,119 @@ components:
         - publishedChartsKept
         - droppedQuestions
         - proposedHeroQuestions
+    ChartFeedback:
+      type: object
+      properties:
+        id:
+          type: integer
+        chartId:
+          type: integer
+        rating:
+          type: integer
+          nullable: true
+        issueCategory:
+          type: string
+          nullable: true
+        note:
+          type: string
+        reporterName:
+          type: string
+        status:
+          type: string
+        severity:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - chartId
+        - note
+        - reporterName
+        - status
+        - severity
+        - createdAt
+        - updatedAt
+    ChartFeedbackInput:
+      type: object
+      properties:
+        rating:
+          type: integer
+          nullable: true
+        issueCategory:
+          type: string
+          nullable: true
+        note:
+          type: string
+        reporterName:
+          type: string
+    ChartEditInput:
+      type: object
+      properties:
+        title:
+          type: string
+        subtitle:
+          type: string
+        insight:
+          type: string
+        editorName:
+          type: string
+        summary:
+          type: string
+    FeedbackUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    TriageFeedback:
+      type: object
+      properties:
+        feedback:
+          $ref: "#/components/schemas/ChartFeedback"
+        chart:
+          $ref: "#/components/schemas/Chart"
+        ce:
+          $ref: "#/components/schemas/Ce"
+        chartEditCount:
+          type: integer
+      required:
+        - feedback
+        - chart
+        - ce
+        - chartEditCount
+    QuestionTroubleScore:
+      type: object
+      properties:
+        questionText:
+          type: string
+        subcategoryId:
+          type: string
+        chartType:
+          type: string
+        chartCount:
+          type: integer
+        openFeedbackCount:
+          type: integer
+        editCount:
+          type: integer
+        troubleScore:
+          type: number
+        sampleCeSlugs:
+          type: array
+          items:
+            type: string
+      required:
+        - questionText
+        - subcategoryId
+        - chartType
+        - chartCount
+        - openFeedbackCount
+        - editCount
+        - troubleScore
+        - sampleCeSlugs
     CeInput:
       type: object
       properties:
