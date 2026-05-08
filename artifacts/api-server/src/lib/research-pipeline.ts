@@ -392,14 +392,153 @@ export interface GeneratedChart {
   provenance: ChartProvenance;
 }
 
+/**
+ * Two-step grounded JSON helper.
+ *
+ * Gemini rejects the combination of `responseMimeType: "application/json"`
+ * with the `googleSearch` tool ("controlled generation is not supported with
+ * Search tool"). To get BOTH grounding and a strict JSON spec, we split
+ * each grounded chart-generation into two calls:
+ *
+ *   1. Research call — `googleSearch` tool ON, free-form text out. The
+ *      response carries grounding metadata (the actual source URLs Gemini
+ *      consulted) which we surface into `provenance.web_sources`.
+ *   2. Spec call — `responseMimeType: "application/json"`, no tools. Takes
+ *      the research brief from step 1 plus the DRD and produces strict JSON.
+ *
+ * Returns the parsed spec JSON, the raw research-brief text, and the
+ * research response so callers can run grounding sources through
+ * `normalizeProvenance`.
+ */
+async function groundedJsonCall<T>(args: {
+  /** Free-form prompt for the grounded research step (web search ON). */
+  researchPrompt: string;
+  /** Builds the JSON-mode spec prompt given the research brief. */
+  buildSpecPrompt: (researchBrief: string) => string;
+  /** Token budget for the spec call. */
+  specMaxTokens?: number;
+  /** Token budget for the research call. */
+  researchMaxTokens?: number;
+  /** Spec-call temperature (defaults to 0.5). */
+  specTemperature?: number;
+  /**
+   * Optional spec-step retry. Receives the raw spec text and parsed JSON
+   * (or null) and returns either a follow-up prompt to try again with, or
+   * null when the result is acceptable. Only the spec call is retried — the
+   * research step is reused.
+   */
+  retry?: (
+    rawText: string,
+    parsed: T | null,
+    researchBrief: string,
+  ) => string | null;
+}): Promise<{
+  parsed: T;
+  rawText: string;
+  researchBrief: string;
+  researchResponse: unknown;
+}> {
+  // Step 1: grounded research (free-form text out, googleSearch ON).
+  const researchResponse = await ai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: args.researchPrompt }] }],
+    config: {
+      temperature: 0.4,
+      maxOutputTokens: args.researchMaxTokens ?? 2048,
+      tools: [{ googleSearch: {} }],
+    },
+  });
+  const researchBrief = (researchResponse.text ?? "").trim();
+  // Soft-fail: an empty brief is still usable — the spec step can lean on
+  // the DRD alone. We log so writers can spot grounding gaps.
+  if (!researchBrief) {
+    logger.warn(
+      "groundedJsonCall: research step returned empty brief; spec step will run DRD-only",
+    );
+  }
+
+  // Step 2: strict-JSON spec call (no tools, responseMimeType set).
+  const specPrompt = args.buildSpecPrompt(researchBrief);
+  const specResponse = await ai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: specPrompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      temperature: args.specTemperature ?? 0.5,
+      maxOutputTokens: args.specMaxTokens ?? 6144,
+    },
+  });
+  let rawText = specResponse.text ?? "";
+  let parsed = safeJson<T>(rawText);
+
+  // Optional one-shot retry of just the spec step.
+  if (args.retry) {
+    const retryPrompt = args.retry(rawText, parsed, researchBrief);
+    if (retryPrompt) {
+      const retryResp = await ai.models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: retryPrompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          temperature: Math.max(0.2, (args.specTemperature ?? 0.5) - 0.2),
+          maxOutputTokens: args.specMaxTokens ?? 6144,
+        },
+      });
+      rawText = retryResp.text ?? "";
+      parsed = safeJson<T>(rawText);
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Grounded JSON call produced invalid JSON");
+  }
+
+  return {
+    parsed: parsed as T,
+    rawText,
+    researchBrief,
+    researchResponse,
+  };
+}
+
 export async function generateOneChart(
   input: ResearchPipelineInput,
   question: string,
   archetype: ChartArchetypeId,
 ): Promise<GeneratedChart> {
   const archetypeBlock = ARCHETYPE_PROMPT[archetype];
+  const today = new Date().toISOString().slice(0, 10);
+  const drdBlock = truncate(input.drdMarkdown, 14000);
 
-  const prompt = `Design a SINGLE chart that answers this visitor question for ${input.ce.name}.
+  const researchPrompt = `Gather the live numeric facts needed to answer this visitor question for ${input.ce.name} (${input.ce.city}, ${input.ce.country}).
+
+Question: "${question}"
+Target chart archetype: ${archetype}
+
+Use Google Search to surface the most current authoritative numbers (operator pages, official ticketing sites, recent reviews/news). Look for the specific quantitative facts the archetype needs — for example:
+- weekly_pattern: which weekday is busiest/quietest, any closed days
+- hourly_heatmap: opening/closing hours, peak-of-day window
+- booking_window: how far ahead tickets typically sell out
+- seasonal_curve / month_calendar: monthly visitation/weather/price trend
+- ticket_ladder / savings_breakdown: current ticket tiers and prices in local currency
+- compare_zones / queue_compare: typical waits per entrance/zone
+- duration_*: typical visit duration ranges
+- stat_grid: top 3-6 headline numbers visitors care about
+- and so on for the other archetypes
+
+Return a SHORT research brief (8-15 bullet lines) of CURRENT facts you actually grounded via search. Format each line as:
+- <fact, with the specific number> (source domain)
+
+If the DRD below already covers a fact, you can still confirm it with search but prefer to call out anything that contradicts the DRD. If search returned nothing useful for some fields, say so explicitly so the spec step knows to estimate.
+
+Today is ${today}.
+
+Deep Research Doc (for context only — do NOT just copy from this; the goal is to ground/refresh from live web sources):
+"""
+${drdBlock}
+"""`;
+
+  const buildSpecPrompt = (researchBrief: string) => `Design a SINGLE chart that answers this visitor question for ${input.ce.name}.
 
 Question: "${question}"
 Required archetype: ${archetype}
@@ -409,9 +548,9 @@ ${archetypeBlock}
 
 Grounding rules (very important):
 1. PREFER numbers from the Deep Research Doc below. When you use a fact from the DRD, capture the exact phrase you used in provenance.drd_snippets.
-2. If the DRD doesn't cover it AND you can ground it via Google Search, use the search result and capture the source URL in provenance.web_sources.
+2. If the DRD doesn't cover it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources (with a short title).
 3. If neither covers it, produce an HONEST estimate a Headout local guide would broadly agree with — and explicitly list which fields you estimated in provenance.estimates with a one-line reasoning.
-4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from web search; "estimated" otherwise.
+4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings; "estimated" otherwise.
 5. Do NOT invent specific weather scores, price scores, or visitor-mix percentages — leave optional fields blank rather than fabricate. Required fields can use estimates with reasoning.
 
 Output STRICT JSON (no markdown), shape:
@@ -433,75 +572,63 @@ Output STRICT JSON (no markdown), shape:
   }
 }
 
-Today is ${new Date().toISOString().slice(0, 10)} (use as the start_date for month_calendar).
+Today is ${today} (use as the start_date for month_calendar).
+
+Live Web Findings (from a fresh google search — treat as authoritative for any fact the DRD doesn't cover):
+"""
+${researchBrief || "(no live findings — rely on the DRD)"}
+"""
 
 Deep Research Doc:
 """
-${truncate(input.drdMarkdown, 14000)}
+${drdBlock}
 """`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      temperature: 0.6,
-      maxOutputTokens: 6144,
-      // Gemini Google Search grounding tool — gives the model real-time web
-      // access and surfaces grounding metadata we can mirror into provenance.
-      tools: [{ googleSearch: {} }],
+  const result = await groundedJsonCall<{
+    chart: unknown;
+    provenance?: ChartProvenance;
+  }>({
+    researchPrompt,
+    buildSpecPrompt,
+    specTemperature: 0.6,
+    specMaxTokens: 6144,
+    retry: (_raw, parsed, researchBrief) => {
+      // Validate to decide whether to retry.
+      if (!parsed) {
+        return null; // already handled by caller — will throw below
+      }
+      const chartParsed = aiChartSchema.safeParse(parsed.chart);
+      if (chartParsed.success) return null;
+      const issues = chartParsed.error.issues
+        .slice(0, 6)
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ");
+      // Rebuild the spec prompt with the SAME research brief so retry doesn't
+      // lose grounding context (each generateContent call is stateless).
+      return `${buildSpecPrompt(researchBrief)}\n\nThe previous response was invalid: ${issues}\n\nRegenerate the FULL JSON, fixing the issues. Output ONLY the JSON object.`;
     },
   });
 
-  const raw = response.text ?? "";
-  if (!raw) throw new Error(`Chart generation returned empty for ${archetype}`);
-
-  const parsed = safeJson<{ chart: unknown; provenance?: ChartProvenance }>(raw);
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`Chart generation produced invalid JSON for ${archetype}`);
-  }
-
-  const chartParsed = aiChartSchema.safeParse(parsed.chart);
+  const chartParsed = aiChartSchema.safeParse(result.parsed.chart);
   if (!chartParsed.success) {
-    // One retry with the validation error fed back, mirroring generate-ce.ts.
     const issues = chartParsed.error.issues
       .slice(0, 6)
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
-    const retryPrompt = `${prompt}\n\nThe previous response was invalid: ${issues}\n\nRegenerate the FULL JSON, fixing the issues. Output ONLY the JSON object.`;
-    const retry = await ai.models.generateContent({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: retryPrompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.4,
-        maxOutputTokens: 6144,
-        tools: [{ googleSearch: {} }],
-      },
-    });
-    const retryRaw = retry.text ?? "";
-    const retryParsed = safeJson<{ chart: unknown; provenance?: ChartProvenance }>(
-      retryRaw,
+    throw new Error(
+      `Chart generation failed schema for ${archetype}: ${issues}`,
     );
-    const retryChart = retryParsed
-      ? aiChartSchema.safeParse(retryParsed.chart)
-      : null;
-    if (!retryChart || !retryChart.success) {
-      throw new Error(
-        `Chart generation failed schema for ${archetype}: ${issues}`,
-      );
-    }
-    return {
-      spec: retryChart.data,
-      // IMPORTANT: pull grounding metadata from the RETRY response (which
-      // produced the spec we're keeping), not the original failed response.
-      provenance: normalizeProvenance(retryParsed?.provenance, retry),
-    };
   }
 
   return {
     spec: chartParsed.data,
-    provenance: normalizeProvenance(parsed.provenance, response),
+    // Pull grounding metadata from the RESEARCH response (the call where
+    // googleSearch actually ran). The spec call has no tools, so its
+    // response carries no groundingMetadata.
+    provenance: normalizeProvenance(
+      result.parsed.provenance,
+      result.researchResponse,
+    ),
   };
 }
 
@@ -525,8 +652,30 @@ export async function generateCrowdTimingPair(
 ): Promise<{ weekly: GeneratedChart; hourly: GeneratedChart }> {
   const weeklyBlock = ARCHETYPE_PROMPT["weekly_pattern"];
   const hourlyBlock = ARCHETYPE_PROMPT["hourly_heatmap"];
+  const today = new Date().toISOString().slice(0, 10);
+  const drdBlock = truncate(input.drdMarkdown, 14000);
 
-  const prompt = `Design TWO charts that together answer "when do the crowds show?" for ${input.ce.name}. They MUST be numerically consistent — the weekly view's quietest day should be the heatmap's quietest day, opening hours should match, etc.
+  const researchPrompt = `Gather the live numeric facts needed to answer "when do the crowds show?" for ${input.ce.name} (${input.ce.city}, ${input.ce.country}). The findings will feed TWO charts that MUST be numerically consistent — a weekly pattern (Mon-Sun crowd levels) AND an hourly heatmap (24-hour crowd intensity per weekday).
+
+Use Google Search to surface CURRENT facts (operator pages, official ticketing sites, recent reviews/news). Specifically look for:
+- Opening and closing hours (and any closed days of the week)
+- Which weekday is busiest and which is quietest
+- The peak time(s) of day, and any reliable quiet windows (e.g. first-thing morning, late afternoon)
+- Any seasonal/day-specific quirks worth flagging (free admission days, late nights, group surges)
+
+Return a SHORT research brief (8-15 bullets) of CURRENT facts you actually grounded. Format:
+- <fact, with the specific number/day/hour> (source domain)
+
+If the DRD already covers a fact, still confirm it with search and call out anything that contradicts. If search returned nothing useful for a field, say so explicitly.
+
+Today is ${today}.
+
+Deep Research Doc (context only):
+"""
+${drdBlock}
+"""`;
+
+  const buildSpecPrompt = (researchBrief: string) => `Design TWO charts that together answer "when do the crowds show?" for ${input.ce.name}. They MUST be numerically consistent — the weekly view's quietest day should be the heatmap's quietest day, opening hours should match, etc.
 
 Question A (weekly view): "${weeklyQuestion}"
 Required archetype A: weekly_pattern
@@ -540,9 +689,9 @@ ${hourlyBlock}
 
 Grounding rules (apply to BOTH charts):
 1. PREFER numbers from the Deep Research Doc below. Capture the exact phrase you used in provenance.drd_snippets.
-2. If the DRD doesn't cover it AND you can ground it via Google Search, use the search result and capture the source URL in provenance.web_sources.
+2. If the DRD doesn't cover it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources.
 3. Otherwise produce an HONEST estimate a Headout local guide would broadly agree with — list which fields you estimated in provenance.estimates.
-4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from web search; "estimated" otherwise.
+4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings; "estimated" otherwise.
 5. The two charts MUST agree: same opening/closing hours, same weekly pattern (the quietest day in A is the quietest row in B).
 
 Output STRICT JSON (no markdown), shape:
@@ -557,31 +706,70 @@ Output STRICT JSON (no markdown), shape:
   }
 }
 
-Today is ${new Date().toISOString().slice(0, 10)}.
+Today is ${today}.
+
+Live Web Findings (from a fresh google search — treat as authoritative for any fact the DRD doesn't cover):
+"""
+${researchBrief || "(no live findings — rely on the DRD)"}
+"""
 
 Deep Research Doc:
 """
-${truncate(input.drdMarkdown, 14000)}
+${drdBlock}
 """`;
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      temperature: 0.5,
-      maxOutputTokens: 8192,
-      tools: [{ googleSearch: {} }],
+  type PairShape = {
+    weekly?: { chart: unknown; provenance?: ChartProvenance };
+    hourly?: { chart: unknown; provenance?: ChartProvenance };
+  };
+
+  const result = await groundedJsonCall<PairShape>({
+    researchPrompt,
+    buildSpecPrompt,
+    specTemperature: 0.5,
+    specMaxTokens: 8192,
+    retry: (_raw, parsed, researchBrief) => {
+      if (!parsed?.weekly?.chart || !parsed?.hourly?.chart) {
+        return `${buildSpecPrompt(researchBrief)}\n\nThe previous response was missing one of the required {weekly, hourly} entries. Regenerate the FULL JSON with BOTH entries present. Output ONLY the JSON object.`;
+      }
+      const w = aiChartSchema.safeParse(parsed.weekly.chart);
+      const h = aiChartSchema.safeParse(parsed.hourly.chart);
+      if (
+        w.success &&
+        h.success &&
+        w.data.spec.type === "weekly_pattern" &&
+        h.data.spec.type === "hourly_heatmap"
+      ) {
+        return null;
+      }
+      const issues: string[] = [];
+      if (!w.success) {
+        issues.push(
+          "weekly: " +
+            w.error.issues
+              .slice(0, 4)
+              .map((i) => `${i.path.join(".")}: ${i.message}`)
+              .join("; "),
+        );
+      } else if (w.data.spec.type !== "weekly_pattern") {
+        issues.push(`weekly.spec.type must be "weekly_pattern"`);
+      }
+      if (!h.success) {
+        issues.push(
+          "hourly: " +
+            h.error.issues
+              .slice(0, 4)
+              .map((i) => `${i.path.join(".")}: ${i.message}`)
+              .join("; "),
+        );
+      } else if (h.data.spec.type !== "hourly_heatmap") {
+        issues.push(`hourly.spec.type must be "hourly_heatmap"`);
+      }
+      return `${buildSpecPrompt(researchBrief)}\n\nThe previous response was invalid: ${issues.join(" | ")}\n\nRegenerate the FULL JSON, fixing the issues. Output ONLY the JSON object.`;
     },
   });
 
-  const raw = response.text ?? "";
-  if (!raw) throw new Error("Crowd-timing pair generation returned empty");
-
-  const parsed = safeJson<{
-    weekly?: { chart: unknown; provenance?: ChartProvenance };
-    hourly?: { chart: unknown; provenance?: ChartProvenance };
-  }>(raw);
+  const parsed = result.parsed;
   if (!parsed?.weekly?.chart || !parsed?.hourly?.chart) {
     throw new Error("Crowd-timing pair generation produced malformed JSON");
   }
@@ -601,11 +789,17 @@ ${truncate(input.drdMarkdown, 14000)}
   return {
     weekly: {
       spec: weeklyChart.data,
-      provenance: normalizeProvenance(parsed.weekly.provenance, response),
+      provenance: normalizeProvenance(
+        parsed.weekly.provenance,
+        result.researchResponse,
+      ),
     },
     hourly: {
       spec: hourlyChart.data,
-      provenance: normalizeProvenance(parsed.hourly.provenance, response),
+      provenance: normalizeProvenance(
+        parsed.hourly.provenance,
+        result.researchResponse,
+      ),
     },
   };
 }
