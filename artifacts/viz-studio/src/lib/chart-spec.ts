@@ -460,6 +460,79 @@ export interface StopFrequencySpec {
   }[];
 }
 
+/**
+ * Promoted Accademia bespokes (Task #33). Same shapes as
+ * EntranceLanesSpec / DurationProfilesSpec — the renderers wrap the
+ * bespoke components so writers can author one canonical archetype that
+ * works on any CE, not just the curated Florence cluster. Older rows in
+ * the DB stay valid under the legacy discriminators above.
+ */
+export interface QueueCompareSpec {
+  type: "queue_compare";
+  venue_label: string;
+  shared_caption: string;
+  lanes: EntranceLanesSpec["lanes"];
+}
+
+export interface DurationStatSpec {
+  type: "duration_stat";
+  headline: string;
+  scale_min: DurationProfilesSpec["scale_min"];
+  profiles: DurationProfilesSpec["profiles"];
+  tip?: string;
+}
+
+/** Smooth hourly curve for a single named subject (ride / activity). */
+export interface RideWaitCurveSpec {
+  type: "ride_wait_curve";
+  /** What the curve is measuring, e.g. "Tron Lightcycle Run". */
+  subject: string;
+  /** Y-axis label, e.g. "Wait (min)". */
+  y_label: string;
+  /** Unit suffix shown on tooltips, e.g. "min". */
+  unit: string;
+  open_hour: number;
+  close_hour: number;
+  /** 24 entries (hour 0..23). Closed hours just sit at 0. */
+  hours: { hour: number; value: number }[];
+  zones: {
+    label: string;
+    tone: "best" | "peak" | "second_best";
+    start_hour: number;
+    end_hour: number;
+  }[];
+  insight?: string;
+}
+
+/** Same curve treatment as RideWaitCurve, used for activity index curves. */
+export interface ActivityWindowSpec {
+  type: "activity_window";
+  subject: string;
+  y_label: string;
+  unit: string;
+  open_hour: number;
+  close_hour: number;
+  hours: { hour: number; value: number }[];
+  zones: {
+    label: string;
+    tone: "best" | "peak" | "second_best";
+    start_hour: number;
+    end_hour: number;
+  }[];
+  insight?: string;
+}
+
+/** Horizontal ranked-bar of named subjects, sorted shortest to longest. */
+export interface OpeningHourRankSpec {
+  type: "opening_hour_rank";
+  subject_label: string;
+  unit: string;
+  hour_label: string;
+  bands: { green_max: number; amber_max: number };
+  subjects: { name: string; wait_minutes: number; note?: string }[];
+  insight?: string;
+}
+
 /* -------------------------------------------------------------------------- *
  * v3 — calendar & seasonal family                                            *
  * Four sibling 12-month archetypes that swap crowd volume for a different    *
@@ -571,7 +644,12 @@ export type ChartSpec =
   | ReturnBufferRankSpec
   | SeatValueMapSpec
   | OptimalDepartureSpec
-  | StopFrequencySpec;
+  | StopFrequencySpec
+  | QueueCompareSpec
+  | DurationStatSpec
+  | RideWaitCurveSpec
+  | ActivityWindowSpec
+  | OpeningHourRankSpec;
 
 /** Subset of the chart provenance object the renderers may surface to users. */
 export interface ChartProvenanceLite {

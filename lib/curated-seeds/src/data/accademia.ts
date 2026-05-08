@@ -225,9 +225,9 @@ export const accademia: CuratedCe = {
       subtitle: "Most visitors stay 60–90 minutes",
       insight:
         "Plan for 60–90 minutes if you want to see David, the Hall of Colossus, and the Musical Instruments. David-only visits run 30-45 minutes.",
-      chart_type: "duration_profiles",
+      chart_type: "duration_stat",
       spec: {
-        type: "duration_profiles",
+        type: "duration_stat",
         headline: "Most visitors stay 60–90 minutes",
         scale_min: [
           { label: "0", minutes: 0 },
@@ -285,9 +285,9 @@ export const accademia: CuratedCe = {
       subtitle: "All four lanes share the same doorway",
       insight:
         "Reserved tickets clear in 10–20 minutes. Walk-up swells to 45–120 minutes in peak season. Accessible visitors get priority entry.",
-      chart_type: "entrance_lanes",
+      chart_type: "queue_compare",
       spec: {
-        type: "entrance_lanes",
+        type: "queue_compare",
         venue_label: "Accademia Gallery entrance",
         shared_caption: "All four lanes share the same doorway",
         lanes: [

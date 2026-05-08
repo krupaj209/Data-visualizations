@@ -63,11 +63,49 @@ Optional fields (weather_score, price_score, calendar_notes, metric_insights) on
   "tiers": [ { "name": "...", "price": <int>, "includes": ["..."], "recommended": <bool>, "share"?: <0-100 int>, "wait_savings_min"?: <int> }, ... 2-5 items ] }
 Exactly one tier must have recommended:true.`,
 
-  /* ---------------- reserved (stubs) ---------------- */
-  queue_compare: STUB("queue_compare"),
-  duration_stat: STUB("duration_stat"),
-  ride_wait_curve: STUB("ride_wait_curve"),
-  opening_hour_rank: STUB("opening_hour_rank"),
+  /* ---------------- implemented today ---------------- */
+  queue_compare: `{ "type": "queue_compare",
+  "venue_label": "<short venue name, ≤80 chars>",
+  "shared_caption": "<one-line context shared across lanes, ≤160 chars>",
+  "lanes": [ { "name": "<lane name>", "wait_label": "<e.g. ~10 min>", "tone": "<candy|purps|okay|slate>", "dots": <int 0-40, comparable across lanes>, "dashed"?: <bool, true for closed/skip-only lanes>, "who"?: "<who uses this lane, ≤160 chars>", "wait_peak"?: "...", "wait_off_peak"?: "...", "how"?: "..." }, ... 2-5 items ] }
+Use 'tone' to encode speed: candy = longest, slate/okay = fastest. 'dots' should scale linearly with wait time so lanes are visually comparable. Reserve 'dashed':true for lanes that are conditional (closed, members-only).`,
+
+  duration_stat: `{ "type": "duration_stat",
+  "headline": "<one-line summary of the typical visit length, ≤160 chars>",
+  "scale_min": [ { "label": "<e.g. 30m>", "minutes": <int 0-600> }, ... 2-8 items, monotonically increasing ],
+  "profiles": [ { "name": "<visitor type, e.g. Rusher>", "icon": "<stopwatch|head|column|lyre|bust|bench>", "range_min": <int 0-600>, "range_max": <int 0-600>, "note"?: "...", "highlight"?: <bool> }, ... 2-6 items ],
+  "tip"?: "<one-line guidance, ≤160 chars>" }
+range_min ≤ range_max in minutes. Pick scale_min so the largest profile range fits comfortably. Mark exactly one profile with highlight:true (the recommended/median one).`,
+
+  ride_wait_curve: `{ "type": "ride_wait_curve",
+  "subject": "<the ONE ride this curve is about, e.g. Tron Lightcycle Run>",
+  "y_label": "<e.g. Wait (min)>",
+  "unit": "<e.g. min>",
+  "open_hour": <0-23 int>, "close_hour": <1-24 int, > open_hour>,
+  "hours": [ { "hour": <0-23 int, each appears exactly once>, "value": <number 0-1000> }, ... 24 items ],
+  "zones": [ { "label": "<e.g. Best>", "tone": "<best|peak|second_best>", "start_hour": <int>, "end_hour": <int, > start_hour> }, ... 1-4 items ],
+  "insight"?: "<one-line takeaway, ≤160 chars>" }
+hours[] MUST contain hour 0..23 exactly once. Set value:0 outside opening hours. close_hour is EXCLUSIVE (open=9, close=18 means 9..17 inclusive). Zones overlap the curve (best window, peak, second-best); zone end_hour is also exclusive. Use 'peak' tone exactly once for the worst time of day.`,
+
+  opening_hour_rank: `{ "type": "opening_hour_rank",
+  "subject_label": "<noun for the items, e.g. Ride>",
+  "unit": "<e.g. min>",
+  "hour_label": "<chart strapline, e.g. Wait at 9:00 am opening>",
+  "bands": { "green_max": <number, ≤ amber_max>, "amber_max": <number> },
+  "subjects": [ { "name": "<ride/exhibit/etc>", "wait_minutes": <number 0-360>, "note"?: "<≤80 chars>" }, ... 3-8 items ],
+  "insight"?: "<one-line takeaway, ≤160 chars>" }
+The renderer sorts shortest→longest itself. Pick bands so the bottom 1-2 fall in green and the top 1-2 fall in red — they communicate priority.`,
+
+  activity_window: `{ "type": "activity_window",
+  "subject": "<the activity / animal / phenomenon, e.g. Big-five sightings>",
+  "y_label": "<e.g. Activity index>",
+  "unit": "<e.g. (0-100) — empty string is fine>",
+  "open_hour": <0-23 int>, "close_hour": <1-24 int, > open_hour>,
+  "hours": [ { "hour": <0-23 int, each appears exactly once>, "value": <number 0-100> }, ... 24 items ],
+  "zones": [ { "label": "<e.g. Dawn peak>", "tone": "<best|peak|second_best>", "start_hour": <int>, "end_hour": <int, > start_hour> }, ... 1-4 items ],
+  "insight"?: "<one-line takeaway, ≤160 chars>" }
+hours[] MUST cover 0..23 exactly once. close_hour and zone end_hour are EXCLUSIVE (open=6, close=19 means 6..18 inclusive). Activity index typically peaks at dawn/dusk for wildlife — make the curve actually bimodal when the DRD/sources support it.`,
+
   zone_wait_heatmap: `{ "type": "zone_wait_heatmap",
   "open_hour": <0-23 int>, "close_hour": <1-24 int>,
   "unit": "min",
@@ -80,6 +118,7 @@ Each row is one named land/section (e.g. Magic Kingdom: Fantasyland, Tomorrowlan
   "zones": [ { "name": "Sistine Chapel", "emoji"?: "🎨", "hours": [<24 crowd-score ints, 0-100>] }, ... 2-8 named galleries/exhibits, hours[] always length 24, 0 outside opening hours ],
   "best_window"?: { "label": "Sistine first thing", "zone": "Sistine Chapel", "start_hour": <int>, "end_hour": <int> } }
 Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Chapel, Raphael Rooms, Gallery of Maps). Cell value = 0-100 crowd score at that hour. Different rows can peak at different hours — that's the point of the chart.`,
+
   zone_wait_compare: STUB("zone_wait_compare"),
   daily_programme: STUB("daily_programme"),
   time_split: STUB("time_split"),
@@ -92,7 +131,6 @@ Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Ch
 monthly[] is ALWAYS 12 numbers in jan..dec order (probability % of trips with a confirmed sighting). Use display:"single" when only one species is meaningful; "grouped" for side-by-side species comparison; "stacked" only when total cumulative probability across species is itself a useful read.
 SOURCING: Every probability number MUST come from a real source you actually grounded with googleSearch (operator logs, marine biology study, NGO sighting database). Do not estimate from "feel" or generic seasonality. Drop the chart entirely if no operator-level data is grounded — return a higher confidence_note when sourcing is thin.`,
 
-  activity_window: STUB("activity_window"),
   departure_reliability: `{ "type": "departure_reliability",
   "months": [ { "month": "<jan..dec>", "pct_ran": <0-100 number>, "cancellation_reasons"?: [ { "reason": "Wind", "share": <0-100> }, ... up to 4 ], "note"?: "..." }, ... 12 items ],
   "target_pct"?: <0-100 number, e.g. 90 if the operator publishes a target>,
@@ -109,7 +147,6 @@ SOURCING: pct_ran MUST come from a sourced operator/regulator stat (FAA part 91 
   "best_months": ["Feb", "Mar"], "worst_months": ["Jul"] }
 months[] is ALWAYS 12 in jan..dec order. status uses the operator's framing — e.g. ski resorts use closed/poor/fair/good/optimal; dive sites use poor/fair/good/optimal/expert. value uses whatever unit_label says.
 SOURCING: Every monthly value MUST be grounded in a real measurement source (resort historical snow report, NOAA buoy records, USGS river gauge, DAN dive log, vineyard harvest notes). Use googleSearch to pull current data and cite every source. reference_bands should reflect industry-standard thresholds (e.g. "Beginner-friendly 20-40cm") that you can also point to a source for.`,
-
   golden_hour_match: `{ "type": "golden_hour_match",
   "location_label": "Santorini caldera",
   "slots": [ { "label": "Sunrise" }, { "label": "Midday" }, { "label": "Sunset" }, ... 1-6 named departure slots ],

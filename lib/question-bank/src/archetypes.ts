@@ -199,7 +199,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["landmarks", "museums", "religious_sites"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   duration_stat: {
     id: "duration_stat",
@@ -218,7 +218,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "baths",
     ],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   ride_wait_curve: {
     id: "ride_wait_curve",
@@ -230,7 +230,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["theme_parks", "water_parks"],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   opening_hour_rank: {
     id: "opening_hour_rank",
@@ -241,7 +241,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["theme_parks", "water_parks"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   zone_wait_heatmap: {
     id: "zone_wait_heatmap",
@@ -357,7 +357,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["safari"],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   departure_reliability: {
     id: "departure_reliability",

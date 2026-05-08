@@ -670,7 +670,7 @@ export const savingsBreakdownSpec = z.object({
       }),
     )
     .min(3)
-    .max(8),
+    .max(10),
 });
 
 export const returnBufferRankSpec = z.object({
@@ -758,6 +758,146 @@ export const stopFrequencySpec = z.object({
     .max(20),
 });
 
+/* -------------------------------------------------------------------------- *
+ * v3 curve & promotion family (Task #33)                                     *
+ *                                                                            *
+ *  - queue_compare      (promoted from the bespoke entrance_lanes spec)      *
+ *  - duration_stat      (promoted from the bespoke duration_profiles spec)   *
+ *  - ride_wait_curve    (smooth hourly wait-time curve, single subject)      *
+ *  - activity_window    (smooth hourly activity-index curve, single subject) *
+ *  - opening_hour_rank  (horizontal ranked-bar of rope-drop waits)           *
+ *                                                                            *
+ * queue_compare and duration_stat are shape-compatible with their bespoke    *
+ * predecessors so the same React renderer powers both, and the curated      *
+ * Florence cluster keeps rendering during the rename. Old discriminators    *
+ * remain valid above for any rows already in the DB.                         *
+ * -------------------------------------------------------------------------- */
+
+const queueCompareSpec = z
+  .object({
+    type: z.literal("queue_compare"),
+    venue_label: z.string().max(80),
+    shared_caption: z.string().max(160),
+    lanes: z
+      .array(
+        z
+          .object({
+            name: z.string().max(60),
+            wait_label: z.string().max(40),
+            tone: z.enum(["candy", "purps", "okay", "slate"]),
+            dots: z.number().int().min(0).max(40),
+            dashed: z.boolean().optional(),
+            who: z.string().max(160).optional(),
+            wait_peak: z.string().max(40).optional(),
+            wait_off_peak: z.string().max(40).optional(),
+            how: z.string().max(200).optional(),
+          })
+          .passthrough(),
+      )
+      .min(2)
+      .max(5),
+  })
+  .passthrough();
+
+const durationStatSpec = z
+  .object({
+    type: z.literal("duration_stat"),
+    headline: z.string().max(160),
+    scale_min: z
+      .array(
+        z.object({
+          label: z.string().max(20),
+          minutes: z.number().int().min(0).max(600),
+        }),
+      )
+      .min(2)
+      .max(8),
+    profiles: z
+      .array(
+        z
+          .object({
+            name: z.string().max(60),
+            icon: z.enum([
+              "stopwatch",
+              "head",
+              "column",
+              "lyre",
+              "bust",
+              "bench",
+            ]),
+            range_min: z.number().int().min(0).max(600),
+            range_max: z.number().int().min(0).max(600),
+            note: z.string().max(120).optional(),
+            highlight: z.boolean().optional(),
+          })
+          .passthrough(),
+      )
+      .min(2)
+      .max(6),
+    tip: z.string().max(160).optional(),
+  })
+  .passthrough();
+
+const hourPointSchema = z.object({
+  hour: z.number().int().min(0).max(23),
+  value: z.number().min(0).max(1000),
+});
+
+const curveZoneSchema = z.object({
+  label: z.string().max(40),
+  tone: z.enum(["best", "peak", "second_best"]),
+  start_hour: z.number().int().min(0).max(23),
+  end_hour: z.number().int().min(1).max(24),
+});
+
+const rideWaitCurveSpec = z.object({
+  type: z.literal("ride_wait_curve"),
+  subject: z.string().max(80),
+  y_label: z.string().max(40).default("Wait time"),
+  unit: z.string().max(16).default("min"),
+  open_hour: z.number().int().min(0).max(23),
+  close_hour: z.number().int().min(1).max(24),
+  hours: z.array(hourPointSchema).length(24),
+  zones: z.array(curveZoneSchema).min(1).max(4),
+  insight: z.string().max(160).optional(),
+});
+
+const activityWindowSpec = z.object({
+  type: z.literal("activity_window"),
+  subject: z.string().max(80),
+  y_label: z.string().max(40).default("Activity index"),
+  unit: z.string().max(16).default(""),
+  open_hour: z.number().int().min(0).max(23),
+  close_hour: z.number().int().min(1).max(24),
+  hours: z.array(hourPointSchema).length(24),
+  zones: z.array(curveZoneSchema).min(1).max(4),
+  insight: z.string().max(160).optional(),
+});
+
+const openingHourRankSpec = z.object({
+  type: z.literal("opening_hour_rank"),
+  subject_label: z.string().max(40).default("Ride"),
+  unit: z.string().max(16).default("min"),
+  hour_label: z.string().max(60).default("Wait at opening"),
+  bands: z
+    .object({
+      green_max: z.number().min(0).max(360),
+      amber_max: z.number().min(0).max(360),
+    })
+    .default({ green_max: 15, amber_max: 35 }),
+  subjects: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        wait_minutes: z.number().min(0).max(360),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .min(3)
+    .max(8),
+  insight: z.string().max(160).optional(),
+});
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -785,6 +925,11 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   seatValueMapSpec,
   optimalDepartureSpec,
   stopFrequencySpec,
+  queueCompareSpec,
+  durationStatSpec,
+  rideWaitCurveSpec,
+  activityWindowSpec,
+  openingHourRankSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -881,6 +1026,31 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["zones"],
       });
     }
+  } else if (val.type === "ride_wait_curve" || val.type === "activity_window") {
+    if (val.close_hour <= val.open_hour) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "close_hour must be > open_hour",
+        path: ["close_hour"],
+      });
+    }
+    val.zones.forEach((zone, i) => {
+      if (zone.end_hour <= zone.start_hour) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `zones[${i}].end_hour must be > start_hour`,
+          path: ["zones", i, "end_hour"],
+        });
+      }
+    });
+    const hours = val.hours.map((p) => p.hour);
+    if (new Set(hours).size !== 24) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hours[] must contain hour 0..23 exactly once",
+        path: ["hours"],
+      });
+    }
   } else if (val.type === "golden_hour_match") {
     if (new Set(val.months.map((m) => m.month)).size !== 12) {
       ctx.addIssue({
@@ -896,6 +1066,24 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
           code: z.ZodIssueCode.custom,
           message: `months[${i}].cells must have one entry per slot (${slotCount})`,
           path: ["months", i, "cells"],
+        });
+      }
+    });
+  } else if (val.type === "opening_hour_rank") {
+    if (val.bands.amber_max <= val.bands.green_max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "bands.amber_max must be > bands.green_max",
+        path: ["bands", "amber_max"],
+      });
+    }
+  } else if (val.type === "duration_stat") {
+    val.profiles.forEach((p, i) => {
+      if (p.range_min > p.range_max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `profiles[${i}].range_min must be ≤ range_max`,
+          path: ["profiles", i, "range_min"],
         });
       }
     });
@@ -1010,4 +1198,9 @@ export const CHART_TYPES = [
   "seat_value_map",
   "optimal_departure",
   "stop_frequency",
+  "queue_compare",
+  "duration_stat",
+  "ride_wait_curve",
+  "activity_window",
+  "opening_hour_rank",
 ] as const;

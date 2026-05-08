@@ -29,6 +29,11 @@ import { ReturnBufferRankChart } from "./ReturnBufferRankChart";
 import { SeatValueMapChart } from "./SeatValueMapChart";
 import { OptimalDepartureChart } from "./OptimalDepartureChart";
 import { StopFrequencyChart } from "./StopFrequencyChart";
+import {
+  RideWaitCurveChart,
+  ActivityWindowChart,
+} from "./HourlyCurveChart";
+import { OpeningHourRankChart } from "./OpeningHourRankChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -163,6 +168,14 @@ export function ChartRenderer({
           compact={compact}
         />
       );
+    case "queue_compare":
+      return (
+        <EntranceLanesChart
+          spec={{ ...spec, type: "entrance_lanes" }}
+          context={context}
+          compact={compact}
+        />
+      );
     case "zone_wait_heatmap":
       return (
         <ZoneWaitHeatmapChart
@@ -175,6 +188,14 @@ export function ChartRenderer({
       return (
         <ReturnBufferRankChart
           spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "duration_stat":
+      return (
+        <DurationProfilesChart
+          spec={{ ...spec, type: "duration_profiles" }}
           context={context}
           compact={compact}
         />
@@ -202,6 +223,18 @@ export function ChartRenderer({
     case "stop_frequency":
       return (
         <StopFrequencyChart spec={spec} context={context} compact={compact} />
+      );
+    case "ride_wait_curve":
+      return (
+        <RideWaitCurveChart spec={spec} context={context} compact={compact} />
+      );
+    case "activity_window":
+      return (
+        <ActivityWindowChart spec={spec} context={context} compact={compact} />
+      );
+    case "opening_hour_rank":
+      return (
+        <OpeningHourRankChart spec={spec} context={context} compact={compact} />
       );
     default: {
       const exhaustive: never = spec;
