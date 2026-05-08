@@ -26,7 +26,8 @@ Include all 7 days. Use level "closed" + score 0 for closed days. Aim for one "b
   "open_hour": <0-23 int>, "close_hour": <1-24 int>,
   "rows": [ { "day": "<mon..sun>", "hours": [<24 ints 0-100>], "closed": <bool> }, ... 7 items ],
   "best_window"?: { "label": "...", "day": "<mon..sun>", "start_hour": <int>, "end_hour": <int> } }
-hours[] is ALWAYS 24 numbers. Set 0 outside opening hours; closed days get closed:true and all-zero hours.`,
+hours[] is ALWAYS 24 numbers. Set 0 outside opening hours; closed days get closed:true and all-zero hours.
+SOURCING: Hourly crowd intensities should be grounded in a real signal — Google "Popular Times" snapshots, operator dashboards, queue-time aggregators, or DRD-quoted observations. If neither the DRD nor googleSearch surfaces hour-by-hour data for THIS CE, prefer SHAPE-only intensities (e.g. clear morning trough vs. mid-day peak vs. late-day fade) using round numbers in 5-step buckets, mark every hour cell in provenance.estimates, and lower confidence in the insight ("typically busiest mid-afternoon — exact peak hour varies"). Never fabricate a precise per-hour curve from "feel".`,
 
   month_calendar: `{ "type": "month_calendar",
   "start_date": "YYYY-MM-DD",
@@ -37,7 +38,8 @@ hours[] is ALWAYS 24 numbers. Set 0 outside opening hours; closed days get close
   "curve": [ { "days_before": <int 0-180>, "share": <0-100 number> }, ... 8-14 items, days_before unique, span ~0..120 ],
   "sweet_spot": { "days_before_min": <int>, "days_before_max": <int>, "label": "..." },
   "sold_out_risk"?: { "threshold_days": <int>, "message": "..." } }
-Sum of share roughly 100. days_before_min ≤ days_before_max.`,
+Sum of share roughly 100. days_before_min ≤ days_before_max.
+SOURCING: The booking-curve shape MUST come from a real source — DRD-quoted operator booking-window data, OTA-published lead-time analysis, or industry reports (Phocuswright, Skift, Arival). If neither the DRD nor googleSearch can ground the lead-time pattern for THIS subcategory in THIS city, DROP the chart instead of inventing a curve from feel. If you keep it on a thin sourcing base, use round 5-day buckets, OMIT \`sold_out_risk\` (don't fabricate a sell-out threshold), keep the sweet_spot wide, and list every curve point in provenance.estimates with the reasoning "subcategory-typical lead-time shape, exact daily distribution not grounded".`,
 
   stat_grid: `{ "type": "stat_grid",
   "stats": [ { "label": "...", "value": "...", "unit"?: "...", "delta"?: "...", "accent"?: "<purps|candy|hola|okay|slate>", "sparkline"?: [<numbers>], "footnote"?: "..." }, ... 3-6 items ] }`,
@@ -56,7 +58,8 @@ metric_label and per-zone status are REQUIRED. wait_min ≤ wait_max.`,
   "best_months": ["May", "October"], "worst_months": ["August"],
   "calendar_notes"?: [ { "label": "Jan 1 closed", "kind": "<closed|free|info>" }, ... up to 8 ],
   "metric_insights"?: { "crowd"?: "...", "weather"?: "...", "price"?: "..." } }
-Optional fields (weather_score, price_score, calendar_notes, metric_insights) only when DRD or live sources support them.`,
+Optional fields (weather_score, price_score, calendar_notes, metric_insights) only when DRD or live sources support them.
+SOURCING: The 12 monthly crowd scores MUST be grounded in a real seasonality signal — DRD section on monthly visitation, tourism-board arrivals data, ONS / city tourism dashboards, or operator-published occupancy. If grounding is thin, anchor on observable inputs (school holidays, average temperature, daylight hours, peak-tourist months for the city) using round 10-step buckets, drop weather_score / price_score / metric_insights entirely (don't invent supporting metrics), and list every month in provenance.estimates. If even the city-level seasonality can't be grounded for this subcategory, DROP the chart rather than fabricate one.`,
 
   ticket_ladder: `{ "type": "ticket_ladder",
   "currency": "EUR",
@@ -120,6 +123,11 @@ Each row is one named land/section (e.g. Magic Kingdom: Fantasyland, Tomorrowlan
 Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Chapel, Raphael Rooms, Gallery of Maps). Cell value = 0-100 crowd score at that hour. Different rows can peak at different hours — that's the point of the chart.`,
 
   zone_wait_compare: STUB("zone_wait_compare"),
+  // ^ STUB: orchestrator gates on isImplementedArchetype() so this prompt
+  //   never reaches Gemini. When this archetype lands, mirror the SOURCING
+  //   note from compare_zones / slot_compare — wait minutes per zone MUST
+  //   be grounded in operator queue logs or live wait-time aggregators,
+  //   not estimated from feel.
   daily_programme: `{ "type": "daily_programme",
   "open_time": "HH:MM" 24h, "close_time": "HH:MM" 24h,
   "events": [ { "name": "...", "start_time": "HH:MM", "duration_min": <int 1-720>, "location": "...", "popularity": <0-100 int>, "icon"?: "<feeding|show|talk|prayer|tour|ceremony|encounter|demo>", "note"?: "..." }, ... 3-10 items, all events MUST fall inside open_time..close_time ],

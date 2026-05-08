@@ -80,12 +80,25 @@ interface SelectedQuestion {
   topic_id?: string;
 }
 
+interface SubProduct {
+  name: string;
+  positioning: string;
+}
+
 interface QuestionSelection {
   summary: string;
   emoji: string;
   selected: SelectedQuestion[];
   dropped: { question: string; reason: string }[];
   proposed_hero: BankQuestion[];
+  /**
+   * True when the DRD describes 3+ named sub-products with distinct
+   * positioning (e.g. Thames cruises = Uber Boat / sightseeing /
+   * Greenwich / dining / HOHO). Triggers the comparison-archetype bias
+   * and the deterministic slot_compare floor in post-processing.
+   */
+  is_category_ce?: boolean;
+  sub_products?: SubProduct[];
 }
 
 async function selectQuestions(
@@ -121,6 +134,10 @@ ${JSON.stringify(standards, null, 2)}
 
 (B) SIGNATURE questions — subcategory-specific. Pick 1-3 of the most CE-relevant ones. SKIP a signature when its \`skip_if\` predicate is satisfied OR when the DRD genuinely lacks the data behind it. Record skipped signatures in \`dropped\` with a one-line reason.
 
+DRD-CONFIDENCE RULE (apply to BOTH standards and signatures): If the DRD itself rates the relevant topic as Low confidence, calls it out as an "Honest Gap", flags it as anecdotal/operator-marketing, or simply doesn't carry the evidence behind it, SKIP that question. Record it in \`dropped\` with a reason that begins \`drd_low_confidence: \` followed by a one-line explanation citing the DRD section. This is preferred over generating a chart that the verifier will then have to challenge.
+
+CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS YOUR PICKS toward comparison archetypes — \`slot_compare\`, \`compare_zones\`, \`ticket_ladder\`, \`time_split\` — and away from single-curve generics like \`booking_window\` or \`seasonal_curve\` UNLESS the DRD has direct numeric backing for them. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. If \`is_category_ce\` is false (single-product CE), pick normally.
+
 Signature questions for this subcategory:
 ${signatures.length > 0 ? JSON.stringify(signatures, null, 2) : "(none — bootstrap signatures via proposed_hero[])"}
 
@@ -136,6 +153,8 @@ Return JSON ONLY (no markdown), shape:
 {
   "summary": "...",
   "emoji": "📍",
+  "is_category_ce": true | false,
+  "sub_products": [ { "name": "...", "positioning": "one-line role / who it's for" }, ... ],
   "selected": [
     { "question": "...", "archetype": "<one of the ids>", "kind": "standard"|"signature", "topic_id": "..."|null, "rationale": "one line" },
     ...
@@ -162,7 +181,10 @@ ${truncate(input.drdMarkdown, 16000)}
     config: {
       responseMimeType: "application/json",
       temperature: 0.4,
-      maxOutputTokens: 4096,
+      // 8k accommodates the expanded prompt (sub_products list +
+      // category-CE branch + DRD-confidence reasons) without truncating
+      // the JSON envelope. 4k routinely truncated category-CE responses.
+      maxOutputTokens: 8192,
     },
   });
 
@@ -171,6 +193,10 @@ ${truncate(input.drdMarkdown, 16000)}
 
   const parsed = safeJson<QuestionSelection>(raw);
   if (!parsed) {
+    logger.warn(
+      { slug: input.ce.slug, raw_preview: raw.slice(0, 800) },
+      "Question selection produced invalid JSON",
+    );
     throw new Error("Question selection produced invalid JSON");
   }
   if (!Array.isArray(parsed.selected) || parsed.selected.length === 0) {
@@ -181,6 +207,19 @@ ${truncate(input.drdMarkdown, 16000)}
   parsed.proposed_hero = Array.isArray(parsed.proposed_hero)
     ? parsed.proposed_hero
     : [];
+  parsed.is_category_ce = !!parsed.is_category_ce;
+  parsed.sub_products = Array.isArray(parsed.sub_products)
+    ? parsed.sub_products.filter(
+        (p): p is SubProduct =>
+          !!p && typeof p.name === "string" && p.name.trim().length > 0,
+      )
+    : [];
+  // Defence-in-depth: if the model claimed category-CE but only listed
+  // 0-2 sub-products, downgrade. The downstream slot_compare floor needs
+  // ≥3 distinct named slots to be meaningful.
+  if (parsed.is_category_ce && parsed.sub_products.length < 3) {
+    parsed.is_category_ce = false;
+  }
 
   // Build authoritative lookups for kind inference. Standards are
   // matched by exact question text; signatures by exact text against
@@ -352,6 +391,46 @@ ${truncate(input.drdMarkdown, 16000)}
   }
 
   parsed.selected = [...standardSelections, ...signatureSelections];
+
+  // (4b) CATEGORY-CE floor: if the LLM flagged this CE as a category-CE
+  // (3+ named sub-products) but didn't actually pick a slot_compare,
+  // promote one from the bank. This is the head-to-head sub-product
+  // comparison the deck must always carry. Falls back gracefully if no
+  // slot_compare candidate exists in the bank.
+  if (parsed.is_category_ce) {
+    const hasSlotCompare = parsed.selected.some(
+      (s) => s.archetype === "slot_compare",
+    );
+    if (!hasSlotCompare) {
+      const droppedQs = new Set(parsed.dropped.map((d) => d.question));
+      const slotCompareCandidate = [
+        ...bank.questions,
+        ...parsed.proposed_hero,
+      ].find(
+        (q) =>
+          q.recommended_archetype === "slot_compare" &&
+          !droppedQs.has(q.question) &&
+          isImplementedArchetype(q.recommended_archetype),
+      );
+      if (slotCompareCandidate) {
+        parsed.selected.push({
+          question: slotCompareCandidate.question,
+          archetype: "slot_compare",
+          rationale:
+            "auto-promoted slot_compare for category-CE (3+ named sub-products)",
+          kind: "signature",
+        });
+      } else {
+        logger.warn(
+          {
+            slug: input.ce.slug,
+            sub_products: parsed.sub_products?.length,
+          },
+          "Research pipeline: category-CE flagged but no slot_compare candidate in bank — deck will lack a head-to-head sub-product chart",
+        );
+      }
+    }
+  }
 
   // (5) Enforce 4–7 total budget. We don't pad beyond what the bank
   // can support, but we DO trim and we DO log when we're under-budget

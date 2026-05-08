@@ -681,6 +681,69 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
 
   /* ---------------- Cruises ---------------- */
   sightseeing_cruises: [
+    // Anchor for category CEs: head-to-head sub-product comparison.
+    // The orchestrator's category-CE branch REQUIRES this archetype when
+    // the DRD describes 3+ named sub-products with distinct positioning
+    // (Uber Boat vs narrated sightseeing vs Greenwich vs dining vs HOHO).
+    sig({
+      question: "How do the cruise types compare on what they actually deliver?",
+      recommended_archetype: "slot_compare",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "named_subproducts_with_distinct_positioning",
+      },
+      notes:
+        "Slots = the named sub-products in the DRD (e.g. Uber Boat / sightseeing cruise / Greenwich cruise / dining cruise). Dimensions = price tier, scenic payoff, narration quality, atmosphere — pulled from the DRD's own pain→product mapping.",
+    }),
+    // Route choice (short central loop vs Greenwich destination cruise).
+    sig({
+      question: "Short central loop or all the way to Greenwich — which route fits?",
+      recommended_archetype: "slot_compare",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "named_routes_with_duration_and_payoff",
+      },
+      notes:
+        "Slots = named routes (Westminster–Tower vs Westminster–Greenwich). Dimensions = duration, scenic payoff, half-day potential.",
+    }),
+    // Day vs evening / sightseeing vs dining occasion split.
+    sig({
+      question: "Day cruise or after-dark dinner cruise — which time of day pays off?",
+      recommended_archetype: "slot_compare",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "day_vs_evening_payoff_difference",
+      },
+      notes:
+        "Slots = daytime sightseeing vs evening sightseeing vs dinner cruise. Dimensions = skyline payoff, atmosphere, food/service weight, value-for-money.",
+    }),
+    // Upper-deck / early-boarding mechanic.
+    sig({
+      question: "Where to sit — and how early to board to get there",
+      recommended_archetype: "compare_zones",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "deck_or_seating_options_with_payoff",
+      },
+      notes:
+        "Compare named zones (upper deck / lower deck / window / outdoor bow) on view quality and how competitive boarding is. Skip if the DRD doesn't surface a deck or seating mechanic.",
+    }),
+    // HOHO flexibility value.
+    sig({
+      question: "Single cruise or hop-on hop-off pass — which is the better value?",
+      recommended_archetype: "ticket_ladder",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "tier_comparison_with_value_axis",
+      },
+    }),
+    // Time split — strongest on destination cruises (Greenwich) and dining cruises.
+    sig({
+      question: "How is the cruise time actually divided?",
+      recommended_archetype: "time_split",
+      skip_if: { type: "no_data_signal", signal: "tour_time_breakdown" },
+    }),
+    // Light/visibility-by-slot — kept from v2 but now narrowly scoped.
     sig({
       question: "Which departure time gives the best light and views?",
       recommended_archetype: "optimal_departure",
