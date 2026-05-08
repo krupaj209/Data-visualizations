@@ -71,6 +71,9 @@ const CHART_FRAME: Record<
   donut_breakdown: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
   stat_grid: { aspectRatio: "16 / 6", minHeight: 200, maxHeight: 280 },
   co_bookings: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
+  zone_crowd_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
+  zone_wait_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
+  golden_hour_match: { aspectRatio: "5 / 4", minHeight: 360, maxHeight: 520 },
 };
 
 type StatusFilter = "all" | "published" | "draft";

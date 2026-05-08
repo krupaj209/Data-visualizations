@@ -387,6 +387,101 @@ const entranceLanesSpec = z
   })
   .passthrough();
 
+/* -------------------------------------------------------------------------- *
+ * v3 heatmap & matrix family                                                 *
+ *                                                                            *
+ * Two zone × hour heatmaps share the same grid shape but encode different    *
+ * units: `zone_crowd_heatmap` carries 0-100 crowd scores (museums,           *
+ * aquariums) while `zone_wait_heatmap` carries wait minutes (theme parks).   *
+ * `golden_hour_match` is a month × slot matrix used by photography tours.    *
+ * -------------------------------------------------------------------------- */
+
+const monthEnum = z.enum([
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+]);
+
+const zoneRowBase = z.object({
+  name: z.string().min(1).max(60),
+  emoji: z.string().max(8).optional(),
+});
+
+const heatmapBestWindow = z
+  .object({
+    label: z.string().max(80),
+    zone: z.string().max(60),
+    start_hour: z.number().int().min(0).max(23),
+    end_hour: z.number().int().min(1).max(24),
+  })
+  .optional();
+
+export const zoneCrowdHeatmapSpec = z.object({
+  type: z.literal("zone_crowd_heatmap"),
+  open_hour: z.number().int().min(0).max(23),
+  close_hour: z.number().int().min(1).max(24),
+  zones: z
+    .array(
+      zoneRowBase.extend({
+        hours: z.array(z.number().min(0).max(100)).length(24),
+      }),
+    )
+    .min(2)
+    .max(8),
+  best_window: heatmapBestWindow,
+});
+
+export const zoneWaitHeatmapSpec = z.object({
+  type: z.literal("zone_wait_heatmap"),
+  open_hour: z.number().int().min(0).max(23),
+  close_hour: z.number().int().min(1).max(24),
+  unit: z.string().max(8).default("min"),
+  zones: z
+    .array(
+      zoneRowBase.extend({
+        hours: z.array(z.number().min(0).max(360)).length(24),
+      }),
+    )
+    .min(2)
+    .max(8),
+  best_window: heatmapBestWindow,
+});
+
+export const goldenHourMatchSpec = z.object({
+  type: z.literal("golden_hour_match"),
+  location_label: z.string().max(80),
+  slots: z
+    .array(z.object({ label: z.string().min(1).max(40) }))
+    .min(1)
+    .max(6),
+  months: z
+    .array(
+      z.object({
+        month: monthEnum,
+        cells: z
+          .array(
+            z.object({
+              aligned: z.boolean(),
+              sub_rating: z.number().min(0).max(100).optional(),
+            }),
+          )
+          .min(1)
+          .max(6),
+      }),
+    )
+    .length(12),
+  helper: z.string().max(160).optional(),
+});
+
 const coBookingsSpec = z
   .object({
     type: z.literal("co_bookings"),
@@ -428,6 +523,9 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   durationProfilesSpec,
   entranceLanesSpec,
   coBookingsSpec,
+  zoneCrowdHeatmapSpec,
+  zoneWaitHeatmapSpec,
+  goldenHourMatchSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -477,6 +575,43 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
           code: z.ZodIssueCode.custom,
           message: `zones[${i}].wait_min must be ≤ wait_max`,
           path: ["zones", i, "wait_min"],
+        });
+      }
+    });
+  } else if (
+    val.type === "zone_crowd_heatmap" ||
+    val.type === "zone_wait_heatmap"
+  ) {
+    if (val.close_hour <= val.open_hour) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "close_hour must be > open_hour",
+        path: ["close_hour"],
+      });
+    }
+    const names = val.zones.map((z) => z.name.trim().toLowerCase());
+    if (new Set(names).size !== names.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "zone names must be unique",
+        path: ["zones"],
+      });
+    }
+  } else if (val.type === "golden_hour_match") {
+    if (new Set(val.months.map((m) => m.month)).size !== 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "golden_hour_match.months must contain jan..dec exactly once",
+        path: ["months"],
+      });
+    }
+    const slotCount = val.slots.length;
+    val.months.forEach((m, i) => {
+      if (m.cells.length !== slotCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `months[${i}].cells must have one entry per slot (${slotCount})`,
+          path: ["months", i, "cells"],
         });
       }
     });
@@ -546,4 +681,7 @@ export const CHART_TYPES = [
   "donut_breakdown",
   "seasonal_curve",
   "ticket_ladder",
+  "zone_crowd_heatmap",
+  "zone_wait_heatmap",
+  "golden_hour_match",
 ] as const;

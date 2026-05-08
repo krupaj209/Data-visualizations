@@ -18,4 +18,7 @@ export const CHART_TYPE_META: Record<
   duration_profiles: { label: "Visit duration", emoji: "⏱" },
   entrance_lanes: { label: "Entrance lanes", emoji: "🚪" },
   co_bookings: { label: "Pairs with", emoji: "🔗" },
+  zone_crowd_heatmap: { label: "Zone × hour crowd", emoji: "🗺" },
+  zone_wait_heatmap: { label: "Zone × hour wait", emoji: "⏳" },
+  golden_hour_match: { label: "Golden-hour match", emoji: "🌅" },
 };

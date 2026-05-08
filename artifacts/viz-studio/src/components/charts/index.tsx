@@ -13,6 +13,9 @@ import { TribuneDensityChart } from "./TribuneDensityChart";
 import { DurationProfilesChart } from "./DurationProfilesChart";
 import { EntranceLanesChart } from "./EntranceLanesChart";
 import { CoBookingsChart } from "./CoBookingsChart";
+import { ZoneCrowdHeatmapChart } from "./ZoneCrowdHeatmapChart";
+import { ZoneWaitHeatmapChart } from "./ZoneWaitHeatmapChart";
+import { GoldenHourMatchChart } from "./GoldenHourMatchChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -82,6 +85,30 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
     case "co_bookings":
       return (
         <CoBookingsChart spec={spec} context={context} compact={compact} />
+      );
+    case "zone_crowd_heatmap":
+      return (
+        <ZoneCrowdHeatmapChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "zone_wait_heatmap":
+      return (
+        <ZoneWaitHeatmapChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "golden_hour_match":
+      return (
+        <GoldenHourMatchChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
       );
     default: {
       const exhaustive: never = spec;

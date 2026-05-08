@@ -339,6 +339,47 @@ export interface CoBookingsSpec {
   highlight_top?: number;
 }
 
+/** Zone × hour grid with 0-100 crowd scores per cell. Museums, aquariums. */
+export interface ZoneCrowdHeatmapSpec {
+  type: "zone_crowd_heatmap";
+  open_hour: number;
+  close_hour: number;
+  zones: { name: string; emoji?: string; hours: number[] }[];
+  best_window?: {
+    label: string;
+    zone: string;
+    start_hour: number;
+    end_hour: number;
+  };
+}
+
+/** Zone × hour grid with wait minutes per cell. Theme parks. */
+export interface ZoneWaitHeatmapSpec {
+  type: "zone_wait_heatmap";
+  open_hour: number;
+  close_hour: number;
+  unit: string;
+  zones: { name: string; emoji?: string; hours: number[] }[];
+  best_window?: {
+    label: string;
+    zone: string;
+    start_hour: number;
+    end_hour: number;
+  };
+}
+
+/** Month × departure-slot matrix marking golden-hour alignment. Photography tours. */
+export interface GoldenHourMatchSpec {
+  type: "golden_hour_match";
+  location_label: string;
+  slots: { label: string }[];
+  months: {
+    month: MonthCode;
+    cells: { aligned: boolean; sub_rating?: number }[];
+  }[];
+  helper?: string;
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -353,7 +394,10 @@ export type ChartSpec =
   | TribuneDensitySpec
   | DurationProfilesSpec
   | EntranceLanesSpec
-  | CoBookingsSpec;
+  | CoBookingsSpec
+  | ZoneCrowdHeatmapSpec
+  | ZoneWaitHeatmapSpec
+  | GoldenHourMatchSpec;
 
 export interface ChartHeader {
   title: string;

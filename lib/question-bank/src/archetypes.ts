@@ -252,7 +252,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["theme_parks"],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   zone_crowd_heatmap: {
     id: "zone_crowd_heatmap",
@@ -263,7 +263,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["museums", "zoos", "aquariums"],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   zone_wait_compare: {
     id: "zone_wait_compare",
@@ -401,7 +401,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["photography_tours"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   savings_breakdown: {
     id: "savings_breakdown",
