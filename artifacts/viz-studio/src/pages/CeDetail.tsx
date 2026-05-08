@@ -30,7 +30,6 @@ import {
   useVerifyChart,
   useCreateChartFromTopic,
   useGetIdeation,
-  usePostIdeation,
   useClearIdeation,
   getGetCeQueryKey,
   getListCesQueryKey,
@@ -1583,10 +1582,14 @@ function IdeationPanel({
   onUseProposal: (p: { topic: string; archetype?: string }) => void;
 }) {
   const { data: messages = [], isLoading } = useGetIdeation(slug);
-  const postMut = usePostIdeation();
   const clearMut = useClearIdeation();
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [contextText, setContextText] = useState("");
+  const [contextPdf, setContextPdf] = useState<File | null>(null);
+  const [showContext, setShowContext] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1594,15 +1597,53 @@ function IdeationPanel({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages.length, postMut.isPending]);
+  }, [messages.length, isSending]);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!draft.trim()) return;
+    if (!draft.trim() || isSending) return;
     const text = draft.trim();
-    setDraft("");
-    await postMut.mutateAsync({ slug, data: { message: text } });
-    qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+    const ctxText = contextText.trim();
+    const ctxPdf = contextPdf;
+    setSendError(null);
+    setIsSending(true);
+    try {
+      const url = `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation`;
+      let res: Response;
+      if (ctxText || ctxPdf) {
+        const fd = new FormData();
+        fd.append("message", text);
+        if (ctxText) fd.append("contextText", ctxText);
+        if (ctxPdf) fd.append("contextPdf", ctxPdf);
+        res = await fetch(url, { method: "POST", body: fd });
+      } else {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+      }
+      if (!res.ok) {
+        let msg = `Request failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body.error) msg = body.error;
+        } catch {
+          // keep default
+        }
+        throw new Error(msg);
+      }
+      // Success — now clear inputs and refresh transcript.
+      setDraft("");
+      setContextText("");
+      setContextPdf(null);
+      setShowContext(false);
+      qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Failed to send");
+    } finally {
+      setIsSending(false);
+    }
   }
 
   async function handleClear() {
@@ -1610,6 +1651,9 @@ function IdeationPanel({
     await clearMut.mutateAsync({ slug });
     qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
   }
+
+  const contextSourceCount =
+    (contextText.trim() ? 1 : 0) + (contextPdf ? 1 : 0);
 
   return (
     <aside
@@ -1708,7 +1752,7 @@ function IdeationPanel({
             onUseProposal={onUseProposal}
           />
         ))}
-        {postMut.isPending && (
+        {isSending && (
           <div
             style={{
               color: BRAND.slate500,
@@ -1726,47 +1770,219 @@ function IdeationPanel({
         )}
       </div>
 
-      <form onSubmit={handleSend} className="flex items-end gap-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Ask for chart ideas, critique, archetype matches…"
-          rows={2}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend(e as unknown as React.FormEvent);
-            }
-          }}
+      {sendError && (
+        <div
           style={{
-            flex: 1,
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            color: "#991B1B",
+            borderRadius: 10,
+            padding: "8px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            {sendError}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSendError(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#991B1B",
+              cursor: "pointer",
+              padding: 2,
+              fontWeight: 800,
+            }}
+            aria-label="Dismiss"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {showContext && (
+        <div
+          style={{
             background: BRAND.slate50,
             border: `1px solid ${BRAND.slate200}`,
             borderRadius: 12,
-            padding: "10px 12px",
-            fontSize: 13,
-            fontWeight: 600,
-            color: BRAND.slate950,
-            outline: "none",
-            fontFamily: "inherit",
-            resize: "none",
+            padding: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
           }}
-        />
-        <button
-          type="submit"
-          disabled={postMut.isPending || !draft.trim()}
-          style={{
-            background: BRAND.purps,
-            color: "white",
-            border: "none",
-            padding: "10px 12px",
-            borderRadius: 12,
-            cursor: postMut.isPending ? "wait" : "pointer",
-            opacity: !draft.trim() ? 0.5 : 1,
-          }}
-          title="Send"
         >
-          <Send size={14} />
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: BRAND.slate700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            One-shot context for this turn
+          </div>
+          <textarea
+            value={contextText}
+            onChange={(e) => setContextText(e.target.value)}
+            placeholder="Paste a doc, notes, transcript, anything the AI should consider just for this question…"
+            rows={4}
+            style={{
+              background: "white",
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 8,
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 500,
+              color: BRAND.slate950,
+              outline: "none",
+              fontFamily: "inherit",
+              resize: "vertical",
+              minHeight: 70,
+            }}
+          />
+          <div className="flex items-center justify-between gap-2">
+            <label
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: BRAND.purps,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <input
+                type="file"
+                accept="application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => setContextPdf(e.target.files?.[0] ?? null)}
+              />
+              {contextPdf ? "Replace PDF" : "Attach PDF"}
+            </label>
+            {contextPdf && (
+              <div
+                className="flex items-center gap-2 min-w-0"
+                style={{
+                  fontSize: 11,
+                  color: BRAND.slate700,
+                  fontWeight: 600,
+                }}
+              >
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: 180,
+                  }}
+                  title={contextPdf.name}
+                >
+                  {contextPdf.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setContextPdf(null)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: BRAND.slate500,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  aria-label="Remove PDF"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: 10,
+              color: BRAND.slate500,
+              fontWeight: 600,
+            }}
+          >
+            Used only for this turn — not saved to the transcript. PDFs ≤ 20 MB.
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSend} className="flex flex-col gap-2">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Ask for chart ideas, critique, archetype matches…"
+            rows={2}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend(e as unknown as React.FormEvent);
+              }
+            }}
+            style={{
+              flex: 1,
+              background: BRAND.slate50,
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 12,
+              padding: "10px 12px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: BRAND.slate950,
+              outline: "none",
+              fontFamily: "inherit",
+              resize: "none",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={isSending || !draft.trim()}
+            style={{
+              background: BRAND.purps,
+              color: "white",
+              border: "none",
+              padding: "10px 12px",
+              borderRadius: 12,
+              cursor: isSending ? "wait" : "pointer",
+              opacity: !draft.trim() ? 0.5 : 1,
+            }}
+            title="Send"
+          >
+            <Send size={14} />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowContext((v) => !v)}
+          style={{
+            alignSelf: "flex-start",
+            background: showContext ? BRAND.purpsSoft : "transparent",
+            color: BRAND.purps,
+            border: `1px solid ${showContext ? BRAND.purps : BRAND.slate200}`,
+            borderRadius: 999,
+            padding: "4px 10px",
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: "0.02em",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {showContext ? "Hide context" : "Add context"}
+          {contextSourceCount > 0 && ` · ${contextSourceCount}`}
         </button>
       </form>
     </aside>

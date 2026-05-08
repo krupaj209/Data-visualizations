@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
 import { eq, asc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { extractPdfToMarkdown } from "../lib/extract-drd";
 import {
   db,
   cesTable,
@@ -434,6 +436,12 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
 const ideationBody = z.object({
   message: z.string().min(1).max(4000),
   writerId: z.string().max(120).optional(),
+  contextText: z.string().max(200_000).optional(),
+});
+
+const ideationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 
 router.get("/ces/:slug/ideation", async (req, res): Promise<void> => {
@@ -478,7 +486,10 @@ router.delete("/ces/:slug/ideation", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.post("/ces/:slug/ideation", async (req, res): Promise<void> => {
+router.post(
+  "/ces/:slug/ideation",
+  ideationUpload.single("contextPdf"),
+  async (req, res): Promise<void> => {
   const params = GetCeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -499,12 +510,49 @@ router.post("/ces/:slug/ideation", async (req, res): Promise<void> => {
     return;
   }
 
+  // Optional one-shot context (text paste + PDF upload). Not persisted —
+  // we fold it into the LLM call only and store just the user's typed
+  // message in the transcript so future turns don't re-pay the token cost.
+  let pdfText = "";
+  if (req.file) {
+    try {
+      pdfText = await extractPdfToMarkdown(req.file.buffer);
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Could not read PDF",
+      });
+      return;
+    }
+  }
+  const turnContextParts: string[] = [];
+  if (parsed.data.contextText && parsed.data.contextText.trim()) {
+    turnContextParts.push(
+      `[Pasted context]\n${parsed.data.contextText.trim().slice(0, 60_000)}`,
+    );
+  }
+  if (pdfText) {
+    turnContextParts.push(
+      `[PDF: ${req.file?.originalname ?? "context.pdf"}]\n${pdfText.slice(
+        0,
+        60_000,
+      )}`,
+    );
+  }
+  const turnContext = turnContextParts.join("\n\n");
+
   // Persist the user turn first so the transcript stays consistent even
-  // if the LLM call later fails.
+  // if the LLM call later fails. We persist the typed message only — the
+  // attached context is one-shot.
+  const userContentForStorage =
+    turnContextParts.length > 0
+      ? `${parsed.data.message}\n\n_(attached ${turnContextParts.length} context source${
+          turnContextParts.length === 1 ? "" : "s"
+        })_`
+      : parsed.data.message;
   await db.insert(ideationMessagesTable).values({
     ceId: ce.id,
     role: "user",
-    content: parsed.data.message,
+    content: userContentForStorage,
   });
 
   if (!openai) {
@@ -575,12 +623,21 @@ If you're not proposing anything (just discussing), omit the block.
 
 Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
 
+  // Inject one-shot turn context into the LAST user message we send to the
+  // LLM (without mutating what's already persisted in the transcript).
+  const llmTranscript = transcript.map((m) => ({
+    role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+    content: m.content,
+  }));
+  if (turnContext && llmTranscript.length > 0) {
+    const last = llmTranscript[llmTranscript.length - 1]!;
+    if (last.role === "user") {
+      last.content = `${turnContext}\n\n---\n\n${parsed.data.message}`;
+    }
+  }
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: systemPrompt },
-    ...transcript.map((m) => ({
-      role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
-      content: m.content,
-    })),
+    ...llmTranscript,
   ];
 
   let assistantText = "";
@@ -637,6 +694,7 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     return;
   }
   res.json(serializeIdeation(stored));
-});
+  },
+);
 
 export default router;
