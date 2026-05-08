@@ -618,6 +618,68 @@ export interface PriceCurveSpec {
   priciest_months: string[];
 }
 
+/** Horizontal day-timeline (open → close) with pinned fixed events. */
+export interface DailyProgrammeSpec {
+  type: "daily_programme";
+  /** "HH:MM" 24h. */
+  open_time: string;
+  /** "HH:MM" 24h. */
+  close_time: string;
+  events: {
+    name: string;
+    /** "HH:MM" 24h. */
+    start_time: string;
+    duration_min: number;
+    location: string;
+    /** 0–100; higher = fills up first. */
+    popularity: number;
+    icon?:
+      | "feeding"
+      | "show"
+      | "talk"
+      | "prayer"
+      | "tour"
+      | "ceremony"
+      | "encounter"
+      | "demo";
+    note?: string;
+  }[];
+  /** Exact `name` of an event to spotlight. */
+  highlight_event?: string;
+}
+
+/** Stacked horizontal bar splitting a tour's total time across categories. */
+export interface TimeSplitSpec {
+  type: "time_split";
+  total_min: number;
+  total_label?: string;
+  segments: {
+    label: string;
+    minutes: number;
+    accent: AccentKey;
+    note?: string;
+  }[];
+  callout?: string;
+}
+
+/** 2–3 named time slots compared on 3–5 dimensions (grouped horizontal bars). */
+export interface SlotCompareSpec {
+  type: "slot_compare";
+  slots: {
+    name: string;
+    /** Optional clock window like "5:00–7:30 am". */
+    time_window?: string;
+    accent: AccentKey;
+    recommended: boolean;
+  }[];
+  dimensions: {
+    label: string;
+    /** One 0–100 score per slot, in slot order. */
+    scores: number[];
+  }[];
+  insight?: string;
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -649,7 +711,10 @@ export type ChartSpec =
   | DurationStatSpec
   | RideWaitCurveSpec
   | ActivityWindowSpec
-  | OpeningHourRankSpec;
+  | OpeningHourRankSpec
+  | DailyProgrammeSpec
+  | TimeSplitSpec
+  | SlotCompareSpec;
 
 /** Subset of the chart provenance object the renderers may surface to users. */
 export interface ChartProvenanceLite {

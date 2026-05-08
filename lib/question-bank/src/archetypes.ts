@@ -300,8 +300,8 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "Pinned events with location, duration, and a popularity indicator",
     ],
     typical_subcategories: ["zoos", "aquariums", "religious_sites"],
-    interactive: false,
-    implemented: false,
+    interactive: true,
+    implemented: true,
   },
   time_split: {
     id: "time_split",
@@ -318,7 +318,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "port_of_call_tours",
     ],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   slot_compare: {
     id: "slot_compare",
@@ -334,7 +334,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "cooking_classes",
     ],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   sighting_probability: {
     id: "sighting_probability",

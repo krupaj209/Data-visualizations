@@ -35,4 +35,7 @@ export const CHART_TYPE_META: Record<
   ride_wait_curve: { label: "Ride wait curve", emoji: "🎢" },
   activity_window: { label: "Activity window", emoji: "🦜" },
   opening_hour_rank: { label: "Rope-drop rank", emoji: "🏁" },
+  daily_programme: { label: "Daily programme", emoji: "📋" },
+  time_split: { label: "Time split", emoji: "⏳" },
+  slot_compare: { label: "Slot compare", emoji: "🌅" },
 };

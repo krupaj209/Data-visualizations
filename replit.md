@@ -52,7 +52,7 @@ The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo
 
 ## Chart spec
 
-`artifacts/api-server/src/lib/chart-spec.ts` defines a Zod discriminated union of 9 chart types: `weekly_pattern`, `hourly_heatmap`, `month_calendar`, `booking_window`, `stat_grid`, `compare_zones`, `donut_breakdown`, `seasonal_curve`, `ticket_ladder`.
+`artifacts/api-server/src/lib/chart-spec.ts` defines a Zod discriminated union of chart types. Original 9: `weekly_pattern`, `hourly_heatmap`, `month_calendar`, `booking_window`, `stat_grid`, `compare_zones`, `donut_breakdown`, `seasonal_curve`, `ticket_ladder`. Florence-cluster additions: `tribune_density`, `daily_pattern`, `duration_profiles`, `entrance_lanes`, `co_bookings`. Task #36 v3 timeline & narrative family: `daily_programme` (open-to-close horizontal timeline with pinned events + popularity ring), `time_split` (single stacked bar broken into named segments — segment minutes must sum within 5% of `total_min`), `slot_compare` (compare 2–3 time slots across 3–5 dimensions; per-dimension `scores` length must equal slots length; ≤1 slot may be `recommended`). `slot_compare` renders as **grouped horizontal bars** rather than a radar — a 3-axis radar with overlapping polygons becomes illegible at 320×320 embeds, while grouped bars stay readable down to ~280px wide and scale linearly.
 
 Generation: `artifacts/api-server/src/lib/generate-ce.ts` builds a strict prompt with per-type schemas, calls Gemini, validates against Zod, and retries once with the validation error fed back. Strict array lengths enforce data completeness (`.length(12)` for months, `.length(7)` for weekday rows, `.length(24)` for hours).
 
@@ -90,6 +90,9 @@ Compact is honored by all 8 chart types used by the curated Florence cluster (th
 - **WeeklyPatternChart** — hides level legend and `day_notes` chips.
 - **DailyPatternChart** — hides opening-hours `caption` pill; samples sparser x-axis labels (~5 vs ~9).
 - **EntranceLanesChart** — hides venue title strip (Landmark icon + name + caption).
+- **DailyProgrammeChart** — hides ChartCard header + per-event location/popularity sub-labels and the highlight callout (timeline track + event icons remain).
+- **TimeSplitChart** — hides total/runtime header row and the bottom callout pill; legend rail uses tighter gap and drops per-segment notes.
+- **SlotCompareChart** — hides slot-legend chip rail, "{slot} leads" per-row labels, and the bottom insight footer; bars shrink to 14px and use first-letter mini-labels instead of slot-name columns.
 
 Legacy chart types (`hourly_heatmap`, `compare_zones`, `ticket_ladder`, `stat_grid`) and currently-unused types (`month_calendar`, `donut_breakdown`) **do not** accept a `compact` prop and `ChartRenderer` does not pass it to them. They predate the curated Florence cluster, are not part of the CMS embed contract, and may crowd at very small sizes. If a future curated CE adopts one of these types, add the `compact?: boolean` prop and gate its chrome before forwarding from `ChartRenderer`.
 

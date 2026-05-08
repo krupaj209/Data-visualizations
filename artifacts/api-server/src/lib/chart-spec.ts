@@ -898,6 +898,97 @@ const openingHourRankSpec = z.object({
   insight: z.string().max(160).optional(),
 });
 
+/* -------------------------------------------------------------------------- *
+ * v3 timeline & narrative family                                             *
+ *                                                                            *
+ * `daily_programme`, `time_split`, `slot_compare` — see Task #36. These      *
+ * three are first-class AI-pipeline archetypes (registered in               *
+ * `chart-archetype-prompts.ts`, flagged `implemented: true`).               *
+ * -------------------------------------------------------------------------- */
+
+const hhmm = z
+  .string()
+  .max(5)
+  .regex(
+    /^(?:[01]?\d|2[0-3]):[0-5]\d$/,
+    'time must be 24h "H:MM" or "HH:MM" (00:00–23:59)',
+  );
+
+export const dailyProgrammeSpec = z.object({
+  type: z.literal("daily_programme"),
+  open_time: hhmm,
+  close_time: hhmm,
+  events: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        start_time: hhmm,
+        duration_min: z.number().int().min(1).max(720),
+        location: z.string().max(60),
+        popularity: z.number().int().min(0).max(100),
+        icon: z
+          .enum([
+            "feeding",
+            "show",
+            "talk",
+            "prayer",
+            "tour",
+            "ceremony",
+            "encounter",
+            "demo",
+          ])
+          .optional(),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(10),
+  highlight_event: z.string().max(60).optional(),
+});
+
+export const timeSplitSpec = z.object({
+  type: z.literal("time_split"),
+  total_min: z.number().int().min(15).max(2880),
+  total_label: z.string().max(40).optional(),
+  segments: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        minutes: z.number().int().min(1).max(2880),
+        accent: z.enum(["purps", "candy", "hola", "okay", "slate"]),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(6),
+  callout: z.string().max(160).optional(),
+});
+
+export const slotCompareSpec = z.object({
+  type: z.literal("slot_compare"),
+  slots: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        time_window: z.string().max(40).optional(),
+        accent: z.enum(["purps", "candy", "hola", "okay", "slate"]),
+        recommended: z.boolean().default(false),
+      }),
+    )
+    .min(2)
+    .max(3),
+  dimensions: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        scores: z.array(z.number().int().min(0).max(100)).min(2).max(3),
+      }),
+    )
+    .min(3)
+    .max(5),
+  insight: z.string().max(200).optional(),
+});
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -930,6 +1021,9 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   rideWaitCurveSpec,
   activityWindowSpec,
   openingHourRankSpec,
+  dailyProgrammeSpec,
+  timeSplitSpec,
+  slotCompareSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -1133,6 +1227,57 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["recommended_slot"],
       });
     }
+  } else if (val.type === "daily_programme") {
+    const toMin = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + (m || 0);
+    };
+    const open = toMin(val.open_time);
+    const close = toMin(val.close_time);
+    if (close <= open) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "close_time must be after open_time",
+        path: ["close_time"],
+      });
+    }
+    val.events.forEach((e, i) => {
+      const s = toMin(e.start_time);
+      if (s < open || s + e.duration_min > close) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `events[${i}] must fall inside open_time..close_time`,
+          path: ["events", i, "start_time"],
+        });
+      }
+    });
+  } else if (val.type === "time_split") {
+    const sum = val.segments.reduce((s, x) => s + x.minutes, 0);
+    const tol = Math.max(2, Math.round(val.total_min * 0.05));
+    if (Math.abs(sum - val.total_min) > tol) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `segment minutes (${sum}) must sum to within ${tol}m of total_min (${val.total_min})`,
+        path: ["segments"],
+      });
+    }
+  } else if (val.type === "slot_compare") {
+    val.dimensions.forEach((d, i) => {
+      if (d.scores.length !== val.slots.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `dimensions[${i}].scores must have one entry per slot (${val.slots.length})`,
+          path: ["dimensions", i, "scores"],
+        });
+      }
+    });
+    if (val.slots.filter((s) => s.recommended).length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At most one slot may be recommended",
+        path: ["slots"],
+      });
+    }
   }
 });
 
@@ -1203,4 +1348,7 @@ export const CHART_TYPES = [
   "ride_wait_curve",
   "activity_window",
   "opening_hour_rank",
+  "daily_programme",
+  "time_split",
+  "slot_compare",
 ] as const;

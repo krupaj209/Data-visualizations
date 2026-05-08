@@ -120,9 +120,24 @@ Each row is one named land/section (e.g. Magic Kingdom: Fantasyland, Tomorrowlan
 Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Chapel, Raphael Rooms, Gallery of Maps). Cell value = 0-100 crowd score at that hour. Different rows can peak at different hours — that's the point of the chart.`,
 
   zone_wait_compare: STUB("zone_wait_compare"),
-  daily_programme: STUB("daily_programme"),
-  time_split: STUB("time_split"),
-  slot_compare: STUB("slot_compare"),
+  daily_programme: `{ "type": "daily_programme",
+  "open_time": "HH:MM" 24h, "close_time": "HH:MM" 24h,
+  "events": [ { "name": "...", "start_time": "HH:MM", "duration_min": <int 1-720>, "location": "...", "popularity": <0-100 int>, "icon"?: "<feeding|show|talk|prayer|tour|ceremony|encounter|demo>", "note"?: "..." }, ... 3-10 items, all events MUST fall inside open_time..close_time ],
+  "highlight_event"?: "<exact event name to spotlight>" }
+Use for fixed daily events (zoo feedings, aquarium shows, basilica masses). Example (San Diego Zoo): open_time "09:00", close_time "18:00", events include "Penguin feeding" 10:30 / "Koala talk" 11:30 / "Elephant care" 14:00 / "Lion encounter" 15:30. Pick popularity from how often the event sells out or fills standing room (90+ = lines form 30 min early).`,
+
+  time_split: `{ "type": "time_split",
+  "total_min": <int 15-2880>, "total_label"?: "3.5-hour tour",
+  "segments": [ { "label": "...", "minutes": <int 1-2880>, "accent": "<purps|candy|hola|okay|slate>", "note"?: "..." }, ... 3-6 items, minutes MUST sum to within 5% of total_min ],
+  "callout"?: "one-sentence headline insight" }
+Use for tour duration breakdown (transit / queue / at-site / breaks for guided tours; transit / destination / return for day trips; per-stop time for food tours). Example (Vatican guided tour, total_min 180): "Skip-the-line entry" 15m okay, "Sistine Chapel" 45m candy, "St. Peter's Basilica" 50m purps, "Vatican Museums galleries" 55m hola, "Group transit + briefing" 15m slate. Reserve "candy" for the headline highlight segment.`,
+
+  slot_compare: `{ "type": "slot_compare",
+  "slots": [ { "name": "Sunrise", "time_window"?: "5:00–7:30 am", "accent": "<purps|candy|hola|okay|slate>", "recommended": <bool> }, ... 2-3 items, AT MOST one recommended:true ],
+  "dimensions": [ { "label": "...", "scores": [<one 0-100 int per slot, in slot order>] }, ... 3-5 items ],
+  "insight"?: "one-sentence pick rationale" }
+Use for head-to-head comparison of named time slots. Example (Dubai desert safari): slots ["Sunrise","Midday","Sunset"], dimensions [{"label":"Light quality","scores":[95,40,90]},{"label":"Temperature comfort","scores":[80,20,70]},{"label":"Wildlife activity","scores":[85,15,60]},{"label":"Crowd levels","scores":[70,45,30]}]. Score 100 = best; per dimension across slots, scores SHOULD show meaningful spread (avoid all 80s).`,
+
   sighting_probability: `{ "type": "sighting_probability",
   "display": "<single|grouped|stacked>",
   "series": [ { "name": "Humpback", "accent"?: "<purps|candy|hola|okay|slate>", "monthly": [<12 numbers 0-100, jan..dec>] }, ... 1-4 series ],

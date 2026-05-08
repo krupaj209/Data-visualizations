@@ -34,6 +34,9 @@ import {
   ActivityWindowChart,
 } from "./HourlyCurveChart";
 import { OpeningHourRankChart } from "./OpeningHourRankChart";
+import { DailyProgrammeChart } from "./DailyProgrammeChart";
+import { TimeSplitChart } from "./TimeSplitChart";
+import { SlotCompareChart } from "./SlotCompareChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -176,6 +179,14 @@ export function ChartRenderer({
           compact={compact}
         />
       );
+    case "daily_programme":
+      return (
+        <DailyProgrammeChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
     case "zone_wait_heatmap":
       return (
         <ZoneWaitHeatmapChart
@@ -235,6 +246,14 @@ export function ChartRenderer({
     case "opening_hour_rank":
       return (
         <OpeningHourRankChart spec={spec} context={context} compact={compact} />
+      );
+    case "time_split":
+      return (
+        <TimeSplitChart spec={spec} context={context} compact={compact} />
+      );
+    case "slot_compare":
+      return (
+        <SlotCompareChart spec={spec} context={context} compact={compact} />
       );
     default: {
       const exhaustive: never = spec;
