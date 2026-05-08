@@ -320,6 +320,24 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     interactive: false,
     implemented: true,
   },
+  history_timeline: {
+    id: "history_timeline",
+    label: "History timeline",
+    answers: "What are the major historical eras and turning points?",
+    data_shape: [
+      "5-9 chronological events with year/date labels",
+      "Each event has an era bucket, short title, description, and optional metric",
+      "Optional callout for the most visitor-relevant turning point",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "religious_sites",
+      "observation_decks",
+    ],
+    interactive: false,
+    implemented: true,
+  },
   slot_compare: {
     id: "slot_compare",
     label: "Slot compare",

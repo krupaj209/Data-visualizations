@@ -36,6 +36,7 @@ import {
 import { OpeningHourRankChart } from "./OpeningHourRankChart";
 import { DailyProgrammeChart } from "./DailyProgrammeChart";
 import { TimeSplitChart } from "./TimeSplitChart";
+import { HistoryTimelineChart } from "./HistoryTimelineChart";
 import { SlotCompareChart } from "./SlotCompareChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
@@ -250,6 +251,14 @@ export function ChartRenderer({
     case "time_split":
       return (
         <TimeSplitChart spec={spec} context={context} compact={compact} />
+      );
+    case "history_timeline":
+      return (
+        <HistoryTimelineChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
       );
     case "slot_compare":
       return (

@@ -37,5 +37,6 @@ export const CHART_TYPE_META: Record<
   opening_hour_rank: { label: "Rope-drop rank", emoji: "🏁" },
   daily_programme: { label: "Daily programme", emoji: "📋" },
   time_split: { label: "Time split", emoji: "⏳" },
+  history_timeline: { label: "History timeline", emoji: "🏛" },
   slot_compare: { label: "Slot compare", emoji: "🌅" },
 };

@@ -140,6 +140,13 @@ Use for fixed daily events (zoo feedings, aquarium shows, basilica masses). Exam
   "callout"?: "one-sentence headline insight" }
 Use for tour duration breakdown (transit / queue / at-site / breaks for guided tours; transit / destination / return for day trips; per-stop time for food tours). Example (Vatican guided tour, total_min 180): "Skip-the-line entry" 15m okay, "Sistine Chapel" 45m candy, "St. Peter's Basilica" 50m purps, "Vatican Museums galleries" 55m hola, "Group transit + briefing" 15m slate. Reserve "candy" for the headline highlight segment.`,
 
+  history_timeline: `{ "type": "history_timeline",
+  "span_label": "<overall range, e.g. AD 72-2026>",
+  "events": [ { "date_label": "<year or compact date, e.g. AD 80>", "sort_year": <number, BCE negative if needed>, "title": "<short event title>", "era": "<origins|construction|spectacle|decline|reuse|restoration|modern>", "description": "<one sentence, <=160 chars>", "metric_label"?: "<e.g. 100 days>", "metric_value"?: "<short numeric fact>" }, ... 5-9 items ],
+  "highlight_event"?: "<exact event title to spotlight>",
+  "callout"?: "<one-sentence visitor-facing takeaway>" }
+Use ONLY for historical narrative questions: origin story, construction, major disasters, reuse, restoration, cultural symbolism. Every event MUST come directly from the DRD or grounded source, in chronological order. Prefer fewer, higher-signal turning points over encyclopedic detail. Include at least one modern/current event when the DRD has it. Do not turn history topics into crowd, booking, or weekly charts.`,
+
   slot_compare: `{ "type": "slot_compare",
   "slots": [ { "name": "Sunrise", "time_window"?: "5:00–7:30 am", "accent": "<purps|candy|hola|okay|slate>", "recommended": <bool> }, ... 2-3 items, AT MOST one recommended:true ],
   "dimensions": [ { "label": "...", "scores": [<one 0-100 int per slot, in slot order>] }, ... 3-5 items ],

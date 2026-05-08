@@ -105,6 +105,7 @@ const CHART_FRAME: Record<
   opening_hour_rank: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
   daily_programme: { aspectRatio: "16 / 7", minHeight: 280, maxHeight: 380 },
   time_split: { aspectRatio: "16 / 7", minHeight: 240, maxHeight: 340 },
+  history_timeline: { aspectRatio: "16 / 7", minHeight: 300, maxHeight: 440 },
   slot_compare: { aspectRatio: "5 / 4", minHeight: 320, maxHeight: 460 },
 };
 

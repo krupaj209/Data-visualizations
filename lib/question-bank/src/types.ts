@@ -29,6 +29,7 @@ export type ChartArchetypeId =
   | "zone_wait_compare"
   | "daily_programme"
   | "time_split"
+  | "history_timeline"
   | "slot_compare"
   | "sighting_probability"
   | "activity_window"

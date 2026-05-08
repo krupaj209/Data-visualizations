@@ -989,6 +989,35 @@ export const slotCompareSpec = z.object({
   insight: z.string().max(200).optional(),
 });
 
+export const historyTimelineSpec = z.object({
+  type: z.literal("history_timeline"),
+  span_label: z.string().max(40),
+  events: z
+    .array(
+      z.object({
+        date_label: z.string().max(24),
+        sort_year: z.number().min(-5000).max(3000),
+        title: z.string().max(60),
+        era: z.enum([
+          "origins",
+          "construction",
+          "spectacle",
+          "decline",
+          "reuse",
+          "restoration",
+          "modern",
+        ]),
+        description: z.string().max(180),
+        metric_label: z.string().max(40).optional(),
+        metric_value: z.string().max(32).optional(),
+      }),
+    )
+    .min(5)
+    .max(9),
+  highlight_event: z.string().max(60).optional(),
+  callout: z.string().max(180).optional(),
+});
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -1023,6 +1052,7 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   openingHourRankSpec,
   dailyProgrammeSpec,
   timeSplitSpec,
+  historyTimelineSpec,
   slotCompareSpec,
 ]);
 
@@ -1261,6 +1291,26 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["segments"],
       });
     }
+  } else if (val.type === "history_timeline") {
+    for (let i = 1; i < val.events.length; i += 1) {
+      if (val.events[i]!.sort_year < val.events[i - 1]!.sort_year) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "history_timeline.events must be in chronological order",
+          path: ["events", i, "sort_year"],
+        });
+      }
+    }
+    if (
+      val.highlight_event &&
+      !val.events.some((e) => e.title === val.highlight_event)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "highlight_event must match one events[].title",
+        path: ["highlight_event"],
+      });
+    }
   } else if (val.type === "slot_compare") {
     val.dimensions.forEach((d, i) => {
       if (d.scores.length !== val.slots.length) {
@@ -1350,5 +1400,6 @@ export const CHART_TYPES = [
   "opening_hour_rank",
   "daily_programme",
   "time_split",
+  "history_timeline",
   "slot_compare",
 ] as const;
