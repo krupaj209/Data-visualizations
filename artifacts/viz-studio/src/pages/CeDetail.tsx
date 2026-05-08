@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useLocation } from "wouter";
+import { Link, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -121,6 +121,23 @@ export default function CeDetail() {
   const [showNewChart, setShowNewChart] = useState(false);
   const [showIdeation, setShowIdeation] = useState(false);
 
+  // Deep-link from triage: `/ce/:slug?edit=<id>` — read once on mount.
+  const searchParams = useMemo(
+    () => new URLSearchParams(window.location.search),
+    [],
+  );
+  const editIdParam = searchParams.get("edit");
+  const editId = editIdParam ? parseInt(editIdParam, 10) : null;
+
+  // Clear query param after reading it
+  useEffect(() => {
+    if (editIdParam) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("edit");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [editIdParam]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -144,21 +161,6 @@ export default function CeDetail() {
 
   const { ce, charts } = data;
   const isLocked = LOCKED_SLUGS.has(ce.slug);
-
-  // Deep-link from triage: `/ce/:slug?edit=<id>`
-  const [location, setLocation] = useLocation();
-  const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
-  const editIdParam = searchParams.get("edit");
-  const editId = editIdParam ? parseInt(editIdParam, 10) : null;
-
-  // Clear query param after reading it
-  useEffect(() => {
-    if (editIdParam) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("edit");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [editIdParam]);
 
   const draftCount = charts.filter((c) => (c.status ?? "published") === "draft")
     .length;
