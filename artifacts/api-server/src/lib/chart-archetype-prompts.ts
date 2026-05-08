@@ -94,11 +94,37 @@ Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Ch
   "months": [ { "month": "<jan..dec>", "cells": [ { "aligned": <bool>, "sub_rating"?: <0-100 int> }, ... EXACTLY one entry per slot ] }, ... 12 items, jan..dec each appearing once ],
   "helper"?: "Aligned cells fall within ±30 min of golden hour at the headline location." }
 For each month × slot, set aligned:true when that slot lands inside the location's golden hour at that time of year. Use sub_rating to grade quality (e.g. 90 = perfect golden light, 60 = soft but harsher). cells[] length MUST equal slots[] length.`,
-  savings_breakdown: STUB("savings_breakdown"),
-  return_buffer_rank: STUB("return_buffer_rank"),
-  seat_value_map: STUB("seat_value_map"),
-  optimal_departure: STUB("optimal_departure"),
+
+  savings_breakdown: `{ "type": "savings_breakdown",
+  "currency": "EUR" or "USD" or local currency,
+  "card_price": <number — total price of the city card / combo>,
+  "card_label": "Paris Pass 3-day" or similar short label,
+  "attractions": [ { "name": "Louvre", "standalone_price": <number>, "usage_rate"?: <0-100 int — % of cardholders who actually use this attraction> }, ... 3-8 items ] }
+Each attraction is one bar; standalone_price is the gate price. The renderer draws card_price as a threshold line, so attractions priced above it render in the value-add colour and below in muted. Real example: Paris Pass 3-day card_price 165 vs Louvre 22, Versailles 21, Arc de Triomphe 16, Sainte-Chapelle 13, etc.`,
+
+  return_buffer_rank: `{ "type": "return_buffer_rank",
+  "ship_departure_time": "17:00",
+  "options": [ { "name": "Vatican half-day with skip-the-line", "buffer_minutes": <int — minutes between scheduled tour return and ship departure; positive = safe>, "notes"?: "Operator guarantees on-time return" }, ... 3-8 items ] }
+Bands are coloured: <30 red, 30-60 amber, >60 green. Order DOES NOT matter — the renderer sorts. Real example: Civitavecchia port stop with Rome tours, ship departs 17:00; options range from "Rome highlights private" 25 min buffer (red) to "Civitavecchia walking" 240 min buffer (green).`,
+
+  seat_value_map: `{ "type": "seat_value_map",
+  "currency": "USD",
+  "venue_label"?: "Minskoff Theatre",
+  "layout": ["stalls", "circle", "upper_circle"] (order top-down on the seatmap; pick from stalls|circle|upper_circle|balcony|box|gallery; 1-4 tiers typical),
+  "sections": [ { "name": "Stalls front", "tier": "stalls", "price": <number>, "sightline_score": <0-100 int — quality of view>, "value_score": <0-100 int — sightline relative to price; higher = better deal>, "note"?: "Closest to actors" }, ... 4-10 items ],
+  "best_section"?: "Circle row C — front" (must match one sections[].name) }
+Every section.tier MUST appear in layout. Real example: Lion King at the Minskoff — stalls premium $189 (sightline 95, value 60), stalls front $159 (95, 75), circle front $129 (88, 92 — sweet spot), upper-circle $69 (60, 78), etc.`,
+
+  optimal_departure: `{ "type": "optimal_departure",
+  "recommended_slot": "<id of one slot below>",
+  "slots": [ { "id": "sunset", "name": "Sunset", "light_quality": <0-100>, "conditions": <0-100 — weather/visibility>, "crowd_level": <0-100 — LOWER is better; 100 = packed>, "note"?: "Best Manhattan skyline glow" }, ... 2-5 items ] }
+slots[].id must be unique kebab-case (lowercase letters/digits separated by single hyphens, e.g. "golden-hour", "morning", "blue-hour"); recommended_slot must match one of those ids. Real example: Manhattan helicopter tour — morning (light 70, conditions 90, crowd 40), midday (light 60, conditions 85, crowd 80), golden-hour (light 95, conditions 80, crowd 65) → recommended_slot "golden-hour".`,
+
   price_curve: STUB("price_curve"),
-  stop_frequency: STUB("stop_frequency"),
+
+  stop_frequency: `{ "type": "stop_frequency",
+  "route_label"?: "Big Bus London — Red Route",
+  "stops": [ { "name": "Trafalgar Square", "peak_headway_min": <int — minutes between buses at peak>, "offpeak_headway_min": <int — minutes off-peak>, "note"?: "Adds Westminster shuttle" }, ... 4-20 items ] }
+Order is the bus route order (first stop first). peak_headway_min ≤ offpeak_headway_min in almost every realistic case. Real example: Big Bus London Red Route — Trafalgar Square 8/15 min, St Paul's 10/18, Tower of London 12/22, Marble Arch 8/15, etc.`,
   route_profile: STUB("route_profile"),
 };

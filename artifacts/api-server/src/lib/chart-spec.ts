@@ -508,6 +508,117 @@ const coBookingsSpec = z
   })
   .passthrough();
 
+/* -------------------------------------------------------------------------- *
+ * v3 specialty family                                                        *
+ *                                                                            *
+ * Five archetypes that don't fit any other family — each is the signature    *
+ * visualization for a specific subcategory and answers a question no other   *
+ * chart can. Renderers live in `artifacts/viz-studio/src/components/charts/` *
+ * (one file per type) and respect the compact prop / 340px auto-collapse.    *
+ * -------------------------------------------------------------------------- */
+
+export const savingsBreakdownSpec = z.object({
+  type: z.literal("savings_breakdown"),
+  currency: z.string().max(4).default("EUR"),
+  card_price: z.number().min(0).max(10000),
+  card_label: z.string().max(60).default("Card price"),
+  attractions: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        standalone_price: z.number().min(0).max(10000),
+        usage_rate: z.number().min(0).max(100).optional(),
+      }),
+    )
+    .min(3)
+    .max(8),
+});
+
+export const returnBufferRankSpec = z.object({
+  type: z.literal("return_buffer_rank"),
+  ship_departure_time: z.string().max(8),
+  options: z
+    .array(
+      z.object({
+        name: z.string().max(80),
+        buffer_minutes: z.number().int().min(-120).max(720),
+        notes: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(8),
+});
+
+const seatTierEnum = z.enum([
+  "stalls",
+  "circle",
+  "upper_circle",
+  "balcony",
+  "box",
+  "gallery",
+]);
+
+export const seatValueMapSpec = z.object({
+  type: z.literal("seat_value_map"),
+  currency: z.string().max(4).default("USD"),
+  venue_label: z.string().max(80).optional(),
+  layout: z
+    .array(seatTierEnum)
+    .min(1)
+    .max(6),
+  sections: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        tier: seatTierEnum,
+        price: z.number().min(0).max(10000),
+        sightline_score: z.number().min(0).max(100),
+        value_score: z.number().min(0).max(100),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .min(4)
+    .max(10),
+  best_section: z.string().max(40).optional(),
+});
+
+export const optimalDepartureSpec = z.object({
+  type: z.literal("optimal_departure"),
+  recommended_slot: z.string().max(40),
+  slots: z
+    .array(
+      z.object({
+        id: z
+          .string()
+          .max(40)
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "id must be kebab-case"),
+        name: z.string().max(40),
+        light_quality: z.number().min(0).max(100),
+        conditions: z.number().min(0).max(100),
+        crowd_level: z.number().min(0).max(100),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(2)
+    .max(5),
+});
+
+export const stopFrequencySpec = z.object({
+  type: z.literal("stop_frequency"),
+  route_label: z.string().max(80).optional(),
+  stops: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        peak_headway_min: z.number().int().min(1).max(180),
+        offpeak_headway_min: z.number().int().min(1).max(180),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .min(4)
+    .max(20),
+});
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -526,6 +637,11 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   zoneCrowdHeatmapSpec,
   zoneWaitHeatmapSpec,
   goldenHourMatchSpec,
+  savingsBreakdownSpec,
+  returnBufferRankSpec,
+  seatValueMapSpec,
+  optimalDepartureSpec,
+  stopFrequencySpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -624,6 +740,43 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["tiers"],
       });
     }
+  } else if (val.type === "seat_value_map") {
+    const layoutTiers = new Set(val.layout);
+    val.sections.forEach((s, i) => {
+      if (!layoutTiers.has(s.tier)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `sections[${i}].tier "${s.tier}" not present in layout`,
+          path: ["sections", i, "tier"],
+        });
+      }
+    });
+    if (val.best_section) {
+      const names = new Set(val.sections.map((s) => s.name));
+      if (!names.has(val.best_section)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "best_section must match one of sections[].name",
+          path: ["best_section"],
+        });
+      }
+    }
+  } else if (val.type === "optimal_departure") {
+    const ids = val.slots.map((s) => s.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "slots[].id must be unique",
+        path: ["slots"],
+      });
+    }
+    if (!ids.includes(val.recommended_slot)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "recommended_slot must match one of slots[].id",
+        path: ["recommended_slot"],
+      });
+    }
   }
 });
 
@@ -684,4 +837,9 @@ export const CHART_TYPES = [
   "zone_crowd_heatmap",
   "zone_wait_heatmap",
   "golden_hour_match",
+  "savings_breakdown",
+  "return_buffer_rank",
+  "seat_value_map",
+  "optimal_departure",
+  "stop_frequency",
 ] as const;

@@ -21,4 +21,9 @@ export const CHART_TYPE_META: Record<
   zone_crowd_heatmap: { label: "Zone × hour crowd", emoji: "🗺" },
   zone_wait_heatmap: { label: "Zone × hour wait", emoji: "⏳" },
   golden_hour_match: { label: "Golden-hour match", emoji: "🌅" },
+  savings_breakdown: { label: "Card savings", emoji: "💳" },
+  return_buffer_rank: { label: "Return buffer", emoji: "🚢" },
+  seat_value_map: { label: "Seat value", emoji: "🎭" },
+  optimal_departure: { label: "Optimal slot", emoji: "🚁" },
+  stop_frequency: { label: "Stop frequency", emoji: "🚌" },
 };

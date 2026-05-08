@@ -74,6 +74,11 @@ const CHART_FRAME: Record<
   zone_crowd_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
   zone_wait_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
   golden_hour_match: { aspectRatio: "5 / 4", minHeight: 360, maxHeight: 520 },
+  savings_breakdown: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 400 },
+  return_buffer_rank: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
+  seat_value_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
+  optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
+  stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
 };
 
 type StatusFilter = "all" | "published" | "draft";
@@ -706,15 +711,6 @@ function ChartRow({
         </div>
       </div>
 
-      {mode === "edit" && (
-        <ChartEditor
-          chart={chart}
-          ceSlug={ceSlug}
-          onCancel={() => setMode("view")}
-          onSaved={() => setMode("view")}
-          updateMut={updateMut}
-        />
-      )}
       {verification && (
         <VerifyResult
           result={verification}

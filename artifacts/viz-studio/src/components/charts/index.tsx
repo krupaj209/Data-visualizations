@@ -16,6 +16,11 @@ import { CoBookingsChart } from "./CoBookingsChart";
 import { ZoneCrowdHeatmapChart } from "./ZoneCrowdHeatmapChart";
 import { ZoneWaitHeatmapChart } from "./ZoneWaitHeatmapChart";
 import { GoldenHourMatchChart } from "./GoldenHourMatchChart";
+import { SavingsBreakdownChart } from "./SavingsBreakdownChart";
+import { ReturnBufferRankChart } from "./ReturnBufferRankChart";
+import { SeatValueMapChart } from "./SeatValueMapChart";
+import { OptimalDepartureChart } from "./OptimalDepartureChart";
+import { StopFrequencyChart } from "./StopFrequencyChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -94,9 +99,25 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
           compact={compact}
         />
       );
+    case "savings_breakdown":
+      return (
+        <SavingsBreakdownChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
     case "zone_wait_heatmap":
       return (
         <ZoneWaitHeatmapChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "return_buffer_rank":
+      return (
+        <ReturnBufferRankChart
           spec={spec}
           context={context}
           compact={compact}
@@ -109,6 +130,22 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
           context={context}
           compact={compact}
         />
+      );
+    case "seat_value_map":
+      return (
+        <SeatValueMapChart spec={spec} context={context} compact={compact} />
+      );
+    case "optimal_departure":
+      return (
+        <OptimalDepartureChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "stop_frequency":
+      return (
+        <StopFrequencyChart spec={spec} context={context} compact={compact} />
       );
     default: {
       const exhaustive: never = spec;

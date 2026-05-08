@@ -380,6 +380,86 @@ export interface GoldenHourMatchSpec {
   helper?: string;
 }
 
+export type SeatTier =
+  | "stalls"
+  | "circle"
+  | "upper_circle"
+  | "balcony"
+  | "box"
+  | "gallery";
+
+/** v3 specialty: city-card / combo savings vs standalone gate prices. */
+export interface SavingsBreakdownSpec {
+  type: "savings_breakdown";
+  currency: string;
+  card_price: number;
+  card_label: string;
+  attractions: {
+    name: string;
+    standalone_price: number;
+    /** % of cardholders who actually use this attraction. */
+    usage_rate?: number;
+  }[];
+}
+
+/** v3 specialty: port-of-call return-buffer ranking vs ship departure. */
+export interface ReturnBufferRankSpec {
+  type: "return_buffer_rank";
+  ship_departure_time: string;
+  options: {
+    name: string;
+    /** Minutes between scheduled return and ship departure (positive = safe). */
+    buffer_minutes: number;
+    notes?: string;
+  }[];
+}
+
+/** v3 specialty: theatre seat-value map (section-level only). */
+export interface SeatValueMapSpec {
+  type: "seat_value_map";
+  currency: string;
+  venue_label?: string;
+  /** Tiers in top-down display order. */
+  layout: SeatTier[];
+  sections: {
+    name: string;
+    tier: SeatTier;
+    price: number;
+    sightline_score: number;
+    value_score: number;
+    note?: string;
+  }[];
+  best_section?: string;
+}
+
+/** v3 specialty: helicopter / cruise optimal-departure rating. */
+export interface OptimalDepartureSpec {
+  type: "optimal_departure";
+  /** Must match one slots[].id. */
+  recommended_slot: string;
+  slots: {
+    id: string;
+    name: string;
+    light_quality: number;
+    conditions: number;
+    /** LOWER is better; 100 = packed. */
+    crowd_level: number;
+    note?: string;
+  }[];
+}
+
+/** v3 specialty: hop-on-hop-off bus stop frequency / headway by stop. */
+export interface StopFrequencySpec {
+  type: "stop_frequency";
+  route_label?: string;
+  stops: {
+    name: string;
+    peak_headway_min: number;
+    offpeak_headway_min: number;
+    note?: string;
+  }[];
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -397,7 +477,12 @@ export type ChartSpec =
   | CoBookingsSpec
   | ZoneCrowdHeatmapSpec
   | ZoneWaitHeatmapSpec
-  | GoldenHourMatchSpec;
+  | GoldenHourMatchSpec
+  | SavingsBreakdownSpec
+  | ReturnBufferRankSpec
+  | SeatValueMapSpec
+  | OptimalDepartureSpec
+  | StopFrequencySpec;
 
 export interface ChartHeader {
   title: string;

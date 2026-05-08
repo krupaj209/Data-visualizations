@@ -413,7 +413,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["city_cards", "combos"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   return_buffer_rank: {
     id: "return_buffer_rank",
@@ -425,7 +425,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["port_of_call_tours"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   seat_value_map: {
     id: "seat_value_map",
@@ -436,7 +436,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["plays"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   optimal_departure: {
     id: "optimal_departure",
@@ -447,7 +447,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["sightseeing_cruises", "helicopter_tours"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   price_curve: {
     id: "price_curve",
@@ -467,7 +467,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["hop_on_hop_off"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   route_profile: {
     id: "route_profile",
