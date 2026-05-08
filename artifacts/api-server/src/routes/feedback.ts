@@ -16,6 +16,7 @@ import { isLockedCe } from "../lib/locked-ces";
 import { regenerateSingleChart } from "../lib/research-pipeline";
 import {
   CHART_ARCHETYPES,
+  isImplementedArchetype,
   type ChartArchetypeId,
 } from "@workspace/question-bank";
 
@@ -445,6 +446,12 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
   if (!(recommended in CHART_ARCHETYPES)) {
     res.status(400).json({
       error: `Chart type "${recommended}" is not a known archetype; cannot regenerate.`,
+    });
+    return;
+  }
+  if (!isImplementedArchetype(recommended as ChartArchetypeId)) {
+    res.status(400).json({
+      error: `Archetype "${recommended}" is reserved but its renderer hasn't landed yet (viz_not_yet_built); cannot regenerate.`,
     });
     return;
   }

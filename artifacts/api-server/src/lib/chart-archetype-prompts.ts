@@ -3,10 +3,20 @@ import type { ChartArchetypeId } from "@workspace/question-bank";
 /**
  * Per-archetype JSON schema snippet, copied from `chart-spec.ts` so the
  * orchestrator can prompt Gemini to fill in EXACTLY ONE archetype's spec
- * at a time (rather than re-emitting the giant 9-archetype menu in every
- * prompt). Keep these in lockstep with `chartSpecSchema`.
+ * at a time (rather than re-emitting the giant menu in every prompt).
+ *
+ * Today's nine implemented archetypes carry a real prompt (kept in lockstep
+ * with `chartSpecSchema`). The remaining v3 archetypes have STUB entries —
+ * the pipeline never actually calls Gemini for them today (the orchestrator
+ * skips any question whose archetype is `implemented: false`). The stubs
+ * exist so sibling chart-family tasks can drop in the real prompt without
+ * touching the orchestrator.
  */
+const STUB = (id: string) =>
+  `// TODO(${id}): real prompt lands with the chart-family sibling task. The orchestrator should never reach this code path while the archetype is flagged implemented:false in CHART_ARCHETYPES.`;
+
 export const ARCHETYPE_PROMPT: Record<ChartArchetypeId, string> = {
+  /* ---------------- implemented today ---------------- */
   weekly_pattern: `{ "type": "weekly_pattern",
   "days": [ { "day": "<mon|tue|wed|thu|fri|sat|sun>", "level": "<closed|quietest|quiet|busy|busiest>", "score": <0-100 int>, "note"?: "..." }, ... 7 items ],
   "day_notes"?: [ { "label": "Mon closed", "kind": "<closed|free|info>" }, ... up to 4 ] }
@@ -52,4 +62,28 @@ Optional fields (weather_score, price_score, calendar_notes, metric_insights) on
   "currency": "EUR",
   "tiers": [ { "name": "...", "price": <int>, "includes": ["..."], "recommended": <bool>, "share"?: <0-100 int>, "wait_savings_min"?: <int> }, ... 2-5 items ] }
 Exactly one tier must have recommended:true.`,
+
+  /* ---------------- reserved (stubs) ---------------- */
+  queue_compare: STUB("queue_compare"),
+  duration_stat: STUB("duration_stat"),
+  ride_wait_curve: STUB("ride_wait_curve"),
+  opening_hour_rank: STUB("opening_hour_rank"),
+  zone_wait_heatmap: STUB("zone_wait_heatmap"),
+  zone_crowd_heatmap: STUB("zone_crowd_heatmap"),
+  zone_wait_compare: STUB("zone_wait_compare"),
+  daily_programme: STUB("daily_programme"),
+  time_split: STUB("time_split"),
+  slot_compare: STUB("slot_compare"),
+  sighting_probability: STUB("sighting_probability"),
+  activity_window: STUB("activity_window"),
+  departure_reliability: STUB("departure_reliability"),
+  conditions_calendar: STUB("conditions_calendar"),
+  golden_hour_match: STUB("golden_hour_match"),
+  savings_breakdown: STUB("savings_breakdown"),
+  return_buffer_rank: STUB("return_buffer_rank"),
+  seat_value_map: STUB("seat_value_map"),
+  optimal_departure: STUB("optimal_departure"),
+  price_curve: STUB("price_curve"),
+  stop_frequency: STUB("stop_frequency"),
+  route_profile: STUB("route_profile"),
 };

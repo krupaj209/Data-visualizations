@@ -1,0 +1,566 @@
+# Visitor Question Bank v3
+
+---
+
+## Standard questions — every CE gets these automatically
+
+These four apply universally wherever the data exists. The orchestrator includes
+them by default and skips only if the DRD explicitly flags them as inapplicable.
+
+| # | Question | Viz type | Skip if |
+|---|---|---|---|
+| S1 | When do the crowds show? | `weekly_pattern` + `hourly_heatmap` | CE has no crowd variability (e.g. private charter) |
+| S2 | Choose the right entry lane | `queue_compare` | CE has no physical queue or single-lane entry |
+| S3 | How early should you book? | `booking_window` | CE has unlimited capacity / no sell-out risk |
+| S4 | How long should I spend here? | `duration_stat` | CE is fixed-duration (exact runtime known) |
+
+*Note: S1 maps to the two-panel layout shown in the Accademia screenshots —
+weekly bar chart with colour bands (quietest → as busy as it gets) on the left,
+smooth hourly curve with Best / Peak / 2nd best zones on the right.*
+
+---
+
+## Signature questions — subcat-specific, data-dependent
+
+The orchestrator adds 1–3 signature questions per CE on top of the four standards.
+Each signature question requires a distinct data signal not covered by S1–S4.
+Questions are only included if the DRD contains the relevant data.
+
+---
+
+### Tickets
+
+**Landmarks**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How do the named viewing levels compare on wait time? | `zone_wait_compare` | Wait time per deck / floor |
+| Which ticket tier saves the most queue time? | `ticket_ladder` | Queue time by entry type |
+| Which dates in the next 3 months are calmest? | `month_calendar` | Day-level crowd index |
+
+---
+
+**Museums**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which galleries are busiest — and when should you visit each? | `zone_crowd_heatmap` | Visitor flow by gallery × hour |
+| Which ticket tier gives the best access for the price? | `ticket_ladder` | Access level + queue time + price by tier |
+| What share of visitors buy skip-the-line? | `donut_breakdown` | Ticket type sales mix |
+
+*The zone_crowd_heatmap is the signature viz here — rows are named galleries,
+columns are hours, colour is crowd level. Tells visitors exactly when to hit
+the Sistine Chapel vs the Raphael Rooms.*
+
+---
+
+**Theme Parks**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When's the best window to ride [headline attraction]? | `ride_wait_curve` | Hourly wait time for the named ride |
+| Which rides have the shortest waits right at opening? | `opening_hour_rank` | Wait times 9–10am, ranked shortest to longest |
+| How do wait times compare across the named lands throughout the day? | `zone_wait_heatmap` | Wait time by zone × hour |
+| Which pass tier actually saves the most time — not just money? | `ticket_ladder` | Wait time with standard queue vs pass, per headline ride |
+| Which dates in the next 3 months are calmest? | `month_calendar` | Day-level crowd index |
+
+*ride_wait_curve is the theme park equivalent of the Accademia hourly crowd curve —
+same shape, same Best/Peak/2nd best zones, but y-axis is wait time in minutes
+not relative crowd level. One curve per headline ride. This is the signature question
+that no other subcat has.*
+
+*opening_hour_rank is the "rope drop" question — which rides to sprint to first.
+Bar chart ranked shortest to longest morning wait. Actionable within the first
+30 minutes of arrival.*
+
+---
+
+**Water Parks**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When's the shortest wait for [headline slide or attraction]? | `ride_wait_curve` | Hourly wait time for the named ride/slide |
+| Which slides have the shortest queues at opening? | `opening_hour_rank` | Wait times at opening, ranked |
+| Which dates in the next 3 months are calmest? | `month_calendar` | Day-level crowd index |
+
+---
+
+**Zoos**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When are the feeding and show times — and which fills up fastest? | `daily_programme` | Fixed-time events + capacity / popularity per event |
+| Which zones are busiest at what time of day — and when to visit each? | `zone_crowd_heatmap` | Visitor flow by zone × hour |
+
+*daily_programme is a linear timeline of the operating day with fixed events pinned to it.
+Each event shows its location, duration, and a popularity indicator. Tells visitors
+how to sequence their day around shows rather than fighting crowds.*
+
+---
+
+**Aquariums**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When are the feeding and dive shows — and which fills up fastest? | `daily_programme` | Fixed-time events + popularity per event |
+| Which exhibits peak in crowd, and when is the best time for each? | `zone_crowd_heatmap` | Visitor flow by exhibit × hour |
+
+---
+
+**Observation Decks**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How do the named viewing levels compare on wait time? | `zone_wait_compare` | Queue time per level |
+| Which ticket tier saves the most queue time? | `ticket_ladder` | Queue time + price by entry type |
+| Which dates in the next 3 months are calmest? | `month_calendar` | Day-level crowd index |
+
+---
+
+**City Cards**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How much do you save vs buying separately — and which attractions drive the value? | `savings_breakdown` | Standalone price per included attraction vs card price |
+| What do most card holders actually visit? | `donut_breakdown` | Attraction usage data from card redemptions |
+
+*savings_breakdown: horizontal bar per included attraction showing standalone price.
+Card price shown as a threshold line. Any bar above the line = value unlocked.
+Visitor can see immediately which 2–3 attractions justify the purchase.*
+
+---
+
+**Religious Sites**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which access windows avoid prayer and service times? | `daily_programme` | Fixed service/prayer schedule overlaid on opening hours |
+| Which ticket tier or entry route gets you in fastest? | `ticket_ladder` | Queue time by entry type |
+
+---
+
+**Immersive Experiences**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which time slot gives you the most space to explore? | `hourly_heatmap` | Crowd level by slot (not continuous hours — named slots) |
+| How long does the experience actually run? | `duration_stat` | Median + range of actual visit length |
+
+---
+
+### Tours
+
+**Guided Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| What share of guests pick private vs shared, and why does it matter? | `donut_breakdown` | Tier sales mix + avg group size per tier |
+| How is the time actually split — travel, queuing, and time at the site? | `time_split` | Duration breakdown: transit / queue / at-site / breaks |
+
+*time_split is a stacked horizontal bar — transit (grey) / queue (amber) / at-site (green) / breaks.
+The honest version of the question "how long is the tour" — shows how much of that time
+is actually spent at the thing you came to see.*
+
+---
+
+**Day Trips**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How is the day actually split between travel and being there? | `time_split` | Transit / destination dwell / return duration |
+| How do the named stops compare on time spent vs visitor interest? | `zone_wait_compare` | Time allocated per stop + visitor rating per stop |
+
+---
+
+**Hop-on Hop-off**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How long do you actually wait at each stop? | `stop_frequency` | Bus headway by stop × time of day |
+| How long does a full loop take on each route? | `zone_wait_compare` | Loop time per named route |
+
+*stop_frequency: the practical question HOHO visitors actually have.
+Not "how often does the bus run" in general, but "if I get off at stop 7,
+how long before the next bus?" Bar per stop showing peak vs off-peak headway.*
+
+---
+
+**Walking Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How far is the route and how hilly is it? | `route_profile` | Distance in km + elevation gain per named route |
+| How do the named tour themes compare on length, stops, and price? | `ticket_ladder` | Duration + stop count + price per themed tour (if multiple from same operator) |
+| What's the typical group size — and which tour keeps it smallest? | `stat_grid` | Median + max group size per tour format |
+
+*route_profile: a simple effort visual — distance bar and elevation gain bar side by side.
+Not an interactive map. Tells a visitor immediately whether this is a flat 2km stroll
+or a 5km route that climbs 80m. The physical question is the one that actually stops people booking.*
+
+*S2 (entry lane) skip — no physical queue for most walking tours.
+S1 (crowds show) applies at the route level if the DRD has footfall data for the streets covered.*
+
+---
+
+**Photography Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which departure time captures golden hour at the headline locations? | `golden_hour_match` | Sunrise/sunset times by month × available departure slots |
+
+*golden_hour_match: a month × slot matrix. Green cells = departure aligns with
+golden hour at the key location. Tells visitors exactly which slot to pick
+and whether it changes by season.*
+
+---
+
+**Multi-Day Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How is time split across the named destinations? | `zone_wait_compare` | Hours per destination across the itinerary |
+| How does pricing vary by departure date? | `price_curve` | Price index by departure month |
+
+---
+
+**Port of Call Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which tours return to the ship with the safest buffer? | `return_buffer_rank` | Tour return time vs ship departure — buffer in minutes, ranked |
+
+*return_buffer_rank is unique to this subcat. The visitor's real fear is missing the ship.
+Ranked bar chart — each tour option showing buffer time in minutes.
+Red zone < 30 min, amber 30–60 min, green > 60 min.*
+
+---
+
+### Cruises
+
+**Sightseeing Cruises**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which departure time gives the best light and views? | `optimal_departure` | Light quality + weather clarity by departure slot |
+
+---
+
+**Dinner Cruises**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which nights are easiest to book, and which almost always sell out? | `weekly_pattern` | Occupancy by day of week — standard chart, dinner-specific framing |
+| What's included in each tier — and is the premium worth it? | `ticket_ladder` | Inclusions + price per tier |
+
+---
+
+**Whale Watching**
+| Question | Viz type | Data signal |
+|---|---|---|
+| What are the chances of a sighting on your dates? | `sighting_probability` | Monthly sighting success rate (% of trips with confirmed sightings) |
+| What time of day are sightings most commonly reported? | `hourly_heatmap` | Sighting frequency by hour — same curve format, different y-axis label |
+
+*sighting_probability is the signature question for whale watching —
+nothing else in the catalogue has it. Monthly bar chart where y-axis is
+% of trips with confirmed sightings, not visitor volume.
+Completely changes the visitor's decision: not "when is it quiet" but "when does it work".*
+
+---
+
+### Entertainment
+
+**Plays / Musicals / Opera / Ballet**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which seats are worth the premium — and which aren't? | `seat_value_map` | Price by section + sightline quality rating per section |
+| Which performance days have the most availability? | `weekly_pattern` | Seat availability by day of week — standard chart |
+
+*seat_value_map: a simplified seatmap with sections colour-coded by value
+(price / sightline quality ratio). Not a full interactive seatmap — just enough
+to show "stalls front row is premium for a reason; circle row C is the sweet spot".*
+
+---
+
+**Rock Concerts**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Floor vs seated — how do the zones compare on price, view, and energy? | `zone_wait_compare` | Price + experience descriptors per named zone |
+| How fast do floor and pit sections sell out from on-sale? | `ticket_ladder` | Days to sell-out per section tier from on-sale date |
+
+---
+
+**Nightlife**
+| Question | Viz type | Data signal |
+|---|---|---|
+| What time does it actually peak — and when do the best tables go? | `hourly_heatmap` | Occupancy curve through the night |
+
+---
+
+**Sports (live events)**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which fixtures are most in demand this season? | `month_calendar` | Demand index per fixture date |
+| How do the seating zones compare on view and price? | `zone_wait_compare` | Price + view quality rating per named stand/zone |
+
+---
+
+### Adventure
+
+**Desert Safari**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Sunrise or sunset — which departure actually delivers? | `slot_compare` | Conditions + crowd + temperature per named departure type |
+
+*slot_compare: not an hourly curve — it's a head-to-head of two or three named
+slots (sunrise / midday / sunset) across 3–4 dimensions: temperature, light quality,
+crowd level, wildlife activity. Radar or side-by-side bar.*
+
+---
+
+**Skydiving / Bungee Jumping**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How reliable are departures — how often do conditions cancel a session? | `departure_reliability` | % of sessions that ran on schedule by month |
+
+*departure_reliability is the "is this trip going to happen?" question.
+Monthly bar chart where y-axis is % of sessions that departed as scheduled.
+Completely different from a crowd question — it's a confidence question.*
+
+---
+
+**Hot Air Balloon**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How reliable are departures — what share of flights actually take off? | `departure_reliability` | % of scheduled flights that departed, by month |
+| Which departure time (sunrise vs later) is most popular? | `slot_compare` | Demand + conditions per named departure slot |
+
+---
+
+**Skiing / Snowboarding**
+| Question | Viz type | Data signal |
+|---|---|---|
+| What are the snow conditions like across the season? | `conditions_calendar` | Snow depth + quality rating by month |
+| How do the named runs or areas compare on difficulty and crowd level? | `zone_wait_compare` | Crowd level + difficulty rating per named run/zone |
+
+*conditions_calendar replaces seasonal_curve for snow sports — y-axis is snow
+depth or quality index, not visitor volume. The visitor question is not "when is
+it quiet" but "when is the snow actually good".*
+
+---
+
+**Go Karting / Racing**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When's the shortest wait to get on track? | `hourly_heatmap` | Wait time for track access by hour — same curve, wait-time y-axis |
+
+---
+
+**Outdoor Activities** *(catch-all for subcats without a dedicated entry — e.g. paragliding, abseiling, cycling tours)*
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which months are in the right weather window for this activity? | `conditions_calendar` | Weather suitability rating by month — replaces seasonal_curve |
+| How do the difficulty or experience-level tiers compare? | `ticket_ladder` | Difficulty level + duration + inclusions + price per tier |
+| When's the shortest wait for a session slot? | `hourly_heatmap` | Session wait time by hour (only if a physical queue exists at a facility — e.g. paragliding launch point, zipline platform) |
+
+*This is the fallback template when an activity has its own subcat (ziplining, skiing, etc.),
+those entries take precedence. Use Outdoor Activities only when no specific subcat fits.
+S2 (entry lane) skip unless the DRD confirms a queuing facility.
+S1 (crowds show) skip unless the activity site has measurable footfall variability.*
+
+---
+
+### Aerial Sightseeing
+
+**Helicopter Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which time of day gives the clearest visibility and best light for photos? | `optimal_departure` | Visibility + light quality by departure slot |
+
+---
+
+**Cable Car Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When's the shortest queue to board? | `hourly_heatmap` | Queue length by hour |
+| Which months give the best summit visibility? | `conditions_calendar` | Clear-summit days per month |
+
+---
+
+### Water Sports
+
+**Scuba Diving / Snorkelling**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When is visibility at its best — and what marine life can you expect? | `conditions_calendar` | Visibility (metres) + key species presence by month |
+| How do the named dive sites compare on depth, current, and marine life? | `zone_wait_compare` | Site × difficulty / marine life / current — side-by-side |
+
+*conditions_calendar for diving: y-axis is visibility in metres, with species
+presence icons (turtle, manta, whale shark) pinned to months when they're reliably
+sighted. Combines two questions — visibility and wildlife — into one chart.*
+
+---
+
+**Surfing**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When is the swell at its best for this break? | `conditions_calendar` | Average swell height + quality rating by month |
+| How do the named breaks compare on wave quality and crowd level? | `zone_wait_compare` | Wave quality + crowd index per named break |
+
+---
+
+**Rafting**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When is the river running at its best — and when is it too low or too dangerous? | `conditions_calendar` | River flow / rapid grade by month — with safe / optimal / expert-only zones |
+
+---
+
+### Nature & Wildlife
+
+**Safari**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which months give you the best chance of seeing the headline species? | `sighting_probability` | Monthly sighting rate per key species |
+| What time of day are animals most active? | `activity_window` | Animal activity index by hour — same curve format, y-axis = activity level |
+| How do the named circuits or zones compare on wildlife density? | `zone_wait_compare` | Wildlife encounter rate per named zone/circuit |
+
+*activity_window mirrors the Accademia hourly crowd curve exactly in format —
+same smooth curve, same Best/Peak zones — but y-axis is animal activity level,
+not visitor volume. Dawn and dusk will peak; midday will trough.*
+
+---
+
+**Hiking & Trails**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How do the named trails compare on distance, elevation, and typical duration? | `zone_wait_compare` | Distance + elevation + median completion time per trail |
+| When are trail conditions at their best? | `conditions_calendar` | Trail condition rating by month |
+
+---
+
+### Food & Drink
+
+**Food Tours**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How is the tour time split across the stops — and which stop takes longest? | `time_split` | Time per named stop across the tour |
+
+---
+
+**Wineries**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which months align with harvest — and how does that change the visit? | `conditions_calendar` | Harvest window + visitor volume + tasting availability by month |
+
+---
+
+**Cooking Classes**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How do the class formats compare on what you cook, class size, and price? | `ticket_ladder` | Format + dish count + max class size + price per tier |
+| Morning vs afternoon — which has better availability and which books out faster? | `slot_compare` | Availability rate + booking lead time per named time slot |
+| What share of classes are themed (regional, vegetarian, street food, etc.)? | `donut_breakdown` | Class-type distribution (only if operator offers multiple themes and DRD has the split) |
+
+*S1 (crowds show) skip — fixed class sizes mean no crowd variability.
+S2 (entry lane) skip. S3 (booking window) and S4 (duration) both apply.
+slot_compare here is a head-to-head of morning vs afternoon: availability rate,
+lead time needed, and any price difference. Directly answers the practical booking question.*
+
+---
+
+**Pub Crawls**
+| Question | Viz type | Data signal |
+|---|---|---|
+| Which night of the week has the best atmosphere and most stops open? | `weekly_pattern` | Night-of-week demand — standard chart, framed for nightlife |
+
+---
+
+### Wellness
+
+**Spa**
+| Question | Viz type | Data signal |
+|---|---|---|
+| When is the pool or wet area at its quietest? | `hourly_heatmap` | Occupancy in wet/pool areas by hour — same curve format, y-axis = occupancy % |
+| How do the package tiers compare on time, treatments included, and price? | `ticket_ladder` | Duration + included treatments + price per package |
+| Which treatment slots are hardest to get — and how far ahead should you book them? | `booking_window` | Lead time for popular named treatments, not just general entry |
+
+*S2 (entry lane) skip. S1 (crowds) applies at the facility level — when is the pool/hammam
+quiet is a different question from when the spa is busy overall.
+The booking_window here is a treatment-specific variant of S3: "how early for a hot stone
+massage on Saturday" is a materially different answer from "how early to enter the spa".
+Flag in DRD if these differ by more than a week.*
+
+---
+
+**Baths** (e.g. Széchenyi, onsen, hammam)
+| Question | Viz type | Data signal |
+|---|---|---|
+| When is the bathing area at its quietest? | `hourly_heatmap` | Occupancy in wet areas by hour |
+| How do the entry tiers compare on pool access and price? | `ticket_ladder` | Pool access + locker/cabin inclusions + price per tier |
+
+*Baths differ from Spa in that the experience is self-directed (soak, repeat) rather than
+treatment-scheduled. S4 (duration) applies — "how long do most people stay?" is a real
+planning question here. S2 (entry lane) skip for most bath complexes.*
+
+---
+
+### Specials
+
+**Combo Tickets**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How much do you save vs buying separately — and which attractions drive the value? | `savings_breakdown` | Standalone price per included attraction vs combo price |
+| How do the combo tiers compare on what's included? | `ticket_ladder` | Inclusions + price per combo tier |
+| What do most buyers actually visit from the combo? | `donut_breakdown` | Redemption data — which attractions get used most |
+| How long do you realistically need to use the full combo? | `duration_stat` | Total time for all included attractions at median visit length each |
+
+*S1 (crowds show) skip — combos span multiple venues, crowd data belongs on each CE not
+on the combo page. S2 (entry lane) skip. S3 (booking window) applies if any included
+attraction has sell-out risk.
+savings_breakdown is the hero chart: horizontal bar per included attraction showing
+standalone price, with the combo price as a threshold line. Any bar clearing the line
+= value unlocked. Visitor sees in one glance which 2–3 attractions justify the purchase.*
+
+---
+
+### Sports (spectator)
+
+**Formula 1**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How do Practice, Qualifying, and Race day compare on crowd size and atmosphere? | `zone_wait_compare` | Attendance + atmosphere rating per session |
+| How do the grandstand zones compare on view and price? | `zone_wait_compare` | Price + view quality per named grandstand |
+| How fast do premium sections sell out from on-sale? | `ticket_ladder` | Days to sell-out per grandstand tier |
+
+---
+
+### Transportation
+
+**Airport Transfers**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How does journey time change depending on when you travel? | `hourly_heatmap` | Journey time in minutes by departure hour — same curve, time y-axis |
+| Private vs shared — how do they compare on time and price? | `zone_wait_compare` | Journey time + price per transfer type |
+
+---
+
+**Train Tickets**
+| Question | Viz type | Data signal |
+|---|---|---|
+| How does ticket price change based on when you book? | `booking_window` | Price index by lead time — booking_window variant with price y-axis not % of bookings |
+
+---
+
+## Viz type reference
+
+| Type | Description | Y-axis |
+|---|---|---|
+| `weekly_pattern` | Bar chart by day of week, colour-banded | Crowd index |
+| `hourly_heatmap` | Smooth curve with Best/Peak/2nd best zones | Crowd level (default), or wait time, or journey time |
+| `booking_window` | Bar chart of % bookings by lead-time bucket | % of bookings (default), or price index |
+| `queue_compare` | Visual queue diagram with wait-time badges | Wait time per entry lane |
+| `duration_stat` | Stat grid with median duration, range, and visitor-type breakdown | Minutes/hours |
+| `ride_wait_curve` | Hourly wait curve per named ride — same format as hourly_heatmap | Wait time in minutes |
+| `opening_hour_rank` | Bar chart of ride wait times at rope drop, ranked shortest to longest | Wait time in minutes |
+| `zone_wait_heatmap` | Grid: rows = park zones, columns = hours, colour = wait time | Wait time in minutes |
+| `zone_crowd_heatmap` | Grid: rows = named zones/galleries, columns = hours, colour = crowd | Crowd level |
+| `zone_wait_compare` | Side-by-side bars for named zones/routes/options | Varies by context |
+| `daily_programme` | Linear timeline of the day with fixed events pinned | Clock time |
+| `ticket_ladder` | Ranked tiers comparing price, wait saved, and inclusions | Price + benefit |
+| `donut_breakdown` | Share of visitors / bookings by category | % share |
+| `month_calendar` | Calendar view of next 3 months, colour-coded by crowd or availability | Crowd / availability |
+| `sighting_probability` | Monthly bar chart of % trips with confirmed sightings | % success rate |
+| `activity_window` | Smooth curve of animal/wildlife activity by hour | Activity level |
+| `departure_reliability` | Monthly bar chart of % sessions that departed as scheduled | % reliability |
+| `conditions_calendar` | Monthly chart of conditions quality (snow, visibility, swell, flow) | Conditions index |
+| `golden_hour_match` | Month × departure slot matrix, green where they align | Alignment yes/no |
+| `slot_compare` | Side-by-side comparison of 2–3 named time slots across multiple dimensions | Multi-axis |
+| `time_split` | Stacked horizontal bar: transit / queue / at-site / breaks | Duration in minutes |
+| `savings_breakdown` | Horizontal bar per attraction showing standalone price vs card threshold | Price in currency |
+| `return_buffer_rank` | Bars per tour option showing minutes of buffer before ship departure | Minutes |
+| `seat_value_map` | Simplified seatmap colour-coded by price-to-view-quality ratio | Value index |
+| `optimal_departure` | Departure slots rated on light quality, conditions, and crowd | Multi-factor score |
+| `price_curve` | Price index by departure date or booking lead time | Price index |
+| `stop_frequency` | Bus headway by stop in peak vs off-peak | Minutes between buses |
+| `route_profile` | Distance bar + elevation gain bar for a named walking/hiking route | km + metres elevation |

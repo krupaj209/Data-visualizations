@@ -209,6 +209,10 @@ export const UploadDrdBody = zod.object({
 export const ListSubcategoriesResponseItem = zod.object({
   id: zod.string(),
   label: zod.string(),
+  family: zod
+    .string()
+    .optional()
+    .describe("Family grouping for admin UIs (Tickets, Tours, Cruises, ...)."),
   description: zod.string(),
 });
 export const ListSubcategoriesResponse = zod.array(

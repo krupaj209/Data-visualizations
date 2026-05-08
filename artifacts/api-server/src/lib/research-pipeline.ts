@@ -1,9 +1,11 @@
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CHART_ARCHETYPES,
-  CROSS_CUTTING_QUESTIONS,
+  STANDARD_QUESTIONS,
   getSubcategoryBankFlexible,
+  isImplementedArchetype,
   type BankQuestion,
+  type BankQuestionKind,
   type ChartArchetypeId,
 } from "@workspace/question-bank";
 import { aiChartSchema, type AiChart } from "./chart-spec";
@@ -39,6 +41,10 @@ export interface ChartProvenance {
   web_sources: { title: string; url: string }[];
   estimates: { field: string; reasoning: string }[];
   verifier_notes: string;
+  /** "standard" (S1-S4) or "signature" (subcat-specific). Optional for legacy rows. */
+  kind?: BankQuestionKind;
+  /** Shared id for questions that travel together (e.g. S1a/S1b → "crowd_timing"). */
+  topic_id?: string;
 }
 
 export interface GeneratedChart {
@@ -66,10 +72,18 @@ export interface ResearchPipelineResult {
 /* Step 1 — Adapt the question bank to the specific CE                        */
 /* -------------------------------------------------------------------------- */
 
+interface SelectedQuestion {
+  question: string;
+  archetype: ChartArchetypeId;
+  rationale: string;
+  kind: BankQuestionKind;
+  topic_id?: string;
+}
+
 interface QuestionSelection {
   summary: string;
   emoji: string;
-  selected: { question: string; archetype: ChartArchetypeId; rationale: string }[];
+  selected: SelectedQuestion[];
   dropped: { question: string; reason: string }[];
   proposed_hero: BankQuestion[];
 }
@@ -82,10 +96,6 @@ async function selectQuestions(
     input.subcategoryLabel,
     input.subcategoryDescription,
   );
-  const baseQuestions: BankQuestion[] = [
-    ...CROSS_CUTTING_QUESTIONS,
-    ...bank.questions,
-  ];
 
   const archetypeIds = Object.keys(CHART_ARCHETYPES) as ChartArchetypeId[];
 
@@ -93,22 +103,32 @@ async function selectQuestions(
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
 
+  const standards = STANDARD_QUESTIONS;
+  const signatures = bank.questions;
+
   const prompt = `You are designing a Headout listing-page visualization deck.
 
 CE: ${input.ce.name} (${input.ce.city}, ${input.ce.country})
 Subcategory: ${bank.subcategory.label} — ${bank.subcategory.description}
-${bank.unratified ? "(NOTE: this subcategory has no curated bank yet — bootstrap a draft set entirely from the DRD.)" : ""}
+${bank.unratified ? "(NOTE: this subcategory has no curated bank yet — bootstrap a draft signature set entirely from the DRD via proposed_hero[]. Standard questions still apply.)" : ""}
 
-Below is the curated question bank for this subcategory. For EACH question, decide whether it applies to THIS CE based on the Deep Research Doc. If applies_when is set, the gate must be satisfied. Aim to keep 4-7 final questions total — drop the rest with a one-line reason.
+You receive TWO question lists:
 
-Curated questions:
-${JSON.stringify(baseQuestions, null, 2)}
+(A) STANDARD questions — these are the universal asks every CE inherits. For EACH, decide whether to KEEP or SKIP based on the Deep Research Doc. SKIP only when the structured \`skip_if\` predicate is satisfied by the DRD; otherwise keep. Record skipped standards in \`dropped\` with the reason. Questions that share a \`topic_id\` MUST be kept-or-skipped TOGETHER (e.g. S1a + S1b both carry topic_id "crowd_timing" — never keep one without the other).
 
-Available chart archetypes (you may only use these ids): ${archetypeIds.join(", ")}
+Standard questions:
+${JSON.stringify(standards, null, 2)}
 
-${writerTopics.length > 0 ? `Writer-supplied hero topics that MUST be turned into questions: ${writerTopics.join("; ")}` : ""}
+(B) SIGNATURE questions — subcategory-specific. Pick 1-3 of the most CE-relevant ones. SKIP a signature when its \`skip_if\` predicate is satisfied OR when the DRD genuinely lacks the data behind it. Record skipped signatures in \`dropped\` with a one-line reason.
 
-After filtering, propose 1-2 ADDITIONAL hero questions that are uniquely tailored to this specific CE (e.g. a famous named room, a signature ride, a sunset slot) — anchored in the DRD, not invented. These go in proposed_hero[].
+Signature questions for this subcategory:
+${signatures.length > 0 ? JSON.stringify(signatures, null, 2) : "(none — bootstrap signatures via proposed_hero[])"}
+
+Available chart archetypes (you may only use these ids; do NOT invent new ones): ${archetypeIds.join(", ")}
+
+${writerTopics.length > 0 ? `Writer-supplied hero topics that MUST be turned into selected questions: ${writerTopics.join("; ")}` : ""}
+
+After filtering, propose 0-2 ADDITIONAL hero questions tailored to THIS specific CE (e.g. a famous named room, a signature ride, a sunset slot) — anchored in the DRD, not invented. These go in proposed_hero[]. Each must carry kind:"signature".
 
 Also produce a 2-sentence visitor-facing summary of the CE and pick a single emoji.
 
@@ -116,15 +136,20 @@ Return JSON ONLY (no markdown), shape:
 {
   "summary": "...",
   "emoji": "📍",
-  "selected": [ { "question": "...", "archetype": "<one of the ids>", "rationale": "one line" }, ... ],
-  "dropped":  [ { "question": "...", "reason": "one line" }, ... ],
-  "proposed_hero": [ { "question": "...", "recommended_archetype": "...", "applies_when": "...", "notes": "..." }, ... ]
+  "selected": [
+    { "question": "...", "archetype": "<one of the ids>", "kind": "standard"|"signature", "topic_id": "..."|null, "rationale": "one line" },
+    ...
+  ],
+  "dropped": [ { "question": "...", "reason": "one line" }, ... ],
+  "proposed_hero": [ { "question": "...", "recommended_archetype": "...", "kind": "signature", "notes": "..." }, ... ]
 }
 
 Rules:
-- Selected questions must be unique by archetype (no two charts using the same archetype).
 - Sentence case for all visitor-facing copy.
 - Reference the CE by name in summary.
+- DO NOT enforce uniqueness by archetype — multiple selected questions MAY share the same archetype (e.g. a weekly_pattern for crowd AND a weekly_pattern for price availability).
+- Keep the S1a/S1b crowd_timing pair together; never split.
+- Output \`topic_id\` exactly as it appears on the source question, or null if none.
 
 Deep Research Doc:
 """
@@ -152,19 +177,208 @@ ${truncate(input.drdMarkdown, 16000)}
     throw new Error("Question selection returned no charts");
   }
 
-  // De-dupe archetypes deterministically: keep first occurrence.
-  const seen = new Set<string>();
-  parsed.selected = parsed.selected.filter((s) => {
-    if (!archetypeIds.includes(s.archetype)) return false;
-    if (seen.has(s.archetype)) return false;
-    seen.add(s.archetype);
-    return true;
-  });
-
+  parsed.dropped = Array.isArray(parsed.dropped) ? parsed.dropped : [];
   parsed.proposed_hero = Array.isArray(parsed.proposed_hero)
     ? parsed.proposed_hero
     : [];
-  parsed.dropped = Array.isArray(parsed.dropped) ? parsed.dropped : [];
+
+  // Build authoritative lookups for kind inference. Standards are
+  // matched by exact question text; signatures by exact text against
+  // the curated bank. Anything not in either list is treated as a
+  // proposed_hero (kind:"signature").
+  const standardQuestionTexts = new Set(standards.map((s) => s.question));
+  const signatureQuestionTexts = new Set(
+    bank.questions.map((q) => q.question),
+  );
+
+  // Filter selections: drop unknown archetypes; gate unimplemented archetypes
+  // (record them in `dropped` with viz_not_yet_built so writers see the
+  // reason in the triage view).
+  parsed.selected = parsed.selected.filter((s) => {
+    if (!archetypeIds.includes(s.archetype)) {
+      parsed.dropped.push({
+        question: s.question,
+        reason: `unknown archetype "${s.archetype}" — dropped`,
+      });
+      return false;
+    }
+    if (!isImplementedArchetype(s.archetype)) {
+      parsed.dropped.push({
+        question: s.question,
+        reason: `viz_not_yet_built: archetype "${s.archetype}" is reserved but its renderer hasn't landed yet`,
+      });
+      return false;
+    }
+    // Authoritative kind inference: don't trust the LLM's `kind` flag
+    // alone. Match the question text against the curated lists so a
+    // standard never gets misclassified as a signature (which would
+    // skip the S1 pairing path and the kind-tagged provenance).
+    if (standardQuestionTexts.has(s.question)) {
+      s.kind = "standard";
+      // Restore topic_id from the canonical standard if the LLM dropped it.
+      if (!s.topic_id) {
+        const std = standards.find((q) => q.question === s.question);
+        if (std?.topic_id) s.topic_id = std.topic_id;
+      }
+    } else if (signatureQuestionTexts.has(s.question)) {
+      s.kind = "signature";
+    } else if (s.kind !== "standard" && s.kind !== "signature") {
+      // Proposed-hero or otherwise unknown — treat as signature.
+      s.kind = "signature";
+    }
+    return true;
+  });
+
+  /* ---------- Deterministic post-LLM enforcement ---------- */
+
+  // Helper: did the LLM record an explicit dropped reason for this question?
+  const droppedQuestions = new Set(parsed.dropped.map((d) => d.question));
+
+  // (1) Re-add any STANDARD the LLM silently omitted (i.e. didn't pick AND
+  // didn't record in `dropped`). The orchestrator contract is "all four
+  // standards minus explicit skips" — it isn't allowed to vanish a standard
+  // by accident. Skipped peers in a topic_id pair are handled in step (2).
+  const selectedQuestions = new Set(parsed.selected.map((s) => s.question));
+  for (const std of standards) {
+    if (selectedQuestions.has(std.question)) continue;
+    if (droppedQuestions.has(std.question)) continue;
+    if (!isImplementedArchetype(std.recommended_archetype)) continue;
+    parsed.selected.push({
+      question: std.question,
+      archetype: std.recommended_archetype,
+      rationale: "auto-restored standard (LLM neither kept nor explicitly skipped)",
+      kind: "standard",
+      ...(std.topic_id ? { topic_id: std.topic_id } : {}),
+    });
+    selectedQuestions.add(std.question);
+  }
+
+  // (2) Enforce S1a/S1b co-emission: if either crowd_timing entry survived,
+  // keep both (or drop both). Belt-and-braces over the prompt rule.
+  const standardCrowdTopic = standards.filter(
+    (q) => q.topic_id === "crowd_timing",
+  );
+  if (standardCrowdTopic.length === 2) {
+    const haveByArchetype = new Map(
+      parsed.selected
+        .filter((s) => s.kind === "standard" && s.topic_id === "crowd_timing")
+        .map((s) => [s.archetype, s] as const),
+    );
+    const someKept = haveByArchetype.size > 0;
+    const allKept = haveByArchetype.size === 2;
+    if (someKept && !allKept) {
+      for (const peer of standardCrowdTopic) {
+        if (
+          !haveByArchetype.has(peer.recommended_archetype) &&
+          isImplementedArchetype(peer.recommended_archetype)
+        ) {
+          parsed.selected.push({
+            question: peer.question,
+            archetype: peer.recommended_archetype,
+            rationale: "co-emitted with crowd_timing peer",
+            kind: "standard",
+            topic_id: "crowd_timing",
+          });
+          // Remove from dropped if the LLM placed it there.
+          parsed.dropped = parsed.dropped.filter(
+            (d) => d.question !== peer.question,
+          );
+        }
+      }
+    }
+  }
+
+  // (3) Cap signatures at 3, deterministically. LLMs sometimes pick more
+  // when many curated questions look applicable. Keep the first three in
+  // selection order (the LLM's ranking) and push the rest into `dropped`
+  // with a budget reason so they show up in the writer's triage view.
+  const standardSelections = parsed.selected.filter(
+    (s) => s.kind === "standard",
+  );
+  let signatureSelections = parsed.selected.filter(
+    (s) => s.kind !== "standard",
+  );
+  const SIGNATURE_MIN = 1;
+  const SIGNATURE_MAX = 3;
+  if (signatureSelections.length > SIGNATURE_MAX) {
+    const kept = signatureSelections.slice(0, SIGNATURE_MAX);
+    const dropped = signatureSelections.slice(SIGNATURE_MAX);
+    for (const d of dropped) {
+      parsed.dropped.push({
+        question: d.question,
+        reason: `signature_budget: capped at ${SIGNATURE_MAX} per CE`,
+      });
+    }
+    signatureSelections = kept;
+  }
+
+  // (4) Enforce signature MINIMUM: every CE deck needs at least one
+  // CE-specific question. If the LLM kept zero, pull the highest-ranked
+  // bank candidate (or proposed_hero) whose archetype is implemented and
+  // wasn't explicitly skipped via `dropped`. If we still can't find one,
+  // log a warning — generation will proceed standards-only and the
+  // writer's triage view will show the gap.
+  if (signatureSelections.length < SIGNATURE_MIN) {
+    const droppedQs = new Set(parsed.dropped.map((d) => d.question));
+    const candidates = [
+      ...bank.questions.map((q) => ({
+        question: q.question,
+        archetype: q.recommended_archetype,
+      })),
+      ...parsed.proposed_hero.map((p) => ({
+        question: p.question,
+        archetype: p.recommended_archetype,
+      })),
+    ];
+    for (const c of candidates) {
+      if (signatureSelections.length >= SIGNATURE_MIN) break;
+      if (droppedQs.has(c.question)) continue;
+      if (!archetypeIds.includes(c.archetype)) continue;
+      if (!isImplementedArchetype(c.archetype)) continue;
+      signatureSelections.push({
+        question: c.question,
+        archetype: c.archetype,
+        rationale:
+          "auto-restored signature (deck needs >=1 CE-specific question)",
+        kind: "signature",
+      });
+    }
+    if (signatureSelections.length < SIGNATURE_MIN) {
+      logger.warn(
+        { slug: input.ce.slug, subcategoryId: input.subcategoryId },
+        "Research pipeline: could not satisfy signature_min — bank empty or all candidates skipped",
+      );
+    }
+  }
+
+  parsed.selected = [...standardSelections, ...signatureSelections];
+
+  // (5) Enforce 4–7 total budget. We don't pad beyond what the bank
+  // can support, but we DO trim and we DO log when we're under-budget
+  // so the writer's triage view surfaces the contract miss.
+  const TOTAL_MIN = 4;
+  const TOTAL_MAX = 7;
+  if (parsed.selected.length > TOTAL_MAX) {
+    const overflow = parsed.selected.slice(TOTAL_MAX);
+    parsed.selected = parsed.selected.slice(0, TOTAL_MAX);
+    for (const d of overflow) {
+      parsed.dropped.push({
+        question: d.question,
+        reason: `total_budget: capped at ${TOTAL_MAX} per CE`,
+      });
+    }
+  }
+  if (parsed.selected.length < TOTAL_MIN) {
+    logger.warn(
+      {
+        slug: input.ce.slug,
+        subcategoryId: input.subcategoryId,
+        kept: parsed.selected.length,
+        target_min: TOTAL_MIN,
+      },
+      "Research pipeline: under total_budget min — bank/DRD didn't yield enough viable questions",
+    );
+  }
 
   return parsed;
 }
@@ -288,6 +502,111 @@ ${truncate(input.drdMarkdown, 14000)}
   return {
     spec: chartParsed.data,
     provenance: normalizeProvenance(parsed.provenance, response),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Step 2b — Grouped generation for the S1 crowd_timing pair                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One Gemini call that returns BOTH the weekly_pattern and hourly_heatmap
+ * specs for the same CE, so the two views of "when do the crowds show?"
+ * stay numerically consistent (e.g. if Monday is the weekly low, the
+ * Monday row of the heatmap should agree).
+ *
+ * Falls back to two independent `generateOneChart` calls if the grouped
+ * call fails to produce both valid specs.
+ */
+export async function generateCrowdTimingPair(
+  input: ResearchPipelineInput,
+  weeklyQuestion: string,
+  hourlyQuestion: string,
+): Promise<{ weekly: GeneratedChart; hourly: GeneratedChart }> {
+  const weeklyBlock = ARCHETYPE_PROMPT["weekly_pattern"];
+  const hourlyBlock = ARCHETYPE_PROMPT["hourly_heatmap"];
+
+  const prompt = `Design TWO charts that together answer "when do the crowds show?" for ${input.ce.name}. They MUST be numerically consistent — the weekly view's quietest day should be the heatmap's quietest day, opening hours should match, etc.
+
+Question A (weekly view): "${weeklyQuestion}"
+Required archetype A: weekly_pattern
+Schema A:
+${weeklyBlock}
+
+Question B (hourly view): "${hourlyQuestion}"
+Required archetype B: hourly_heatmap
+Schema B:
+${hourlyBlock}
+
+Grounding rules (apply to BOTH charts):
+1. PREFER numbers from the Deep Research Doc below. Capture the exact phrase you used in provenance.drd_snippets.
+2. If the DRD doesn't cover it AND you can ground it via Google Search, use the search result and capture the source URL in provenance.web_sources.
+3. Otherwise produce an HONEST estimate a Headout local guide would broadly agree with — list which fields you estimated in provenance.estimates.
+4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from web search; "estimated" otherwise.
+5. The two charts MUST agree: same opening/closing hours, same weekly pattern (the quietest day in A is the quietest row in B).
+
+Output STRICT JSON (no markdown), shape:
+{
+  "weekly": {
+    "chart": { "slug": "kebab-case", "question": "...", "title": "...", "subtitle": "...", "insight": "...", "spec": { ...weekly_pattern spec... } },
+    "provenance": { "status": "...", "drd_snippets": [...], "web_sources": [...], "estimates": [...], "verifier_notes": "" }
+  },
+  "hourly": {
+    "chart": { "slug": "kebab-case", "question": "...", "title": "...", "subtitle": "...", "insight": "...", "spec": { ...hourly_heatmap spec... } },
+    "provenance": { "status": "...", "drd_snippets": [...], "web_sources": [...], "estimates": [...], "verifier_notes": "" }
+  }
+}
+
+Today is ${new Date().toISOString().slice(0, 10)}.
+
+Deep Research Doc:
+"""
+${truncate(input.drdMarkdown, 14000)}
+"""`;
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      temperature: 0.5,
+      maxOutputTokens: 8192,
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  const raw = response.text ?? "";
+  if (!raw) throw new Error("Crowd-timing pair generation returned empty");
+
+  const parsed = safeJson<{
+    weekly?: { chart: unknown; provenance?: ChartProvenance };
+    hourly?: { chart: unknown; provenance?: ChartProvenance };
+  }>(raw);
+  if (!parsed?.weekly?.chart || !parsed?.hourly?.chart) {
+    throw new Error("Crowd-timing pair generation produced malformed JSON");
+  }
+
+  const weeklyChart = aiChartSchema.safeParse(parsed.weekly.chart);
+  const hourlyChart = aiChartSchema.safeParse(parsed.hourly.chart);
+  if (!weeklyChart.success || !hourlyChart.success) {
+    throw new Error("Crowd-timing pair failed schema validation");
+  }
+  if (
+    weeklyChart.data.spec.type !== "weekly_pattern" ||
+    hourlyChart.data.spec.type !== "hourly_heatmap"
+  ) {
+    throw new Error("Crowd-timing pair returned wrong spec types");
+  }
+
+  return {
+    weekly: {
+      spec: weeklyChart.data,
+      provenance: normalizeProvenance(parsed.weekly.provenance, response),
+    },
+    hourly: {
+      spec: hourlyChart.data,
+      provenance: normalizeProvenance(parsed.hourly.provenance, response),
+    },
   };
 }
 
@@ -586,10 +905,112 @@ export async function runResearchPipeline(
   const selection = await selectQuestions(input);
 
   const charts: ResearchChart[] = [];
-  for (const sel of selection.selected) {
+
+  /* ------- Grouped generation for the S1 crowd_timing pair (S1a + S1b) ----- */
+  // Take the pair OUT of the main loop and emit them via a single Gemini
+  // call so the two views stay numerically consistent. They're inserted
+  // FIRST so they sit adjacent at the top of the deck.
+  const crowdPair = selection.selected.filter(
+    (s) => s.kind === "standard" && s.topic_id === "crowd_timing",
+  );
+  const remaining = selection.selected.filter(
+    (s) => !(s.kind === "standard" && s.topic_id === "crowd_timing"),
+  );
+
+  if (crowdPair.length === 2) {
+    const weeklySel = crowdPair.find((s) => s.archetype === "weekly_pattern");
+    const hourlySel = crowdPair.find((s) => s.archetype === "hourly_heatmap");
+    if (weeklySel && hourlySel) {
+      try {
+        logger.info(
+          { slug: input.ce.slug, topic_id: "crowd_timing" },
+          "Research pipeline: generating crowd_timing pair (grouped)",
+        );
+        const pair = await generateCrowdTimingPair(
+          input,
+          weeklySel.question,
+          hourlySel.question,
+        );
+        for (const [sel, gen] of [
+          [weeklySel, pair.weekly] as const,
+          [hourlySel, pair.hourly] as const,
+        ]) {
+          const verified = await verifyChart(input, gen.spec, gen.provenance);
+          charts.push({
+            ...gen.spec,
+            recommended_archetype: sel.archetype,
+            source_question: sel.question,
+            provenance: {
+              ...verified,
+              kind: "standard",
+              topic_id: "crowd_timing",
+            },
+          });
+        }
+      } catch (err) {
+        // Fall back to two independent calls if the grouped path fails —
+        // we still get adjacent insertion order.
+        logger.warn(
+          { err, slug: input.ce.slug },
+          "Crowd-timing grouped generation failed; falling back to per-chart",
+        );
+        for (const sel of [weeklySel, hourlySel]) {
+          try {
+            const generated = await generateOneChart(
+              input,
+              sel.question,
+              sel.archetype,
+            );
+            const verified = await verifyChart(
+              input,
+              generated.spec,
+              generated.provenance,
+            );
+            charts.push({
+              ...generated.spec,
+              recommended_archetype: sel.archetype,
+              source_question: sel.question,
+              provenance: {
+                ...verified,
+                kind: "standard",
+                topic_id: "crowd_timing",
+              },
+            });
+          } catch (err2) {
+            logger.warn(
+              { err: err2, archetype: sel.archetype },
+              "Research pipeline: crowd-timing fallback failed",
+            );
+          }
+        }
+      }
+    }
+  } else {
+    // Pair was incomplete — process whatever the orchestrator kept via the
+    // normal loop (defensive; selectQuestions normally enforces this).
+    remaining.unshift(...crowdPair);
+  }
+
+  for (const sel of remaining) {
+    // Belt-and-braces: never call Gemini for an unimplemented archetype.
+    // selectQuestions already filters these out, but a stray entry from
+    // proposed_hero or a future code path shouldn't slip through.
+    if (!isImplementedArchetype(sel.archetype)) {
+      selection.dropped.push({
+        question: sel.question,
+        reason: `viz_not_yet_built: archetype "${sel.archetype}" is reserved`,
+      });
+      continue;
+    }
     try {
       logger.info(
-        { slug: input.ce.slug, archetype: sel.archetype, question: sel.question },
+        {
+          slug: input.ce.slug,
+          archetype: sel.archetype,
+          question: sel.question,
+          kind: sel.kind,
+          topic_id: sel.topic_id,
+        },
         "Research pipeline: generating chart",
       );
       const generated = await generateOneChart(
@@ -597,11 +1018,16 @@ export async function runResearchPipeline(
         sel.question,
         sel.archetype,
       );
-      const provenance = await verifyChart(
+      const verified = await verifyChart(
         input,
         generated.spec,
         generated.provenance,
       );
+      const provenance: ChartProvenance = {
+        ...verified,
+        kind: sel.kind,
+        ...(sel.topic_id ? { topic_id: sel.topic_id } : {}),
+      };
       charts.push({
         ...generated.spec,
         recommended_archetype: sel.archetype,
@@ -622,13 +1048,21 @@ export async function runResearchPipeline(
     );
   }
 
-  // De-dupe slugs deterministically (rare but possible across charts).
+  // De-dupe slugs deterministically. With v3 we no longer enforce
+  // uniqueness-by-archetype (e.g. two weekly_pattern charts can co-exist),
+  // so suffix the archetype first, then a numeric counter if still colliding.
   const seenSlugs = new Set<string>();
   for (const c of charts) {
-    if (seenSlugs.has(c.slug)) {
-      c.slug = `${c.slug}-${c.recommended_archetype}`;
+    let candidate = c.slug;
+    if (seenSlugs.has(candidate)) {
+      candidate = `${c.slug}-${c.recommended_archetype}`;
     }
-    seenSlugs.add(c.slug);
+    let n = 2;
+    while (seenSlugs.has(candidate)) {
+      candidate = `${c.slug}-${c.recommended_archetype}-${n++}`;
+    }
+    c.slug = candidate;
+    seenSlugs.add(candidate);
   }
 
   return {

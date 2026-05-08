@@ -18,7 +18,10 @@ import {
   type ChartProvenance,
 } from "../lib/research-pipeline";
 import type { ChartArchetypeId } from "@workspace/question-bank";
-import { CHART_ARCHETYPES } from "@workspace/question-bank";
+import {
+  CHART_ARCHETYPES,
+  isImplementedArchetype,
+} from "@workspace/question-bank";
 import { slugify } from "../lib/generate-ce";
 import { openai } from "../lib/openai";
 
@@ -523,6 +526,12 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
     res.status(400).json({
       error:
         "Could not match this topic to any existing chart archetype. Please rephrase or pick an archetype manually.",
+    });
+    return;
+  }
+  if (!isImplementedArchetype(archetype)) {
+    res.status(400).json({
+      error: `Archetype "${archetype}" is reserved but its renderer hasn't landed yet (viz_not_yet_built). Pick a different archetype.`,
     });
     return;
   }

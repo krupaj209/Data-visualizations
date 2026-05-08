@@ -169,6 +169,8 @@ export interface DrdMarkdownUpload {
 export interface Subcategory {
   id: string;
   label: string;
+  /** Family grouping for admin UIs (Tickets, Tours, Cruises, ...). */
+  family?: string;
   description: string;
 }
 

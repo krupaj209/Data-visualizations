@@ -1038,6 +1038,9 @@ components:
           type: string
         label:
           type: string
+        family:
+          type: string
+          description: Family grouping for admin UIs (Tickets, Tours, Cruises, ...).
         description:
           type: string
       required:
