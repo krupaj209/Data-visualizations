@@ -5,6 +5,7 @@ import chartsRouter from "./charts";
 import drdsRouter from "./drds";
 import researchRouter from "./research";
 import feedbackRouter from "./feedback";
+import questionBankRouter from "./question-bank";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(chartsRouter);
 router.use(drdsRouter);
 router.use(researchRouter);
 router.use(feedbackRouter);
+router.use(questionBankRouter);
 
 export default router;

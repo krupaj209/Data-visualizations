@@ -6,6 +6,7 @@ import Embed from "@/pages/Embed";
 import StyleGuide from "@/pages/StyleGuide";
 import Triage from "@/pages/Triage";
 import TriageQuestions from "@/pages/TriageQuestions";
+import QuestionBank from "@/pages/QuestionBank";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/embed/:id" component={Embed} />
       <Route path="/triage/questions" component={TriageQuestions} />
       <Route path="/triage" component={Triage} />
+      <Route path="/question-bank" component={QuestionBank} />
       <Route path="/style" component={StyleGuide} />
       <Route component={NotFound} />
     </Switch>
