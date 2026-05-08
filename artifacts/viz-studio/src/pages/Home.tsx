@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Loader2, Palette, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  FileText,
+  Loader2,
+  Palette,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   useListCes,
   useCreateCe,
@@ -33,6 +42,12 @@ export default function Home() {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showDrd, setShowDrd] = useState(false);
+  const [drdMarkdown, setDrdMarkdown] = useState("");
+  const [drdPdf, setDrdPdf] = useState<File | null>(null);
+  const [drdUploading, setDrdUploading] = useState(false);
+
+  const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
   const [progressTick, setProgressTick] = useState(0);
   useEffect(() => {
@@ -94,9 +109,56 @@ export default function Home() {
         },
       });
       qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+
+      // Optional DRD upload — runs after CE creation succeeds. We don't
+      // block navigation on its outcome: if the upload fails we surface
+      // the error and the writer can retry from the CE detail page.
+      const hasDrdMd = drdMarkdown.trim().length > 0;
+      if (drdPdf || hasDrdMd) {
+        setDrdUploading(true);
+        try {
+          const fd = new FormData();
+          fd.append("ceSlug", result.ce.slug);
+          if (drdPdf) {
+            fd.append("file", drdPdf);
+          } else if (hasDrdMd) {
+            fd.append("markdown", drdMarkdown.trim());
+          }
+          const drdRes = await fetch(`${apiBase}/api/drds`, {
+            method: "POST",
+            body: fd,
+          });
+          if (!drdRes.ok) {
+            let msg = `DRD upload failed (${drdRes.status})`;
+            try {
+              const body = (await drdRes.json()) as { error?: string };
+              if (body.error) msg = body.error;
+            } catch {
+              /* keep default */
+            }
+            // CE was created — surface the DRD error but don't roll back.
+            setError(`CE created, but ${msg}. You can re-upload the DRD on the CE page.`);
+            setDrdUploading(false);
+            return;
+          }
+        } catch (err) {
+          setError(
+            `CE created, but DRD upload failed (${
+              err instanceof Error ? err.message : "unknown"
+            }). You can re-upload from the CE page.`,
+          );
+          setDrdUploading(false);
+          return;
+        }
+        setDrdUploading(false);
+      }
+
       setName("");
       setCity("");
       setCountry("");
+      setDrdMarkdown("");
+      setDrdPdf(null);
+      setShowDrd(false);
       navigate(`/ce/${result.ce.slug}`);
     } catch (err) {
       const msg =
@@ -278,6 +340,149 @@ export default function Home() {
                 />
               </div>
 
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDrd((v) => !v)}
+                  style={{
+                    alignSelf: "flex-start",
+                    background: showDrd ? BRAND.purpsSoft : "transparent",
+                    color: BRAND.purps,
+                    border: `1px solid ${
+                      showDrd ? BRAND.purps : BRAND.slate200
+                    }`,
+                    borderRadius: 999,
+                    padding: "5px 12px",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    letterSpacing: "0.02em",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <FileText size={12} strokeWidth={2.5} />
+                  {showDrd ? "Hide DRD" : "Attach DRD (optional)"}
+                  {(drdPdf || drdMarkdown.trim()) && !showDrd && " · 1"}
+                </button>
+                {showDrd && (
+                  <div
+                    style={{
+                      background: BRAND.slate50,
+                      border: `1px solid ${BRAND.slate200}`,
+                      borderRadius: 14,
+                      padding: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: BRAND.slate700,
+                        fontWeight: 600,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Paste the Deep Research Doc (markdown) or upload it as a
+                      PDF. The first generation pass will use it as ground
+                      truth instead of public web data.
+                    </div>
+                    <textarea
+                      value={drdMarkdown}
+                      onChange={(e) => setDrdMarkdown(e.target.value)}
+                      placeholder="Paste DRD markdown here…"
+                      rows={5}
+                      disabled={!!drdPdf}
+                      style={{
+                        background: drdPdf ? BRAND.slate100 : "white",
+                        border: `1px solid ${BRAND.slate200}`,
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: BRAND.slate950,
+                        outline: "none",
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        minHeight: 90,
+                        opacity: drdPdf ? 0.6 : 1,
+                      }}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <label
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: BRAND.purps,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          style={{ display: "none" }}
+                          onChange={(e) =>
+                            setDrdPdf(e.target.files?.[0] ?? null)
+                          }
+                        />
+                        {drdPdf ? "Replace PDF" : "Or attach PDF"}
+                      </label>
+                      {drdPdf && (
+                        <div
+                          className="flex items-center gap-2 min-w-0"
+                          style={{
+                            fontSize: 11,
+                            color: BRAND.slate700,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              maxWidth: 180,
+                            }}
+                            title={drdPdf.name}
+                          >
+                            {drdPdf.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setDrdPdf(null)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: BRAND.slate500,
+                              cursor: "pointer",
+                              padding: 0,
+                            }}
+                            aria-label="Remove PDF"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: BRAND.slate500,
+                        fontWeight: 600,
+                      }}
+                    >
+                      PDFs ≤ 20 MB. If you attach both, the PDF wins.
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {error && (
                 <div
                   className="text-sm rounded-xl px-3 py-2"
@@ -294,7 +499,7 @@ export default function Home() {
 
               <button
                 type="submit"
-                disabled={createMut.isPending}
+                disabled={createMut.isPending || drdUploading}
                 className="mt-1 inline-flex items-center justify-center gap-2 rounded-2xl py-3.5 transition active:scale-[.98]"
                 style={{
                   background: createMut.isPending ? BRAND.purpsHover : BRAND.purps,
@@ -311,6 +516,11 @@ export default function Home() {
                   <>
                     <Loader2 size={16} className="animate-spin" />
                     Generating · {progressTick}s
+                  </>
+                ) : drdUploading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Uploading DRD…
                   </>
                 ) : (
                   <>
