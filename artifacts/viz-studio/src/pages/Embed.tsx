@@ -5,7 +5,10 @@ import { useGetChart } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 import { ChartRenderer } from "@/components/charts";
 import { FeedbackButton } from "@/components/FeedbackButton";
-import { type ChartSpec } from "@/lib/chart-spec";
+import {
+  type ChartProvenanceLite,
+  type ChartSpec,
+} from "@/lib/chart-spec";
 
 /**
  * Hysteresis bounds for auto-compact. Below ENTER, chrome doesn't fit and we
@@ -85,6 +88,7 @@ export default function Embed() {
           spec={spec}
           preserve={ceName}
           compact={compact}
+          provenance={chart.provenance as ChartProvenanceLite | null}
           header={{
             title: chart.title,
             subtitle: chart.subtitle || undefined,

@@ -1,4 +1,8 @@
-import { type ChartSpec, type ChartHeader } from "@/lib/chart-spec";
+import {
+  type ChartSpec,
+  type ChartHeader,
+  type ChartProvenanceLite,
+} from "@/lib/chart-spec";
 import { WeeklyPatternChart } from "./WeeklyPatternChart";
 import { HourlyHeatmapChart } from "./HourlyHeatmapChart";
 import { MonthCalendarChart } from "./MonthCalendarChart";
@@ -7,6 +11,10 @@ import { StatGridChart } from "./StatGridChart";
 import { CompareZonesChart } from "./CompareZonesChart";
 import { DonutBreakdownChart } from "./DonutBreakdownChart";
 import { SeasonalCurveChart } from "./SeasonalCurveChart";
+import { ConditionsCalendarChart } from "./ConditionsCalendarChart";
+import { SightingProbabilityChart } from "./SightingProbabilityChart";
+import { DepartureReliabilityChart } from "./DepartureReliabilityChart";
+import { PriceCurveChart } from "./PriceCurveChart";
 import { TicketLadderChart } from "./TicketLadderChart";
 import { DailyPatternChart } from "./DailyPatternChart";
 import { TribuneDensityChart } from "./TribuneDensityChart";
@@ -36,9 +44,21 @@ interface Props {
    * the embed card. Honored by all chart types.
    */
   compact?: boolean;
+  /**
+   * Optional research-pipeline provenance for this chart. Currently consumed
+   * only by the v3 calendar/seasonal family, where the rendered numbers are
+   * externally verifiable and benefit from a small "n sources" footer.
+   */
+  provenance?: ChartProvenanceLite | null;
 }
 
-export function ChartRenderer({ spec, header, preserve, compact }: Props) {
+export function ChartRenderer({
+  spec,
+  header,
+  preserve,
+  compact,
+  provenance,
+}: Props) {
   const context = header?.subtitle
     ? toSentenceCase(header.subtitle, { preserve })
     : undefined;
@@ -64,6 +84,42 @@ export function ChartRenderer({ spec, header, preserve, compact }: Props) {
     case "seasonal_curve":
       return (
         <SeasonalCurveChart spec={spec} context={context} compact={compact} />
+      );
+    case "conditions_calendar":
+      return (
+        <ConditionsCalendarChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          provenance={provenance}
+        />
+      );
+    case "sighting_probability":
+      return (
+        <SightingProbabilityChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          provenance={provenance}
+        />
+      );
+    case "departure_reliability":
+      return (
+        <DepartureReliabilityChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          provenance={provenance}
+        />
+      );
+    case "price_curve":
+      return (
+        <PriceCurveChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          provenance={provenance}
+        />
       );
     case "ticket_ladder":
       return <TicketLadderChart spec={spec} context={context} />;

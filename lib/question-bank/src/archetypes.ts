@@ -346,7 +346,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["whale_watching", "safari"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   activity_window: {
     id: "activity_window",
@@ -369,7 +369,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     ],
     typical_subcategories: ["skydiving", "hot_air_balloon"],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
   conditions_calendar: {
     id: "conditions_calendar",
@@ -390,7 +390,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "hiking_trails",
     ],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   golden_hour_match: {
     id: "golden_hour_match",
@@ -456,7 +456,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     data_shape: ["12-26 points × price index", "Best/worst windows annotated"],
     typical_subcategories: ["multi_day_tours", "train_tickets"],
     interactive: true,
-    implemented: false,
+    implemented: true,
   },
   stop_frequency: {
     id: "stop_frequency",

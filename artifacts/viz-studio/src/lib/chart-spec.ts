@@ -460,6 +460,91 @@ export interface StopFrequencySpec {
   }[];
 }
 
+/* -------------------------------------------------------------------------- *
+ * v3 — calendar & seasonal family                                            *
+ * Four sibling 12-month archetypes that swap crowd volume for a different    *
+ * decision signal: physical conditions, sighting probability, departure     *
+ * reliability, or price.                                                    *
+ * -------------------------------------------------------------------------- */
+
+export type ConditionsMetric =
+  | "snow_depth_cm"
+  | "visibility_m"
+  | "swell_m"
+  | "river_flow_index"
+  | "harvest_intensity"
+  | "temperature_c";
+
+export type ConditionsStatus =
+  | "closed"
+  | "poor"
+  | "fair"
+  | "good"
+  | "optimal"
+  | "expert";
+
+export interface ConditionsCalendarSpec {
+  type: "conditions_calendar";
+  metric: ConditionsMetric;
+  unit_label: string;
+  metric_label: string;
+  months: {
+    month: MonthCode;
+    value: number;
+    status: ConditionsStatus;
+    note?: string;
+    icons?: string[];
+  }[];
+  reference_bands?: {
+    label: string;
+    min: number;
+    max: number;
+    tone: Exclude<ConditionsStatus, "closed">;
+  }[];
+  best_months: string[];
+  worst_months: string[];
+}
+
+export interface SightingProbabilitySpec {
+  type: "sighting_probability";
+  display: "single" | "grouped" | "stacked";
+  series: {
+    name: string;
+    accent?: AccentKey;
+    monthly: number[];
+  }[];
+  confidence_note?: string;
+  best_months: string[];
+  worst_months: string[];
+}
+
+export interface DepartureReliabilitySpec {
+  type: "departure_reliability";
+  months: {
+    month: MonthCode;
+    pct_ran: number;
+    cancellation_reasons?: { reason: string; share: number }[];
+    note?: string;
+  }[];
+  target_pct?: number;
+  best_months: string[];
+  worst_months: string[];
+}
+
+export interface PriceCurveSpec {
+  type: "price_curve";
+  currency: string;
+  base_value: number;
+  base_label?: string;
+  points: {
+    month: MonthCode;
+    index: number;
+    note?: string;
+  }[];
+  cheapest_months: string[];
+  priciest_months: string[];
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -469,6 +554,10 @@ export type ChartSpec =
   | CompareZonesSpec
   | DonutBreakdownSpec
   | SeasonalCurveSpec
+  | ConditionsCalendarSpec
+  | SightingProbabilitySpec
+  | DepartureReliabilitySpec
+  | PriceCurveSpec
   | TicketLadderSpec
   | DailyPatternSpec
   | TribuneDensitySpec
@@ -483,6 +572,12 @@ export type ChartSpec =
   | SeatValueMapSpec
   | OptimalDepartureSpec
   | StopFrequencySpec;
+
+/** Subset of the chart provenance object the renderers may surface to users. */
+export interface ChartProvenanceLite {
+  status?: string;
+  web_sources?: { title?: string; url?: string }[];
+}
 
 export interface ChartHeader {
   title: string;

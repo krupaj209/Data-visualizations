@@ -45,7 +45,10 @@ import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { FeedbackButton } from "@/components/FeedbackButton";
-import { type ChartSpec } from "@/lib/chart-spec";
+import {
+  type ChartProvenanceLite,
+  type ChartSpec,
+} from "@/lib/chart-spec";
 import { toSentenceCase } from "@/lib/text";
 import { SpecEditor } from "@/components/SpecEditor";
 
@@ -79,6 +82,23 @@ const CHART_FRAME: Record<
   seat_value_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
+  conditions_calendar: {
+    aspectRatio: "12 / 5",
+    minHeight: 280,
+    maxHeight: 380,
+  },
+  sighting_probability: {
+    aspectRatio: "12 / 5",
+    minHeight: 280,
+    maxHeight: 380,
+  },
+  departure_reliability: {
+    aspectRatio: "12 / 5",
+    minHeight: 280,
+    maxHeight: 380,
+  },
+  price_curve: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
+
 };
 
 type StatusFilter = "all" | "published" | "draft";
@@ -745,6 +765,7 @@ function ChartRow({
             <ChartRenderer
               spec={spec}
               preserve={ceName}
+              provenance={chart.provenance as ChartProvenanceLite | null}
               header={{
                 title: chart.title,
                 subtitle: chart.subtitle || undefined,
@@ -1119,6 +1140,7 @@ function ChartEditor({
             >
               <ChartRenderer
                 spec={spec}
+                provenance={chart.provenance as ChartProvenanceLite | null}
                 header={{
                   title,
                   subtitle: subtitle || undefined,

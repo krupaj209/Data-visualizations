@@ -84,10 +84,32 @@ Each row is one named gallery / hall / exhibit (e.g. Vatican Museums: Sistine Ch
   daily_programme: STUB("daily_programme"),
   time_split: STUB("time_split"),
   slot_compare: STUB("slot_compare"),
-  sighting_probability: STUB("sighting_probability"),
+  sighting_probability: `{ "type": "sighting_probability",
+  "display": "<single|grouped|stacked>",
+  "series": [ { "name": "Humpback", "accent"?: "<purps|candy|hola|okay|slate>", "monthly": [<12 numbers 0-100, jan..dec>] }, ... 1-4 series ],
+  "confidence_note"?: "Based on operator logs 2019-2024",
+  "best_months": ["Jul", "Aug"], "worst_months": ["Feb"] }
+monthly[] is ALWAYS 12 numbers in jan..dec order (probability % of trips with a confirmed sighting). Use display:"single" when only one species is meaningful; "grouped" for side-by-side species comparison; "stacked" only when total cumulative probability across species is itself a useful read.
+SOURCING: Every probability number MUST come from a real source you actually grounded with googleSearch (operator logs, marine biology study, NGO sighting database). Do not estimate from "feel" or generic seasonality. Drop the chart entirely if no operator-level data is grounded — return a higher confidence_note when sourcing is thin.`,
+
   activity_window: STUB("activity_window"),
-  departure_reliability: STUB("departure_reliability"),
-  conditions_calendar: STUB("conditions_calendar"),
+  departure_reliability: `{ "type": "departure_reliability",
+  "months": [ { "month": "<jan..dec>", "pct_ran": <0-100 number>, "cancellation_reasons"?: [ { "reason": "Wind", "share": <0-100> }, ... up to 4 ], "note"?: "..." }, ... 12 items ],
+  "target_pct"?: <0-100 number, e.g. 90 if the operator publishes a target>,
+  "best_months": ["Jun", "Jul"], "worst_months": ["Jan", "Feb"] }
+months[] is ALWAYS 12 entries jan..dec. pct_ran is the % of scheduled departures that actually flew/sailed. Only include cancellation_reasons when the DRD or live sources actually break it down — never fabricate.
+SOURCING: pct_ran MUST come from a sourced operator/regulator stat (FAA part 91 logs, ATO bulletins, operator reliability page, news reporting, etc.) — not a guess. Each cancellation_reasons entry MUST be defensible from a real reference. Cite every source you used in the response so it lands in groundingMetadata.`,
+
+  conditions_calendar: `{ "type": "conditions_calendar",
+  "metric": "<snow_depth_cm|visibility_m|swell_m|river_flow_index|harvest_intensity|temperature_c>",
+  "unit_label": "cm" | "m" | "°C" | "idx",
+  "metric_label": "Average snow depth at mid-mountain",
+  "months": [ { "month": "<jan..dec>", "value": <number>, "status": "<closed|poor|fair|good|optimal|expert>", "note"?: "...", "icons"?: ["🐢"] }, ... 12 items ],
+  "reference_bands"?: [ { "label": "Optimal 30-60cm", "min": 30, "max": 60, "tone": "<poor|fair|good|optimal|expert>" }, ... up to 5 ],
+  "best_months": ["Feb", "Mar"], "worst_months": ["Jul"] }
+months[] is ALWAYS 12 in jan..dec order. status uses the operator's framing — e.g. ski resorts use closed/poor/fair/good/optimal; dive sites use poor/fair/good/optimal/expert. value uses whatever unit_label says.
+SOURCING: Every monthly value MUST be grounded in a real measurement source (resort historical snow report, NOAA buoy records, USGS river gauge, DAN dive log, vineyard harvest notes). Use googleSearch to pull current data and cite every source. reference_bands should reflect industry-standard thresholds (e.g. "Beginner-friendly 20-40cm") that you can also point to a source for.`,
+
   golden_hour_match: `{ "type": "golden_hour_match",
   "location_label": "Santorini caldera",
   "slots": [ { "label": "Sunrise" }, { "label": "Midday" }, { "label": "Sunset" }, ... 1-6 named departure slots ],
@@ -120,7 +142,14 @@ Every section.tier MUST appear in layout. Real example: Lion King at the Minskof
   "slots": [ { "id": "sunset", "name": "Sunset", "light_quality": <0-100>, "conditions": <0-100 — weather/visibility>, "crowd_level": <0-100 — LOWER is better; 100 = packed>, "note"?: "Best Manhattan skyline glow" }, ... 2-5 items ] }
 slots[].id must be unique kebab-case (lowercase letters/digits separated by single hyphens, e.g. "golden-hour", "morning", "blue-hour"); recommended_slot must match one of those ids. Real example: Manhattan helicopter tour — morning (light 70, conditions 90, crowd 40), midday (light 60, conditions 85, crowd 80), golden-hour (light 95, conditions 80, crowd 65) → recommended_slot "golden-hour".`,
 
-  price_curve: STUB("price_curve"),
+  price_curve: `{ "type": "price_curve",
+  "currency": "EUR",
+  "base_value": <reference price as a number, e.g. 1200 for a 7-day tour>,
+  "base_label"?: "from €1,200",
+  "points": [ { "month": "<jan..dec>", "index": <0-500, 100 = base_value>, "note"?: "Easter premium" }, ... 12 items ],
+  "cheapest_months": ["Nov", "Feb"], "priciest_months": ["Jul", "Aug"] }
+points[] is ALWAYS 12 entries jan..dec. Express price as an index relative to base_value (so index=120 means 20% above base, index=85 means 15% off base). Pick a base_value that's a real anchor — typically the published "from" price or the median.
+SOURCING: base_value and every monthly index MUST come from a real, citable price source (operator pricing page, OTA listing snapshot, rail booking site, news article on seasonal pricing). Use googleSearch to confirm current pricing — never invent a curve from "typical" seasonality. Cite every source so they appear in groundingMetadata.`,
 
   stop_frequency: `{ "type": "stop_frequency",
   "route_label"?: "Big Bus London — Red Route",

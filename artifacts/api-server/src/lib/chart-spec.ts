@@ -226,6 +226,145 @@ export const seasonalCurveSpec = z.object({
     .optional(),
 });
 
+/* -------------------------------------------------------------------------- *
+ * v3 — calendar & seasonal family                                            *
+ *                                                                            *
+ * Four sibling archetypes that share the 12-month calendar shape but swap   *
+ * crowd volume for a different decision signal: conditions, sighting       *
+ * success, departure reliability, or price.                                 *
+ * -------------------------------------------------------------------------- */
+
+const calendarMonthEnum = z.enum([
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+]);
+
+export const conditionsCalendarSpec = z.object({
+  type: z.literal("conditions_calendar"),
+  /** Which physical metric the y-axis encodes. Drives default unit + label. */
+  metric: z.enum([
+    "snow_depth_cm",
+    "visibility_m",
+    "swell_m",
+    "river_flow_index",
+    "harvest_intensity",
+    "temperature_c",
+  ]),
+  /** Short visible unit, e.g. "cm", "m", "°C". */
+  unit_label: z.string().max(8),
+  /** Plot title hint, e.g. "Average snow depth". */
+  metric_label: z.string().max(60),
+  months: z
+    .array(
+      z.object({
+        month: calendarMonthEnum,
+        value: z.number().min(0).max(10000),
+        status: z.enum(["closed", "poor", "fair", "good", "optimal", "expert"]),
+        note: z.string().max(80).optional(),
+        /** Tiny per-month markers (turtle, manta, harvest, etc.). */
+        icons: z.array(z.string().max(16)).max(3).optional(),
+      }),
+    )
+    .length(12),
+  /**
+   * Optional reference bands rendered on the y-axis (e.g. "good 30–60cm",
+   * "expert >60cm"). Inclusive numeric thresholds keyed to `metric`.
+   */
+  reference_bands: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        min: z.number().min(0).max(10000),
+        max: z.number().min(0).max(10000),
+        tone: z.enum(["poor", "fair", "good", "optimal", "expert"]),
+      }),
+    )
+    .max(5)
+    .optional(),
+  best_months: z.array(z.string()).max(4),
+  worst_months: z.array(z.string()).max(4),
+});
+
+export const sightingProbabilitySpec = z.object({
+  type: z.literal("sighting_probability"),
+  /** How to render multiple series, when present. */
+  display: z.enum(["single", "grouped", "stacked"]).default("single"),
+  /** 1–4 named series (species, event, etc.). */
+  series: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        accent: z.enum(["purps", "candy", "hola", "okay", "slate"]).optional(),
+        monthly: z.array(z.number().min(0).max(100)).length(12),
+      }),
+    )
+    .min(1)
+    .max(4),
+  /** Optional confidence label, e.g. "Based on operator logs 2019–2024". */
+  confidence_note: z.string().max(120).optional(),
+  best_months: z.array(z.string()).max(4),
+  worst_months: z.array(z.string()).max(4),
+});
+
+export const departureReliabilitySpec = z.object({
+  type: z.literal("departure_reliability"),
+  months: z
+    .array(
+      z.object({
+        month: calendarMonthEnum,
+        /** % of scheduled departures that ran. */
+        pct_ran: z.number().min(0).max(100),
+        /** Optional cancellation-reason breakdown for this month. */
+        cancellation_reasons: z
+          .array(
+            z.object({
+              reason: z.string().max(40),
+              share: z.number().min(0).max(100),
+            }),
+          )
+          .max(4)
+          .optional(),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .length(12),
+  /** Optional company-stated target line, e.g. 90%. */
+  target_pct: z.number().min(0).max(100).optional(),
+  best_months: z.array(z.string()).max(4),
+  worst_months: z.array(z.string()).max(4),
+});
+
+export const priceCurveSpec = z.object({
+  type: z.literal("price_curve"),
+  currency: z.string().max(4).default("EUR"),
+  /** Reference (index = 100) price, e.g. 1200 for a 7-day tour. */
+  base_value: z.number().min(0).max(100000),
+  /** Short label for the base, e.g. "from €1,200". */
+  base_label: z.string().max(40).optional(),
+  points: z
+    .array(
+      z.object({
+        month: calendarMonthEnum,
+        /** Price index relative to base_value (100 = base). */
+        index: z.number().min(0).max(500),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .length(12),
+  cheapest_months: z.array(z.string()).max(4),
+  priciest_months: z.array(z.string()).max(4),
+});
+
 export const ticketLadderSpec = z.object({
   type: z.literal("ticket_ladder"),
   currency: z.string().max(4).default("EUR"),
@@ -628,6 +767,10 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   compareZonesSpec,
   donutBreakdownSpec,
   seasonalCurveSpec,
+  conditionsCalendarSpec,
+  sightingProbabilitySpec,
+  departureReliabilitySpec,
+  priceCurveSpec,
   ticketLadderSpec,
   dailyPatternSpec,
   tribuneDensitySpec,
@@ -674,6 +817,31 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         code: z.ZodIssueCode.custom,
         message: "seasonal_curve.months must contain jan..dec exactly once",
         path: ["months"],
+      });
+    }
+  } else if (val.type === "conditions_calendar") {
+    if (new Set(val.months.map((m) => m.month)).size !== 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "conditions_calendar.months must contain jan..dec exactly once",
+        path: ["months"],
+      });
+    }
+  } else if (val.type === "departure_reliability") {
+    if (new Set(val.months.map((m) => m.month)).size !== 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "departure_reliability.months must contain jan..dec exactly once",
+        path: ["months"],
+      });
+    }
+  } else if (val.type === "price_curve") {
+    if (new Set(val.points.map((p) => p.month)).size !== 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "price_curve.points must contain jan..dec exactly once",
+        path: ["points"],
       });
     }
   } else if (val.type === "booking_window") {
