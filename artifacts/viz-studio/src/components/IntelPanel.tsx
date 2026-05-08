@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   X,
   ExternalLink,
@@ -41,6 +42,29 @@ const BUCKET_LABELS: Record<string, string> = {
   ops_notes: "Operational notes",
 };
 
+interface VisualizationPlan {
+  summary: string;
+  generatedAt: string;
+  recommended_visualizations: {
+    question: string;
+    archetype: string;
+    why_it_matters: string;
+    priority: number;
+  }[];
+  rejected_visualizations: {
+    question: string;
+    archetype?: string;
+    reason: string;
+  }[];
+  traveler_questions: {
+    question: string;
+    recommended_archetype: string;
+    chartable: boolean;
+    evidence_status: string;
+    confidence: number;
+  }[];
+}
+
 export function IntelPanel({
   slug,
   onClose,
@@ -53,6 +77,9 @@ export function IntelPanel({
   const deleteSourceMut = useDeleteCeIntelligenceSource();
   const qc = useQueryClient();
   const [refreshingSource, setRefreshingSource] = useState<string | null>(null);
+  const [plan, setPlan] = useState<VisualizationPlan | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
 
   const intel = (data ?? null) as CeIntelligence | null;
 
@@ -88,6 +115,27 @@ export function IntelPanel({
       return;
     await deleteSourceMut.mutateAsync({ ceSlug: slug, source });
     qc.invalidateQueries({ queryKey: getGetCeIntelligenceQueryKey(slug) });
+  }
+
+  async function handlePlanVisualizations() {
+    setIsPlanning(true);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/ce-intelligence/${slug}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ includeLiveSearch: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Visualization planning failed");
+      }
+      setPlan(json as VisualizationPlan);
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Visualization planning failed");
+    } finally {
+      setIsPlanning(false);
+    }
   }
 
   // Source rows always render the canonical 6 even if the profile is empty,
@@ -195,7 +243,92 @@ export function IntelPanel({
         Refresh all sources
       </button>
 
+      <button
+        type="button"
+        onClick={handlePlanVisualizations}
+        disabled={isPlanning}
+        style={{
+          background: "white",
+          color: BRAND.slate950,
+          border: `1px solid ${BRAND.slate200}`,
+          padding: "8px 12px",
+          borderRadius: 10,
+          fontWeight: 800,
+          fontSize: 12,
+          cursor: isPlanning ? "not-allowed" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          opacity: isPlanning ? 0.7 : 1,
+        }}
+      >
+        {isPlanning ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <Sparkles size={14} />
+        )}
+        Plan visualizations
+      </button>
+
       <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+        {planError && (
+          <div
+            style={{
+              color: BRAND.candy,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: 10,
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 10,
+              background: "#fff7f7",
+            }}
+          >
+            {planError}
+          </div>
+        )}
+
+        {plan && (
+          <section>
+            <h4 style={sectionLabel()}>Visualization plan</h4>
+            <div
+              style={{
+                padding: 10,
+                borderRadius: 12,
+                border: `1px solid ${BRAND.slate200}`,
+                background: BRAND.slate50,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, color: BRAND.slate700, fontWeight: 650, lineHeight: 1.45 }}>
+                {plan.summary}
+              </div>
+              <PlanList
+                title={`Recommended (${plan.recommended_visualizations.length})`}
+                items={plan.recommended_visualizations.map((item) => ({
+                  key: `${item.priority}-${item.question}`,
+                  title: item.question,
+                  meta: item.archetype,
+                  body: item.why_it_matters,
+                  tone: "good" as const,
+                }))}
+              />
+              <PlanList
+                title={`Rejected (${plan.rejected_visualizations.length})`}
+                items={plan.rejected_visualizations.slice(0, 4).map((item) => ({
+                  key: item.question,
+                  title: item.question,
+                  meta: item.archetype ?? "no chart",
+                  body: item.reason,
+                  tone: "warn" as const,
+                }))}
+              />
+            </div>
+          </section>
+        )}
+
         {/* Sources strip */}
         <section>
           <h4 style={sectionLabel()}>Sources</h4>
@@ -404,6 +537,109 @@ function SourceStatusDot({ status }: { status: string }) {
   if (status === "empty")
     return <CircleDot size={14} color={BRAND.slate500} />;
   return <CircleDot size={14} color={BRAND.slate300} />;
+}
+
+function PlanList({
+  title,
+  items,
+}: {
+  title: string;
+  items: {
+    key: string;
+    title: string;
+    meta: string;
+    body: string;
+    tone: "good" | "warn";
+  }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 900,
+          color: BRAND.slate500,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {items.map((item) => (
+          <li
+            key={item.key}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              background: "white",
+              border: `1px solid ${
+                item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft
+              }`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
+                alignItems: "flex-start",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  color: BRAND.slate950,
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {item.title}
+              </div>
+              <span
+                style={{
+                  flex: "0 0 auto",
+                  borderRadius: 999,
+                  padding: "2px 6px",
+                  fontSize: 9,
+                  fontWeight: 900,
+                  color: item.tone === "good" ? BRAND.okayInk : BRAND.hola,
+                  background:
+                    item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft,
+                }}
+              >
+                {item.meta}
+              </span>
+            </div>
+            {item.body && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: BRAND.slate700,
+                  fontWeight: 600,
+                  lineHeight: 1.35,
+                }}
+              >
+                {item.body}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function relativeTime(iso: string): string {

@@ -513,6 +513,7 @@ const ARCHETYPE_BUCKET_HINTS: Record<string, IntelBucketId[]> = {
   ticket_ladder: ["tickets"],
   daily_programme: ["hours_programme"],
   time_split: ["zones", "hours_programme"],
+  history_timeline: ["ops_notes", "zones"],
   slot_compare: ["crowd_patterns", "hours_programme"],
   zone_crowd_heatmap: ["zones", "crowd_patterns"],
   zone_wait_heatmap: ["zones", "wait_times"],

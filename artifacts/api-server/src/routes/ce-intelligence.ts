@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import { db, cesTable } from "@workspace/db";
+import { db, cesTable, drdsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   INTEL_SOURCE_IDS,
@@ -9,6 +9,7 @@ import {
   refreshCeIntelligence,
   deleteIntelSource,
 } from "../lib/ce-intelligence";
+import { buildCeVisualizationPlan } from "../lib/ce-visualization-planner";
 
 const router: IRouter = Router();
 
@@ -19,6 +20,13 @@ const refreshBody = z.object({
   name: z.string().optional(),
   city: z.string().optional(),
   country: z.string().optional(),
+});
+
+const planBody = z.object({
+  subcategoryId: z.string().optional(),
+  subcategoryLabel: z.string().optional(),
+  subcategoryDescription: z.string().optional(),
+  includeLiveSearch: z.boolean().optional(),
 });
 
 router.get("/ce-intelligence/:ceSlug", async (req, res): Promise<void> => {
@@ -80,6 +88,72 @@ router.post(
           err instanceof Error
             ? `Intelligence refresh failed: ${err.message}`
             : "Intelligence refresh failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/ce-intelligence/:ceSlug/plan",
+  async (req, res): Promise<void> => {
+    const ceSlug = req.params["ceSlug"];
+    if (!ceSlug) {
+      res.status(400).json({ error: "ceSlug is required" });
+      return;
+    }
+    const parsed = planBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, ceSlug));
+    if (!ce) {
+      res.status(404).json({ error: `CE "${ceSlug}" not found.` });
+      return;
+    }
+
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    const intel = await getCeIntelligence(ce.slug);
+
+    if (!drd && (!intel || intel.facts.length === 0)) {
+      res.status(412).json({
+        error:
+          "Upload a DRD or refresh CE Intelligence before planning visualizations.",
+      });
+      return;
+    }
+
+    try {
+      const plan = await buildCeVisualizationPlan({
+        ce: {
+          name: ce.name,
+          city: ce.city,
+          country: ce.country,
+          slug: ce.slug,
+        },
+        subcategoryId:
+          parsed.data.subcategoryId ?? ce.category ?? "unknown_subcategory",
+        subcategoryLabel: parsed.data.subcategoryLabel,
+        subcategoryDescription: parsed.data.subcategoryDescription,
+        drdMarkdown: drd?.markdown ?? "",
+        intel,
+        includeLiveSearch: parsed.data.includeLiveSearch ?? true,
+      });
+      res.json(plan);
+    } catch (err) {
+      req.log.error({ err }, "Visualization planner failed");
+      res.status(502).json({
+        error:
+          err instanceof Error
+            ? `Visualization planner failed: ${err.message}`
+            : "Visualization planner failed",
       });
     }
   },
