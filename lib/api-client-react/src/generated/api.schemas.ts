@@ -253,6 +253,41 @@ export interface QuestionTroubleScore {
   sampleCeSlugs: string[];
 }
 
+export interface CeIntelligenceFact {
+  id: string;
+  bucket: string;
+  value: string;
+  quote?: string;
+  source: string;
+  source_url?: string;
+  confidence: number;
+  fetched_at: string;
+}
+
+export interface CeIntelligenceSource {
+  source: string;
+  status: string;
+  fact_count: number;
+  last_tried_at?: string | null;
+  last_success_at?: string | null;
+  error?: string | null;
+}
+
+export interface CeIntelligence {
+  ceSlug: string;
+  facts: CeIntelligenceFact[];
+  sources: CeIntelligenceSource[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CeIntelligenceRefreshInput {
+  sources?: string[];
+  name?: string;
+  city?: string;
+  country?: string;
+}
+
 export interface CeInput {
   name: string;
   city: string;

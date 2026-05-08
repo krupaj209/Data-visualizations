@@ -20,6 +20,8 @@ tags:
     description: Research-grounded chart generation pipeline
   - name: feedback
     description: Chart feedback loop and triage
+  - name: ce-intelligence
+    description: Per-CE intelligence profile built from multi-source adapters
 paths:
   /healthz:
     get:
@@ -282,6 +284,101 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "502":
           description: Pipeline failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ce-intelligence/{ceSlug}:
+    get:
+      operationId: getCeIntelligence
+      tags: [ce-intelligence]
+      summary: Get the persisted intelligence profile for a CE
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Intelligence profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeIntelligence"
+        "404":
+          description: No profile yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ce-intelligence/{ceSlug}/refresh:
+    post:
+      operationId: refreshCeIntelligence
+      tags: [ce-intelligence]
+      summary: Refresh the intelligence profile (all sources or a subset)
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CeIntelligenceRefreshInput"
+      responses:
+        "200":
+          description: Refreshed profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeIntelligence"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Refresh failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ce-intelligence/{ceSlug}/sources/{source}:
+    delete:
+      operationId: deleteCeIntelligenceSource
+      tags: [ce-intelligence]
+      summary: Drop all facts attributed to a single source
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: source
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeIntelligence"
+        "400":
+          description: Invalid source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No profile yet
           content:
             application/json:
               schema:
@@ -1218,6 +1315,90 @@ components:
         - editCount
         - troubleScore
         - sampleCeSlugs
+    CeIntelligenceFact:
+      type: object
+      properties:
+        id:
+          type: string
+        bucket:
+          type: string
+        value:
+          type: string
+        quote:
+          type: string
+        source:
+          type: string
+        source_url:
+          type: string
+        confidence:
+          type: integer
+        fetched_at:
+          type: string
+      required:
+        - id
+        - bucket
+        - value
+        - source
+        - confidence
+        - fetched_at
+    CeIntelligenceSource:
+      type: object
+      properties:
+        source:
+          type: string
+        status:
+          type: string
+        fact_count:
+          type: integer
+        last_tried_at:
+          type: string
+          nullable: true
+        last_success_at:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+      required:
+        - source
+        - status
+        - fact_count
+    CeIntelligence:
+      type: object
+      properties:
+        ceSlug:
+          type: string
+        facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CeIntelligenceFact"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/CeIntelligenceSource"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - ceSlug
+        - facts
+        - sources
+        - createdAt
+        - updatedAt
+    CeIntelligenceRefreshInput:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
     CeInput:
       type: object
       properties:

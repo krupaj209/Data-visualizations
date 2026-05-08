@@ -50,6 +50,7 @@ import {
 } from "@/lib/chart-spec";
 import { toSentenceCase } from "@/lib/text";
 import { SpecEditor } from "@/components/SpecEditor";
+import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
 
 const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -119,6 +120,7 @@ export default function CeDetail() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showNewChart, setShowNewChart] = useState(false);
   const [showIdeation, setShowIdeation] = useState(false);
+  const [showIntel, setShowIntel] = useState(false);
 
   // Deep-link from triage: `/ce/:slug?edit=<id>` — read once on mount.
   const searchParams = useMemo(
@@ -181,6 +183,8 @@ export default function CeDetail() {
       setShowNewChart={setShowNewChart}
       showIdeation={showIdeation}
       setShowIdeation={setShowIdeation}
+      showIntel={showIntel}
+      setShowIntel={setShowIntel}
       editId={editId}
     />
   );
@@ -201,6 +205,8 @@ type CeDetailInnerProps = {
   setShowNewChart: (v: boolean | ((prev: boolean) => boolean)) => void;
   showIdeation: boolean;
   setShowIdeation: (v: boolean | ((prev: boolean) => boolean)) => void;
+  showIntel: boolean;
+  setShowIntel: (v: boolean | ((prev: boolean) => boolean)) => void;
   editId: number | null;
 };
 
@@ -219,6 +225,8 @@ function CeDetailInner({
   setShowNewChart,
   showIdeation,
   setShowIdeation,
+  showIntel,
+  setShowIntel,
   editId,
 }: CeDetailInnerProps) {
   const publishAllMut = usePublishAllDrafts();
@@ -317,7 +325,34 @@ function CeDetailInner({
 
           <button
             type="button"
-            onClick={() => setShowIdeation((v) => !v)}
+            onClick={() => {
+              setShowIntel((v) => !v);
+              if (!showIntel) setShowIdeation(false);
+            }}
+            style={{
+              background: showIntel ? BRAND.purps : "white",
+              color: showIntel ? "white" : BRAND.slate950,
+              border: `1px solid ${showIntel ? BRAND.purps : BRAND.slate200}`,
+              padding: "8px 12px",
+              borderRadius: 12,
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Sparkles size={14} />
+            CE Intel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowIdeation((v) => !v);
+              if (!showIdeation) setShowIntel(false);
+            }}
             style={{
               background: showIdeation ? BRAND.purps : "white",
               color: showIdeation ? "white" : BRAND.slate950,
@@ -449,7 +484,8 @@ function CeDetailInner({
         className="max-w-[1400px] mx-auto px-6 py-8"
         style={{
           display: "grid",
-          gridTemplateColumns: showIdeation ? "minmax(0, 1fr) 380px" : "1fr",
+          gridTemplateColumns:
+            showIdeation || showIntel ? "minmax(0, 1fr) 400px" : "1fr",
           gap: 28,
         }}
       >
@@ -529,7 +565,11 @@ function CeDetailInner({
           </div>
         </div>
 
-        {showIdeation && (
+        {showIntel && (
+          <IntelPanel slug={slug} onClose={() => setShowIntel(false)} />
+        )}
+
+        {showIdeation && !showIntel && (
           <IdeationPanel
             slug={slug}
             onClose={() => setShowIdeation(false)}
@@ -734,6 +774,21 @@ function ChartRow({
             )}
             {isDraft ? "Publish" : "Unpublish"}
           </button>
+
+          {Array.isArray(
+            (chart.provenance as { intelligence_refs?: string[] } | null)
+              ?.intelligence_refs,
+          ) &&
+            ((chart.provenance as { intelligence_refs?: string[] })
+              .intelligence_refs?.length ?? 0) > 0 && (
+              <ChartCitations
+                ceSlug={ceSlug}
+                refs={
+                  (chart.provenance as { intelligence_refs?: string[] })
+                    .intelligence_refs ?? []
+                }
+              />
+            )}
 
           <EmbedActions chartId={chart.id} />
         </div>

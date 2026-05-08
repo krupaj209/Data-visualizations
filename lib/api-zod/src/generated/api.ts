@@ -240,6 +240,119 @@ export const GenerateFromResearchBody = zod.object({
 });
 
 /**
+ * @summary Get the persisted intelligence profile for a CE
+ */
+export const GetCeIntelligenceParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+export const GetCeIntelligenceResponse = zod.object({
+  ceSlug: zod.string(),
+  facts: zod.array(
+    zod.object({
+      id: zod.string(),
+      bucket: zod.string(),
+      value: zod.string(),
+      quote: zod.string().optional(),
+      source: zod.string(),
+      source_url: zod.string().optional(),
+      confidence: zod.number(),
+      fetched_at: zod.string(),
+    }),
+  ),
+  sources: zod.array(
+    zod.object({
+      source: zod.string(),
+      status: zod.string(),
+      fact_count: zod.number(),
+      last_tried_at: zod.string().nullish(),
+      last_success_at: zod.string().nullish(),
+      error: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Refresh the intelligence profile (all sources or a subset)
+ */
+export const RefreshCeIntelligenceParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+export const RefreshCeIntelligenceBody = zod.object({
+  sources: zod.array(zod.string()).optional(),
+  name: zod.string().optional(),
+  city: zod.string().optional(),
+  country: zod.string().optional(),
+});
+
+export const RefreshCeIntelligenceResponse = zod.object({
+  ceSlug: zod.string(),
+  facts: zod.array(
+    zod.object({
+      id: zod.string(),
+      bucket: zod.string(),
+      value: zod.string(),
+      quote: zod.string().optional(),
+      source: zod.string(),
+      source_url: zod.string().optional(),
+      confidence: zod.number(),
+      fetched_at: zod.string(),
+    }),
+  ),
+  sources: zod.array(
+    zod.object({
+      source: zod.string(),
+      status: zod.string(),
+      fact_count: zod.number(),
+      last_tried_at: zod.string().nullish(),
+      last_success_at: zod.string().nullish(),
+      error: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Drop all facts attributed to a single source
+ */
+export const DeleteCeIntelligenceSourceParams = zod.object({
+  ceSlug: zod.coerce.string(),
+  source: zod.coerce.string(),
+});
+
+export const DeleteCeIntelligenceSourceResponse = zod.object({
+  ceSlug: zod.string(),
+  facts: zod.array(
+    zod.object({
+      id: zod.string(),
+      bucket: zod.string(),
+      value: zod.string(),
+      quote: zod.string().optional(),
+      source: zod.string(),
+      source_url: zod.string().optional(),
+      confidence: zod.number(),
+      fetched_at: zod.string(),
+    }),
+  ),
+  sources: zod.array(
+    zod.object({
+      source: zod.string(),
+      status: zod.string(),
+      fact_count: zod.number(),
+      last_tried_at: zod.string().nullish(),
+      last_success_at: zod.string().nullish(),
+      error: zod.string().nullish(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
  * @summary Get a single chart
  */
 export const GetChartParams = zod.object({

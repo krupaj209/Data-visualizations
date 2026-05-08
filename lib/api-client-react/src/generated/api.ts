@@ -20,6 +20,8 @@ import type {
   ApiError,
   Ce,
   CeInput,
+  CeIntelligence,
+  CeIntelligenceRefreshInput,
   CeWithCharts,
   Chart,
   ChartFeedback,
@@ -941,6 +943,273 @@ export const useGenerateFromResearch = <
   TContext
 > => {
   return useMutation(getGenerateFromResearchMutationOptions(options));
+};
+
+/**
+ * @summary Get the persisted intelligence profile for a CE
+ */
+export const getGetCeIntelligenceUrl = (ceSlug: string) => {
+  return `/api/ce-intelligence/${ceSlug}`;
+};
+
+export const getCeIntelligence = async (
+  ceSlug: string,
+  options?: RequestInit,
+): Promise<CeIntelligence> => {
+  return customFetch<CeIntelligence>(getGetCeIntelligenceUrl(ceSlug), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCeIntelligenceQueryKey = (ceSlug: string) => {
+  return [`/api/ce-intelligence/${ceSlug}`] as const;
+};
+
+export const getGetCeIntelligenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCeIntelligence>>,
+  TError = ErrorType<ApiError>,
+>(
+  ceSlug: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCeIntelligence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCeIntelligenceQueryKey(ceSlug);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCeIntelligence>>
+  > = ({ signal }) => getCeIntelligence(ceSlug, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!ceSlug,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCeIntelligence>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCeIntelligenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCeIntelligence>>
+>;
+export type GetCeIntelligenceQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get the persisted intelligence profile for a CE
+ */
+
+export function useGetCeIntelligence<
+  TData = Awaited<ReturnType<typeof getCeIntelligence>>,
+  TError = ErrorType<ApiError>,
+>(
+  ceSlug: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCeIntelligence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCeIntelligenceQueryOptions(ceSlug, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Refresh the intelligence profile (all sources or a subset)
+ */
+export const getRefreshCeIntelligenceUrl = (ceSlug: string) => {
+  return `/api/ce-intelligence/${ceSlug}/refresh`;
+};
+
+export const refreshCeIntelligence = async (
+  ceSlug: string,
+  ceIntelligenceRefreshInput?: CeIntelligenceRefreshInput,
+  options?: RequestInit,
+): Promise<CeIntelligence> => {
+  return customFetch<CeIntelligence>(getRefreshCeIntelligenceUrl(ceSlug), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ceIntelligenceRefreshInput),
+  });
+};
+
+export const getRefreshCeIntelligenceMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshCeIntelligence>>,
+    TError,
+    { ceSlug: string; data: BodyType<CeIntelligenceRefreshInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshCeIntelligence>>,
+  TError,
+  { ceSlug: string; data: BodyType<CeIntelligenceRefreshInput> },
+  TContext
+> => {
+  const mutationKey = ["refreshCeIntelligence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshCeIntelligence>>,
+    { ceSlug: string; data: BodyType<CeIntelligenceRefreshInput> }
+  > = (props) => {
+    const { ceSlug, data } = props ?? {};
+
+    return refreshCeIntelligence(ceSlug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshCeIntelligenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshCeIntelligence>>
+>;
+export type RefreshCeIntelligenceMutationBody =
+  BodyType<CeIntelligenceRefreshInput>;
+export type RefreshCeIntelligenceMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Refresh the intelligence profile (all sources or a subset)
+ */
+export const useRefreshCeIntelligence = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshCeIntelligence>>,
+    TError,
+    { ceSlug: string; data: BodyType<CeIntelligenceRefreshInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshCeIntelligence>>,
+  TError,
+  { ceSlug: string; data: BodyType<CeIntelligenceRefreshInput> },
+  TContext
+> => {
+  return useMutation(getRefreshCeIntelligenceMutationOptions(options));
+};
+
+/**
+ * @summary Drop all facts attributed to a single source
+ */
+export const getDeleteCeIntelligenceSourceUrl = (
+  ceSlug: string,
+  source: string,
+) => {
+  return `/api/ce-intelligence/${ceSlug}/sources/${source}`;
+};
+
+export const deleteCeIntelligenceSource = async (
+  ceSlug: string,
+  source: string,
+  options?: RequestInit,
+): Promise<CeIntelligence> => {
+  return customFetch<CeIntelligence>(
+    getDeleteCeIntelligenceSourceUrl(ceSlug, source),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteCeIntelligenceSourceMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCeIntelligenceSource>>,
+    TError,
+    { ceSlug: string; source: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCeIntelligenceSource>>,
+  TError,
+  { ceSlug: string; source: string },
+  TContext
+> => {
+  const mutationKey = ["deleteCeIntelligenceSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCeIntelligenceSource>>,
+    { ceSlug: string; source: string }
+  > = (props) => {
+    const { ceSlug, source } = props ?? {};
+
+    return deleteCeIntelligenceSource(ceSlug, source, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCeIntelligenceSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCeIntelligenceSource>>
+>;
+
+export type DeleteCeIntelligenceSourceMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Drop all facts attributed to a single source
+ */
+export const useDeleteCeIntelligenceSource = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCeIntelligenceSource>>,
+    TError,
+    { ceSlug: string; source: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCeIntelligenceSource>>,
+  TError,
+  { ceSlug: string; source: string },
+  TContext
+> => {
+  return useMutation(getDeleteCeIntelligenceSourceMutationOptions(options));
 };
 
 /**

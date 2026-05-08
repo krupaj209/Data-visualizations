@@ -12,6 +12,12 @@ import { aiChartSchema, type AiChart } from "./chart-spec";
 import { ARCHETYPE_PROMPT } from "./chart-archetype-prompts";
 import { openai } from "./openai";
 import { logger } from "./logger";
+import {
+  getCeIntelligence,
+  sliceIntelForArchetype,
+  formatIntelFactsForPrompt,
+  type CeIntelligenceView,
+} from "./ce-intelligence";
 
 const MODEL = "gemini-2.5-pro";
 const VERIFIER_MODEL = "gpt-5.4";
@@ -33,6 +39,11 @@ export interface ResearchPipelineInput {
    * questions in addition to the curated bank.
    */
   writerTopics?: string[];
+  /**
+   * Optional pre-loaded CE intelligence view. The orchestrator loads this
+   * once and slices per archetype on each `generateOneChart` call.
+   */
+  intel?: CeIntelligenceView | null;
 }
 
 export interface ChartProvenance {
@@ -45,6 +56,11 @@ export interface ChartProvenance {
   kind?: BankQuestionKind;
   /** Shared id for questions that travel together (e.g. S1a/S1b → "crowd_timing"). */
   topic_id?: string;
+  /**
+   * IDs of CE-intelligence facts referenced when generating this chart.
+   * Resolves back to facts in the `ce_intelligence` table for citations.
+   */
+  intelligence_refs?: string[];
 }
 
 export interface GeneratedChart {
@@ -588,6 +604,14 @@ export async function generateOneChart(
   const archetypeBlock = ARCHETYPE_PROMPT[archetype];
   const today = new Date().toISOString().slice(0, 10);
   const drdBlock = truncate(input.drdMarkdown, 14000);
+  const intelSlice = sliceIntelForArchetype(input.intel ?? null, archetype);
+  const intelBlock =
+    intelSlice.facts.length > 0
+      ? `
+
+CE Intelligence facts (use ONLY when grounding a numeric or named claim — capture each fact id you used in provenance.intelligence_refs):
+${formatIntelFactsForPrompt(intelSlice.facts)}`
+      : "";
 
   const researchPrompt = `Gather the live numeric facts needed to answer this visitor question for ${input.ce.name} (${input.ce.city}, ${input.ce.country}).
 
@@ -627,10 +651,11 @@ ${archetypeBlock}
 
 Grounding rules (very important):
 1. PREFER numbers from the Deep Research Doc below. When you use a fact from the DRD, capture the exact phrase you used in provenance.drd_snippets.
-2. If the DRD doesn't cover it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources (with a short title).
-3. If neither covers it, produce an HONEST estimate a Headout local guide would broadly agree with — and explicitly list which fields you estimated in provenance.estimates with a one-line reasoning.
-4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings; "estimated" otherwise.
-5. Do NOT invent specific weather scores, price scores, or visitor-mix percentages — leave optional fields blank rather than fabricate. Required fields can use estimates with reasoning.
+2. If the DRD doesn't cover it but a CE Intelligence fact does, use that fact and capture its id in provenance.intelligence_refs.
+3. If neither covers it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources (with a short title).
+4. If none of the above cover it, produce an HONEST estimate a Headout local guide would broadly agree with — and explicitly list which fields you estimated in provenance.estimates with a one-line reasoning.
+5. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings or an intelligence fact; "estimated" otherwise.
+6. Do NOT invent specific weather scores, price scores, or visitor-mix percentages — leave optional fields blank rather than fabricate. Required fields can use estimates with reasoning.
 
 Output STRICT JSON (no markdown), shape:
 {
@@ -647,11 +672,13 @@ Output STRICT JSON (no markdown), shape:
     "drd_snippets": ["..."],
     "web_sources": [{ "title": "...", "url": "https://..." }],
     "estimates": [{ "field": "spec.days[3].score", "reasoning": "..." }],
+    "intelligence_refs": ["<fact id>", ...],
     "verifier_notes": ""
   }
 }
 
 Today is ${today} (use as the start_date for month_calendar).
+${intelBlock}
 
 Live Web Findings (from a fresh google search — treat as authoritative for any fact the DRD doesn't cover):
 """
@@ -893,6 +920,13 @@ function normalizeProvenance(
     web_sources: Array.isArray(raw?.web_sources) ? raw!.web_sources : [],
     estimates: Array.isArray(raw?.estimates) ? raw!.estimates : [],
     verifier_notes: typeof raw?.verifier_notes === "string" ? raw!.verifier_notes : "",
+    ...(Array.isArray(raw?.intelligence_refs)
+      ? {
+          intelligence_refs: (raw!.intelligence_refs as unknown[]).filter(
+            (x): x is string => typeof x === "string",
+          ),
+        }
+      : {}),
   };
 
   // Pull any Google-search grounding sources Gemini surfaced on the response
@@ -1171,8 +1205,22 @@ export async function runResearchPipeline(
     throw new Error("DRD is empty — upload one before running the pipeline.");
   }
 
+  // Read intelligence layer once if not pre-supplied. Soft-fails: missing
+  // intel just means the pipeline runs without it (DRD-only).
+  if (input.intel === undefined) {
+    try {
+      input.intel = await getCeIntelligence(input.ce.slug);
+    } catch (err) {
+      logger.warn(
+        { err, slug: input.ce.slug },
+        "Could not load CE intelligence — pipeline will run without it",
+      );
+      input.intel = null;
+    }
+  }
+
   logger.info(
-    { slug: input.ce.slug, subcategory: input.subcategoryId },
+    { slug: input.ce.slug, subcategory: input.subcategoryId, intelFacts: input.intel?.facts.length ?? 0 },
     "Research pipeline: selecting questions",
   );
   const selection = await selectQuestions(input);
