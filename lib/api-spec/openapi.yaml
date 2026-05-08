@@ -311,9 +311,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
     patch:
-      operationId: editChart
+      operationId: updateChart
       tags: [charts]
-      summary: Edit a chart's writer-controlled copy
+      summary: Writer edits a chart's header copy and/or spec
       description: |
         Updates title/subtitle/insight and logs a chart_edits row. The edit
         row counts as a 0.25-weight implicit signal in the trouble score.
@@ -328,18 +328,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChartEditInput"
+              $ref: "#/components/schemas/ChartUpdateInput"
       responses:
         "200":
           description: Updated chart
           content:
             application/json:
               schema:
-                type: object
-                required: [chart]
-                properties:
-                  chart:
-                    $ref: "#/components/schemas/Chart"
+                $ref: "#/components/schemas/Chart"
+        "400":
+          description: Invalid spec or fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "404":
           description: Not found
           content:
@@ -387,6 +389,42 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "502":
           description: Pipeline failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/verify:
+    post:
+      operationId: verifyChart
+      tags: [charts]
+      summary: Re-verify the chart against the CE's DRD + a fresh web check
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartVerification"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "412":
+          description: No DRD uploaded for this CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Verification failed
           content:
             application/json:
               schema:
@@ -446,6 +484,78 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /charts/{id}/publish:
+    post:
+      operationId: publishChart
+      tags: [charts]
+      summary: Flip a draft chart to published (or back to draft)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartPublishInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/charts:
+    post:
+      operationId: createChartFromTopic
+      tags: [charts]
+      summary: Generate a new draft chart for a CE from a writer's topic
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicChartInput"
+      responses:
+        "201":
+          description: Draft chart created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /feedback:
     get:
       operationId: listAllFeedback
@@ -492,10 +602,110 @@ paths:
                 $ref: "#/components/schemas/ChartFeedback"
         "404":
           description: Not found
+  /ces/{slug}/publish-all-drafts:
+    post:
+      operationId: publishAllDrafts
+      tags: [charts]
+      summary: Bulk-publish every draft chart for a CE
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishAllDraftsInput"
+      responses:
+        "200":
+          description: Bulk publish summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishAllDraftsResult"
+        "404":
+          description: CE not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/ideation:
+    get:
+      operationId: getIdeation
+      tags: [ces]
+      summary: Get the ideation chatbot transcript for a CE
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IdeationMessage"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: postIdeation
+      tags: [ces]
+      summary: Send a writer message to the ideation chatbot
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeationInput"
+      responses:
+        "200":
+          description: Assistant reply (with optional structured proposals)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeationMessage"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Ideation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: clearIdeation
+      tags: [ces]
+      summary: Clear the ideation chatbot transcript
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Cleared
   /triage/questions:
     get:
       operationId: listQuestionTroubleScores
@@ -549,6 +759,10 @@ components:
           type: string
         chartCount:
           type: integer
+        draftCount:
+          type: integer
+        publishedCount:
+          type: integer
         createdAt:
           type: string
         updatedAt:
@@ -564,6 +778,8 @@ components:
         - emoji
         - status
         - chartCount
+        - draftCount
+        - publishedCount
         - createdAt
         - updatedAt
     Chart:
@@ -594,6 +810,12 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        lastEditedByWriterAt:
+          type: string
+          nullable: true
+        interactive:
+          type: boolean
+          description: Whether interactive affordances render in embeds. Default true.
         sortOrder:
           type: integer
         openFeedbackCount:
@@ -617,9 +839,125 @@ components:
         - insight
         - chartType
         - spec
+        - status
+        - interactive
         - sortOrder
         - createdAt
         - updatedAt
+    ChartUpdateInput:
+      type: object
+      properties:
+        question:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        insight:
+          type: string
+        spec:
+          type: object
+          additionalProperties: true
+        interactive:
+          type: boolean
+        writerId:
+          type: string
+    ChartPublishInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, published]
+        writerId:
+          type: string
+      required:
+        - status
+    TopicChartInput:
+      type: object
+      properties:
+        topic:
+          type: string
+        archetype:
+          type: string
+        pastedData:
+          type: string
+        sourceUrl:
+          type: string
+        writerId:
+          type: string
+      required:
+        - topic
+    PublishAllDraftsInput:
+      type: object
+      properties:
+        writerId:
+          type: string
+    PublishAllDraftsResult:
+      type: object
+      properties:
+        published:
+          type: integer
+      required:
+        - published
+    ChartVerification:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, issues, skipped]
+        issues:
+          type: array
+          items:
+            type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+        suggestedSpec:
+          type: object
+          nullable: true
+          additionalProperties: true
+        verifierNotes:
+          type: string
+      required:
+        - status
+        - issues
+        - suggestions
+        - verifierNotes
+    IdeationMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        ceId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        proposals:
+          type: array
+          nullable: true
+          items:
+            type: object
+            additionalProperties: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - ceId
+        - role
+        - content
+        - createdAt
+    IdeationInput:
+      type: object
+      properties:
+        message:
+          type: string
+        writerId:
+          type: string
+      required:
+        - message
     ChartWithCe:
       type: object
       properties:

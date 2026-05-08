@@ -24,6 +24,8 @@ export interface Ce {
   emoji: string;
   status: string;
   chartCount: number;
+  draftCount: number;
+  publishedCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,14 +44,93 @@ export interface Chart {
   insight: string;
   chartType: string;
   spec: ChartSpec;
-  status?: string;
+  status: string;
   provenance?: ChartProvenance;
+  lastEditedByWriterAt?: string | null;
+  /** Whether interactive affordances render in embeds. Default true. */
+  interactive: boolean;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;
   editCount?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ChartUpdateInputSpec = { [key: string]: unknown };
+
+export interface ChartUpdateInput {
+  question?: string;
+  title?: string;
+  subtitle?: string;
+  insight?: string;
+  spec?: ChartUpdateInputSpec;
+  interactive?: boolean;
+  writerId?: string;
+}
+
+export type ChartPublishInputStatus =
+  (typeof ChartPublishInputStatus)[keyof typeof ChartPublishInputStatus];
+
+export const ChartPublishInputStatus = {
+  draft: "draft",
+  published: "published",
+} as const;
+
+export interface ChartPublishInput {
+  status: ChartPublishInputStatus;
+  writerId?: string;
+}
+
+export interface TopicChartInput {
+  topic: string;
+  archetype?: string;
+  pastedData?: string;
+  sourceUrl?: string;
+  writerId?: string;
+}
+
+export interface PublishAllDraftsInput {
+  writerId?: string;
+}
+
+export interface PublishAllDraftsResult {
+  published: number;
+}
+
+export type ChartVerificationStatus =
+  (typeof ChartVerificationStatus)[keyof typeof ChartVerificationStatus];
+
+export const ChartVerificationStatus = {
+  ok: "ok",
+  issues: "issues",
+  skipped: "skipped",
+} as const;
+
+export type ChartVerificationSuggestedSpec = { [key: string]: unknown } | null;
+
+export interface ChartVerification {
+  status: ChartVerificationStatus;
+  issues: string[];
+  suggestions: string[];
+  suggestedSpec?: ChartVerificationSuggestedSpec;
+  verifierNotes: string;
+}
+
+export type IdeationMessageProposalsItem = { [key: string]: unknown };
+
+export interface IdeationMessage {
+  id: number;
+  ceId: number;
+  role: string;
+  content: string;
+  proposals?: IdeationMessageProposalsItem[] | null;
+  createdAt: string;
+}
+
+export interface IdeationInput {
+  message: string;
+  writerId?: string;
 }
 
 export interface ChartWithCe {
@@ -176,10 +257,6 @@ export interface CeInput {
   country: string;
   category?: string;
 }
-
-export type EditChart200 = {
-  chart: Chart;
-};
 
 export type ListAllFeedbackParams = {
   status?: string;

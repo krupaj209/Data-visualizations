@@ -41,6 +41,11 @@ export interface ChartProvenance {
   verifier_notes: string;
 }
 
+export interface GeneratedChart {
+  spec: AiChart;
+  provenance: ChartProvenance;
+}
+
 export interface ResearchChart extends AiChart {
   recommended_archetype: ChartArchetypeId;
   source_question: string;
@@ -345,7 +350,158 @@ function extractGroundingSources(
 /* Step 3 — OpenAI verification pass                                           */
 /* -------------------------------------------------------------------------- */
 
-async function verifyChart(
+export interface VerifierStructuredResult {
+  verified: boolean;
+  issues: string[];
+  suggestions: string[];
+  /**
+   * Optional full chart-spec the verifier proposes as a fix. The route
+   * layer must re-validate this with `chartSpecSchema` before persisting
+   * — the verifier is encouraged to produce one when it can but is not
+   * required to.
+   */
+  suggestedSpec: unknown | null;
+  verifier_notes: string;
+}
+
+/**
+ * Like `verifyChart`, but returns the structured verifier output instead of
+ * collapsing it into a single string. Used by the on-demand verify endpoint
+ * so the UI can render issues/suggestions cleanly and offer an "apply
+ * suggested spec" action.
+ */
+export async function verifyChartStructured(
+  input: ResearchPipelineInput,
+  chart: AiChart,
+): Promise<VerifierStructuredResult> {
+  if (!openai) {
+    return {
+      verified: true,
+      issues: [],
+      suggestions: [],
+      suggestedSpec: null,
+      verifier_notes: "skipped: openai not configured",
+    };
+  }
+
+  // Fresh web check (Step 3a). Before handing the chart to the OpenAI
+  // verifier, ask Gemini with `googleSearch` enabled to surface live
+  // findings about the question for THIS CE — what current operator
+  // pages, recent reviews, and ticketing sites say. This catches
+  // staleness the DRD alone would miss (e.g. a price changed last
+  // month, a closure was added, hours shifted). Soft-fails on any
+  // error so the verifier still runs.
+  let webFindings = "(no fresh web findings — google search unavailable)";
+  try {
+    const findingsResp = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Search the live web for the most current information about this question for ${input.ce.name} (${input.ce.city}, ${input.ce.country}):
+
+Question: "${chart.question}"
+
+Return 3-6 short bullet points of CURRENT facts you found (with the source domain in parentheses). Focus on numbers, prices, hours, closures, or seasonal patterns that would be relevant to fact-checking a chart answering this question. Do NOT speculate — only report what you actually found via search. If search returned nothing useful, say so.
+
+Today is ${new Date().toISOString().slice(0, 10)}.`,
+            },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+        tools: [{ googleSearch: {} }],
+      },
+    });
+    const text = findingsResp.text?.trim();
+    if (text) webFindings = text;
+  } catch (err) {
+    logger.warn(
+      { err, slug: input.ce.slug },
+      "Fresh-web pre-check failed; falling back to DRD-only verify",
+    );
+  }
+
+  const prompt = `You are verifying a single Headout chart spec against a Deep Research Doc AND fresh web findings.
+
+CE: ${input.ce.name} (${input.ce.city}, ${input.ce.country})
+Question being answered: ${chart.question}
+
+The chart spec (JSON):
+${JSON.stringify(chart.spec)}
+
+Cross-reference the spec against BOTH sources below. Look for any data points that CONTRADICT either the DRD or the fresh web findings, OR that are clearly wrong for this CE. Be strict but pragmatic — small rounding is fine, factual contradictions and stale numbers are not. If the fresh web findings disagree with the DRD on a numeric fact, prefer the fresh findings.
+
+If you find at least one issue AND can confidently propose a corrected version, set "suggested_spec" to a FULL replacement spec object (same "type" as the original). The replacement must be complete and self-contained — the writer will be able to apply it with one click. If you can't confidently fix it, set "suggested_spec" to null.
+
+Return JSON ONLY:
+{
+  "verified": true | false,
+  "issues": ["one line per problem found"],
+  "suggestions": ["one line per fix recommendation"],
+  "suggested_spec": null | { "type": "${chart.spec.type}", ... }
+}
+
+Fresh web findings (Gemini + googleSearch, ${new Date().toISOString().slice(0, 10)}):
+"""
+${truncate(webFindings, 4000)}
+"""
+
+Deep Research Doc:
+"""
+${truncate(input.drdMarkdown, 12000)}
+"""`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: VERIFIER_MODEL,
+      max_completion_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+    });
+    const text = response.choices[0]?.message?.content ?? "{}";
+    const parsed = safeJson<{
+      verified?: boolean;
+      issues?: string[];
+      suggestions?: string[];
+      suggested_spec?: unknown;
+    }>(text);
+    const issues = parsed?.issues ?? [];
+    const suggestions = parsed?.suggestions ?? [];
+    const verified = !!parsed?.verified && issues.length === 0;
+    const notes = verified
+      ? "verifier: ok"
+      : `verifier: ${issues.length} issue(s)` +
+        (issues.length > 0 ? ` — ${issues.join(" | ")}` : "") +
+        (suggestions.length > 0
+          ? ` | suggestions: ${suggestions.join(" | ")}`
+          : "");
+    return {
+      verified,
+      issues,
+      suggestions,
+      suggestedSpec: parsed?.suggested_spec ?? null,
+      verifier_notes: notes,
+    };
+  } catch (err) {
+    logger.warn({ err }, "OpenAI verifier (structured) failed");
+    return {
+      verified: false,
+      issues: [],
+      suggestions: [],
+      suggestedSpec: null,
+      verifier_notes: `verifier failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
+
+export async function verifyChart(
   input: ResearchPipelineInput,
   chart: AiChart,
   provenance: ChartProvenance,

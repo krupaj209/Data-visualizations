@@ -5,6 +5,7 @@ import {
   timestamp,
   integer,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -41,6 +42,18 @@ export const chartsTable = pgTable("charts", {
    *  - verifier_notes: string
    */
   provenance: jsonb("provenance").$type<Record<string, unknown> | null>(),
+  /** Last time a writer (not the AI pipeline) edited this chart. */
+  lastEditedByWriterAt: timestamp("last_edited_by_writer_at", {
+    withTimezone: true,
+  }),
+  /**
+   * Whether interactive affordances (locked detail panels, hover popovers,
+   * focus-pill clicks, etc.) are enabled when this chart is embedded.
+   * Defaults to `true` for parity with existing behaviour. Writers can flip
+   * this off for embeds that should render as static visuals only — useful
+   * for archetypes whose locked panels aren't yet content-complete.
+   */
+  interactive: boolean("interactive").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

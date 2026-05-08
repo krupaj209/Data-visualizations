@@ -21,20 +21,27 @@ import type {
   Ce,
   CeInput,
   CeWithCharts,
-  ChartEditInput,
+  Chart,
   ChartFeedback,
   ChartFeedbackInput,
+  ChartPublishInput,
+  ChartUpdateInput,
+  ChartVerification,
   ChartWithCe,
   Drd,
   DrdMarkdownUpload,
-  EditChart200,
   FeedbackUpdate,
   HealthStatus,
+  IdeationInput,
+  IdeationMessage,
   ListAllFeedbackParams,
+  PublishAllDraftsInput,
+  PublishAllDraftsResult,
   QuestionTroubleScore,
   ResearchGenerateInput,
   ResearchGenerateResult,
   Subcategory,
+  TopicChartInput,
   TriageFeedback,
 } from "./api.schemas";
 
@@ -1025,43 +1032,43 @@ export function useGetChart<
  * Updates title/subtitle/insight and logs a chart_edits row. The edit
 row counts as a 0.25-weight implicit signal in the trouble score.
 
- * @summary Edit a chart's writer-controlled copy
+ * @summary Writer edits a chart's header copy and/or spec
  */
-export const getEditChartUrl = (id: number) => {
+export const getUpdateChartUrl = (id: number) => {
   return `/api/charts/${id}`;
 };
 
-export const editChart = async (
+export const updateChart = async (
   id: number,
-  chartEditInput: ChartEditInput,
+  chartUpdateInput: ChartUpdateInput,
   options?: RequestInit,
-): Promise<EditChart200> => {
-  return customFetch<EditChart200>(getEditChartUrl(id), {
+): Promise<Chart> => {
+  return customFetch<Chart>(getUpdateChartUrl(id), {
     ...options,
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(chartEditInput),
+    body: JSON.stringify(chartUpdateInput),
   });
 };
 
-export const getEditChartMutationOptions = <
+export const getUpdateChartMutationOptions = <
   TError = ErrorType<ApiError>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof editChart>>,
+    Awaited<ReturnType<typeof updateChart>>,
     TError,
-    { id: number; data: BodyType<ChartEditInput> },
+    { id: number; data: BodyType<ChartUpdateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof editChart>>,
+  Awaited<ReturnType<typeof updateChart>>,
   TError,
-  { id: number; data: BodyType<ChartEditInput> },
+  { id: number; data: BodyType<ChartUpdateInput> },
   TContext
 > => {
-  const mutationKey = ["editChart"];
+  const mutationKey = ["updateChart"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -1071,44 +1078,44 @@ export const getEditChartMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof editChart>>,
-    { id: number; data: BodyType<ChartEditInput> }
+    Awaited<ReturnType<typeof updateChart>>,
+    { id: number; data: BodyType<ChartUpdateInput> }
   > = (props) => {
     const { id, data } = props ?? {};
 
-    return editChart(id, data, requestOptions);
+    return updateChart(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type EditChartMutationResult = NonNullable<
-  Awaited<ReturnType<typeof editChart>>
+export type UpdateChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateChart>>
 >;
-export type EditChartMutationBody = BodyType<ChartEditInput>;
-export type EditChartMutationError = ErrorType<ApiError>;
+export type UpdateChartMutationBody = BodyType<ChartUpdateInput>;
+export type UpdateChartMutationError = ErrorType<ApiError>;
 
 /**
- * @summary Edit a chart's writer-controlled copy
+ * @summary Writer edits a chart's header copy and/or spec
  */
-export const useEditChart = <
+export const useUpdateChart = <
   TError = ErrorType<ApiError>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof editChart>>,
+    Awaited<ReturnType<typeof updateChart>>,
     TError,
-    { id: number; data: BodyType<ChartEditInput> },
+    { id: number; data: BodyType<ChartUpdateInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof editChart>>,
+  Awaited<ReturnType<typeof updateChart>>,
   TError,
-  { id: number; data: BodyType<ChartEditInput> },
+  { id: number; data: BodyType<ChartUpdateInput> },
   TContext
 > => {
-  return useMutation(getEditChartMutationOptions(options));
+  return useMutation(getUpdateChartMutationOptions(options));
 };
 
 /**
@@ -1196,6 +1203,90 @@ export const useRegenerateChart = <
   TContext
 > => {
   return useMutation(getRegenerateChartMutationOptions(options));
+};
+
+/**
+ * @summary Re-verify the chart against the CE's DRD + a fresh web check
+ */
+export const getVerifyChartUrl = (id: number) => {
+  return `/api/charts/${id}/verify`;
+};
+
+export const verifyChart = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChartVerification> => {
+  return customFetch<ChartVerification>(getVerifyChartUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getVerifyChartMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyChart>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifyChart>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["verifyChart"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifyChart>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return verifyChart(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifyChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifyChart>>
+>;
+
+export type VerifyChartMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Re-verify the chart against the CE's DRD + a fresh web check
+ */
+export const useVerifyChart = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyChart>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifyChart>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getVerifyChartMutationOptions(options));
 };
 
 /**
@@ -1373,6 +1464,180 @@ export const useCreateChartFeedback = <
 };
 
 /**
+ * @summary Flip a draft chart to published (or back to draft)
+ */
+export const getPublishChartUrl = (id: number) => {
+  return `/api/charts/${id}/publish`;
+};
+
+export const publishChart = async (
+  id: number,
+  chartPublishInput: ChartPublishInput,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getPublishChartUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chartPublishInput),
+  });
+};
+
+export const getPublishChartMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishChart>>,
+    TError,
+    { id: number; data: BodyType<ChartPublishInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishChart>>,
+  TError,
+  { id: number; data: BodyType<ChartPublishInput> },
+  TContext
+> => {
+  const mutationKey = ["publishChart"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishChart>>,
+    { id: number; data: BodyType<ChartPublishInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return publishChart(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishChart>>
+>;
+export type PublishChartMutationBody = BodyType<ChartPublishInput>;
+export type PublishChartMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Flip a draft chart to published (or back to draft)
+ */
+export const usePublishChart = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishChart>>,
+    TError,
+    { id: number; data: BodyType<ChartPublishInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishChart>>,
+  TError,
+  { id: number; data: BodyType<ChartPublishInput> },
+  TContext
+> => {
+  return useMutation(getPublishChartMutationOptions(options));
+};
+
+/**
+ * @summary Generate a new draft chart for a CE from a writer's topic
+ */
+export const getCreateChartFromTopicUrl = (slug: string) => {
+  return `/api/ces/${slug}/charts`;
+};
+
+export const createChartFromTopic = async (
+  slug: string,
+  topicChartInput: TopicChartInput,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getCreateChartFromTopicUrl(slug), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(topicChartInput),
+  });
+};
+
+export const getCreateChartFromTopicMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createChartFromTopic>>,
+    TError,
+    { slug: string; data: BodyType<TopicChartInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createChartFromTopic>>,
+  TError,
+  { slug: string; data: BodyType<TopicChartInput> },
+  TContext
+> => {
+  const mutationKey = ["createChartFromTopic"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createChartFromTopic>>,
+    { slug: string; data: BodyType<TopicChartInput> }
+  > = (props) => {
+    const { slug, data } = props ?? {};
+
+    return createChartFromTopic(slug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateChartFromTopicMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createChartFromTopic>>
+>;
+export type CreateChartFromTopicMutationBody = BodyType<TopicChartInput>;
+export type CreateChartFromTopicMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Generate a new draft chart for a CE from a writer's topic
+ */
+export const useCreateChartFromTopic = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createChartFromTopic>>,
+    TError,
+    { slug: string; data: BodyType<TopicChartInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createChartFromTopic>>,
+  TError,
+  { slug: string; data: BodyType<TopicChartInput> },
+  TContext
+> => {
+  return useMutation(getCreateChartFromTopicMutationOptions(options));
+};
+
+/**
  * @summary List feedback across all charts (for triage)
  */
 export const getListAllFeedbackUrl = (params?: ListAllFeedbackParams) => {
@@ -1487,7 +1752,7 @@ export const updateFeedback = async (
 };
 
 export const getUpdateFeedbackMutationOptions = <
-  TError = ErrorType<ApiError>,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1528,13 +1793,13 @@ export type UpdateFeedbackMutationResult = NonNullable<
   Awaited<ReturnType<typeof updateFeedback>>
 >;
 export type UpdateFeedbackMutationBody = BodyType<FeedbackUpdate>;
-export type UpdateFeedbackMutationError = ErrorType<ApiError>;
+export type UpdateFeedbackMutationError = ErrorType<void>;
 
 /**
  * @summary Update a feedback row's status
  */
 export const useUpdateFeedback = <
-  TError = ErrorType<ApiError>,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1551,6 +1816,351 @@ export const useUpdateFeedback = <
   TContext
 > => {
   return useMutation(getUpdateFeedbackMutationOptions(options));
+};
+
+/**
+ * @summary Bulk-publish every draft chart for a CE
+ */
+export const getPublishAllDraftsUrl = (slug: string) => {
+  return `/api/ces/${slug}/publish-all-drafts`;
+};
+
+export const publishAllDrafts = async (
+  slug: string,
+  publishAllDraftsInput?: PublishAllDraftsInput,
+  options?: RequestInit,
+): Promise<PublishAllDraftsResult> => {
+  return customFetch<PublishAllDraftsResult>(getPublishAllDraftsUrl(slug), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(publishAllDraftsInput),
+  });
+};
+
+export const getPublishAllDraftsMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAllDrafts>>,
+    TError,
+    { slug: string; data: BodyType<PublishAllDraftsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof publishAllDrafts>>,
+  TError,
+  { slug: string; data: BodyType<PublishAllDraftsInput> },
+  TContext
+> => {
+  const mutationKey = ["publishAllDrafts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof publishAllDrafts>>,
+    { slug: string; data: BodyType<PublishAllDraftsInput> }
+  > = (props) => {
+    const { slug, data } = props ?? {};
+
+    return publishAllDrafts(slug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PublishAllDraftsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof publishAllDrafts>>
+>;
+export type PublishAllDraftsMutationBody = BodyType<PublishAllDraftsInput>;
+export type PublishAllDraftsMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Bulk-publish every draft chart for a CE
+ */
+export const usePublishAllDrafts = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof publishAllDrafts>>,
+    TError,
+    { slug: string; data: BodyType<PublishAllDraftsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof publishAllDrafts>>,
+  TError,
+  { slug: string; data: BodyType<PublishAllDraftsInput> },
+  TContext
+> => {
+  return useMutation(getPublishAllDraftsMutationOptions(options));
+};
+
+/**
+ * @summary Get the ideation chatbot transcript for a CE
+ */
+export const getGetIdeationUrl = (slug: string) => {
+  return `/api/ces/${slug}/ideation`;
+};
+
+export const getIdeation = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<IdeationMessage[]> => {
+  return customFetch<IdeationMessage[]>(getGetIdeationUrl(slug), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetIdeationQueryKey = (slug: string) => {
+  return [`/api/ces/${slug}/ideation`] as const;
+};
+
+export const getGetIdeationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getIdeation>>,
+  TError = ErrorType<ApiError>,
+>(
+  slug: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getIdeation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetIdeationQueryKey(slug);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getIdeation>>> = ({
+    signal,
+  }) => getIdeation(slug, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!slug,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIdeation>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetIdeationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getIdeation>>
+>;
+export type GetIdeationQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get the ideation chatbot transcript for a CE
+ */
+
+export function useGetIdeation<
+  TData = Awaited<ReturnType<typeof getIdeation>>,
+  TError = ErrorType<ApiError>,
+>(
+  slug: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getIdeation>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetIdeationQueryOptions(slug, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Send a writer message to the ideation chatbot
+ */
+export const getPostIdeationUrl = (slug: string) => {
+  return `/api/ces/${slug}/ideation`;
+};
+
+export const postIdeation = async (
+  slug: string,
+  ideationInput: IdeationInput,
+  options?: RequestInit,
+): Promise<IdeationMessage> => {
+  return customFetch<IdeationMessage>(getPostIdeationUrl(slug), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ideationInput),
+  });
+};
+
+export const getPostIdeationMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeation>>,
+    TError,
+    { slug: string; data: BodyType<IdeationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postIdeation>>,
+  TError,
+  { slug: string; data: BodyType<IdeationInput> },
+  TContext
+> => {
+  const mutationKey = ["postIdeation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postIdeation>>,
+    { slug: string; data: BodyType<IdeationInput> }
+  > = (props) => {
+    const { slug, data } = props ?? {};
+
+    return postIdeation(slug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostIdeationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postIdeation>>
+>;
+export type PostIdeationMutationBody = BodyType<IdeationInput>;
+export type PostIdeationMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Send a writer message to the ideation chatbot
+ */
+export const usePostIdeation = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeation>>,
+    TError,
+    { slug: string; data: BodyType<IdeationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postIdeation>>,
+  TError,
+  { slug: string; data: BodyType<IdeationInput> },
+  TContext
+> => {
+  return useMutation(getPostIdeationMutationOptions(options));
+};
+
+/**
+ * @summary Clear the ideation chatbot transcript
+ */
+export const getClearIdeationUrl = (slug: string) => {
+  return `/api/ces/${slug}/ideation`;
+};
+
+export const clearIdeation = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getClearIdeationUrl(slug), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearIdeationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearIdeation>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearIdeation>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["clearIdeation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearIdeation>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return clearIdeation(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearIdeationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearIdeation>>
+>;
+
+export type ClearIdeationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Clear the ideation chatbot transcript
+ */
+export const useClearIdeation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearIdeation>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearIdeation>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getClearIdeationMutationOptions(options));
 };
 
 /**

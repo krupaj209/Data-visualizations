@@ -1,21 +1,32 @@
 import { Router, type IRouter } from "express";
 import { eq, asc, sql, inArray } from "drizzle-orm";
+import { z } from "zod";
 import {
   db,
   cesTable,
   chartsTable,
   chartFeedbackTable,
   chartEditsTable,
+  drdsTable,
+  ideationMessagesTable,
   type Ce,
   type Chart,
+  type IdeationMessage,
 } from "@workspace/db";
 import { CreateCeBody, GetCeParams } from "@workspace/api-zod";
 import { generateCePayload, slugify } from "../lib/generate-ce";
 import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
+import { CHART_ARCHETYPES } from "@workspace/question-bank";
+import { openai } from "../lib/openai";
 
 const router: IRouter = Router();
 
-function serializeCe(ce: Ce, chartCount: number) {
+function serializeCe(
+  ce: Ce,
+  chartCount: number,
+  draftCount = 0,
+  publishedCount = chartCount,
+) {
   return {
     id: ce.id,
     slug: ce.slug,
@@ -27,6 +38,8 @@ function serializeCe(ce: Ce, chartCount: number) {
     emoji: ce.emoji,
     status: ce.status,
     chartCount,
+    draftCount,
+    publishedCount,
     createdAt: ce.createdAt.toISOString(),
     updatedAt: ce.updatedAt.toISOString(),
   };
@@ -54,6 +67,12 @@ function serializeChart(chart: Chart, enrich?: FeedbackEnrichment) {
     insight: chart.insight,
     chartType: chart.chartType,
     spec: chart.spec,
+    status: chart.status,
+    provenance: chart.provenance ?? null,
+    lastEditedByWriterAt: chart.lastEditedByWriterAt
+      ? chart.lastEditedByWriterAt.toISOString()
+      : null,
+    interactive: chart.interactive,
     sortOrder: chart.sortOrder,
     openFeedbackCount: e.openFeedbackCount,
     topFeedbackSeverity: e.topFeedbackSeverity,
@@ -118,18 +137,40 @@ async function loadChartEnrichment(
   return map;
 }
 
+function serializeIdeation(m: IdeationMessage) {
+  return {
+    id: m.id,
+    ceId: m.ceId,
+    role: m.role,
+    content: m.content,
+    proposals: m.proposals ?? null,
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+
 router.get("/ces", async (req, res): Promise<void> => {
   const rows = await db
     .select({
       ce: cesTable,
       chartCount: sql<number>`COALESCE(COUNT(${chartsTable.id})::int, 0)`,
+      draftCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'draft')::int, 0)`,
+      publishedCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'published')::int, 0)`,
     })
     .from(cesTable)
     .leftJoin(chartsTable, eq(chartsTable.ceId, cesTable.id))
     .groupBy(cesTable.id)
     .orderBy(asc(cesTable.name));
 
-  res.json(rows.map(({ ce, chartCount }) => serializeCe(ce, Number(chartCount))));
+  res.json(
+    rows.map(({ ce, chartCount, draftCount, publishedCount }) =>
+      serializeCe(
+        ce,
+        Number(chartCount),
+        Number(draftCount),
+        Number(publishedCount),
+      ),
+    ),
+  );
   void req;
 });
 
@@ -251,8 +292,15 @@ router.get("/ces/:slug", async (req, res): Promise<void> => {
 
   const enrich = await loadChartEnrichment(charts.map((c) => c.id));
 
+  let draftCount = 0;
+  let publishedCount = 0;
+  for (const c of charts) {
+    if (c.status === "draft") draftCount += 1;
+    else if (c.status === "published") publishedCount += 1;
+  }
+
   res.json({
-    ce: serializeCe(ce, charts.length),
+    ce: serializeCe(ce, charts.length, draftCount, publishedCount),
     charts: charts.map((c) => serializeChart(c, enrich.get(c.id))),
   });
 });
@@ -377,6 +425,218 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
           : "Failed to regenerate",
     });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Ideation chatbot — per-CE conversation log + OpenAI assistant turns         */
+/* -------------------------------------------------------------------------- */
+
+const ideationBody = z.object({
+  message: z.string().min(1).max(4000),
+  writerId: z.string().max(120).optional(),
+});
+
+router.get("/ces/:slug/ideation", async (req, res): Promise<void> => {
+  const params = GetCeParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [ce] = await db
+    .select()
+    .from(cesTable)
+    .where(eq(cesTable.slug, params.data.slug));
+  if (!ce) {
+    res.status(404).json({ error: "CE not found" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(ideationMessagesTable)
+    .where(eq(ideationMessagesTable.ceId, ce.id))
+    .orderBy(asc(ideationMessagesTable.id));
+  res.json(rows.map(serializeIdeation));
+});
+
+router.delete("/ces/:slug/ideation", async (req, res): Promise<void> => {
+  const params = GetCeParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [ce] = await db
+    .select()
+    .from(cesTable)
+    .where(eq(cesTable.slug, params.data.slug));
+  if (!ce) {
+    res.status(404).json({ error: "CE not found" });
+    return;
+  }
+  await db
+    .delete(ideationMessagesTable)
+    .where(eq(ideationMessagesTable.ceId, ce.id));
+  res.sendStatus(204);
+});
+
+router.post("/ces/:slug/ideation", async (req, res): Promise<void> => {
+  const params = GetCeParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = ideationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [ce] = await db
+    .select()
+    .from(cesTable)
+    .where(eq(cesTable.slug, params.data.slug));
+  if (!ce) {
+    res.status(404).json({ error: "CE not found" });
+    return;
+  }
+
+  // Persist the user turn first so the transcript stays consistent even
+  // if the LLM call later fails.
+  await db.insert(ideationMessagesTable).values({
+    ceId: ce.id,
+    role: "user",
+    content: parsed.data.message,
+  });
+
+  if (!openai) {
+    const fallback = `OpenAI is not configured on this server, so I can't help ideate. Set AI_INTEGRATIONS_OPENAI_* env vars and try again.`;
+    const [stored] = await db
+      .insert(ideationMessagesTable)
+      .values({ ceId: ce.id, role: "assistant", content: fallback })
+      .returning();
+    if (!stored) {
+      res.status(500).json({ error: "Failed to store fallback message" });
+      return;
+    }
+    res.json(serializeIdeation(stored));
+    return;
+  }
+
+  const [drd] = await db
+    .select()
+    .from(drdsTable)
+    .where(eq(drdsTable.ceSlug, ce.slug));
+  const charts = await db
+    .select({
+      slug: chartsTable.slug,
+      question: chartsTable.question,
+      chartType: chartsTable.chartType,
+      status: chartsTable.status,
+    })
+    .from(chartsTable)
+    .where(eq(chartsTable.ceId, ce.id));
+
+  const transcript = await db
+    .select()
+    .from(ideationMessagesTable)
+    .where(eq(ideationMessagesTable.ceId, ce.id))
+    .orderBy(asc(ideationMessagesTable.id));
+
+  const archetypeMenu = Object.values(CHART_ARCHETYPES)
+    .map((a) => `- ${a.id}: ${a.label} — ${a.answers}`)
+    .join("\n");
+
+  const systemPrompt = `You are Headout's chart-ideation partner for the Viz Studio writer.
+Your job is NARROW: help shape ideas for data visualizations on the listing page for "${ce.name}" (${ce.city}, ${ce.country}).
+
+You can:
+- Propose 2-3 chart ideas with a clear visitor question, the right archetype, and one-line rationale.
+- Critique a draft idea and suggest a sharper question.
+- Recommend which existing archetype best fits an idea.
+
+You MUST NOT:
+- Invent new chart archetypes (only the ones in the menu).
+- Edit subcategory base questions.
+- Help with anything outside chart ideation for this CE.
+
+Available archetypes:
+${archetypeMenu}
+
+Existing chart deck for this CE:
+${charts.length > 0 ? charts.map((c) => `- [${c.status}] ${c.chartType}: ${c.question}`).join("\n") : "(empty)"}
+
+Deep Research Doc (excerpt):
+${(drd?.markdown ?? "(no DRD uploaded)").slice(0, 8000)}
+
+When you propose chart ideas, also output a JSON block at the very end like:
+\`\`\`json
+{ "proposals": [ { "topic": "...", "archetype": "<one of the ids>", "rationale": "..." } ] }
+\`\`\`
+If you're not proposing anything (just discussing), omit the block.
+
+Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
+
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: systemPrompt },
+    ...transcript.map((m) => ({
+      role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      content: m.content,
+    })),
+  ];
+
+  let assistantText = "";
+  let proposals: unknown = null;
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 800,
+      messages,
+    });
+    assistantText = response.choices[0]?.message?.content ?? "";
+    const fence = assistantText.match(/```(?:json)?\s*([\s\S]+?)```/);
+    if (fence?.[1]) {
+      try {
+        const parsedJson = JSON.parse(fence[1]);
+        if (parsedJson && typeof parsedJson === "object" && "proposals" in parsedJson) {
+          proposals = (parsedJson as { proposals: unknown }).proposals;
+        }
+      } catch {
+        // keep proposals null
+      }
+    }
+  } catch (err) {
+    req.log.error({ err }, "Ideation OpenAI call failed");
+    const fallback = `Sorry — the ideation model couldn't respond just now (${
+      err instanceof Error ? err.message : "unknown error"
+    }). Try again in a moment.`;
+    const [stored] = await db
+      .insert(ideationMessagesTable)
+      .values({ ceId: ce.id, role: "assistant", content: fallback })
+      .returning();
+    if (!stored) {
+      res.status(502).json({ error: "Ideation failed" });
+      return;
+    }
+    res.status(200).json(serializeIdeation(stored));
+    return;
+  }
+
+  const [stored] = await db
+    .insert(ideationMessagesTable)
+    .values({
+      ceId: ce.id,
+      role: "assistant",
+      content: assistantText || "(empty response)",
+      proposals:
+        Array.isArray(proposals) && proposals.length > 0
+          ? (proposals as Record<string, unknown>[])
+          : null,
+    })
+    .returning();
+  if (!stored) {
+    res.status(500).json({ error: "Failed to store assistant message" });
+    return;
+  }
+  res.json(serializeIdeation(stored));
 });
 
 export default router;

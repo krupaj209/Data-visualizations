@@ -29,6 +29,8 @@ export const ListCesResponseItem = zod.object({
   emoji: zod.string(),
   status: zod.string(),
   chartCount: zod.number(),
+  draftCount: zod.number(),
+  publishedCount: zod.number(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -63,6 +65,8 @@ export const GetCeResponse = zod.object({
     emoji: zod.string(),
     status: zod.string(),
     chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -77,8 +81,14 @@ export const GetCeResponse = zod.object({
       insight: zod.string(),
       chartType: zod.string(),
       spec: zod.record(zod.string(), zod.unknown()),
-      status: zod.string().optional(),
+      status: zod.string(),
       provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+      lastEditedByWriterAt: zod.string().nullish(),
+      interactive: zod
+        .boolean()
+        .describe(
+          "Whether interactive affordances render in embeds. Default true.",
+        ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
       topFeedbackSeverity: zod.string().nullish(),
@@ -115,6 +125,8 @@ export const RegenerateCeResponse = zod.object({
     emoji: zod.string(),
     status: zod.string(),
     chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -129,8 +141,14 @@ export const RegenerateCeResponse = zod.object({
       insight: zod.string(),
       chartType: zod.string(),
       spec: zod.record(zod.string(), zod.unknown()),
-      status: zod.string().optional(),
+      status: zod.string(),
       provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+      lastEditedByWriterAt: zod.string().nullish(),
+      interactive: zod
+        .boolean()
+        .describe(
+          "Whether interactive affordances render in embeds. Default true.",
+        ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
       topFeedbackSeverity: zod.string().nullish(),
@@ -235,8 +253,14 @@ export const GetChartResponse = zod.object({
     insight: zod.string(),
     chartType: zod.string(),
     spec: zod.record(zod.string(), zod.unknown()),
-    status: zod.string().optional(),
+    status: zod.string(),
     provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    lastEditedByWriterAt: zod.string().nullish(),
+    interactive: zod
+      .boolean()
+      .describe(
+        "Whether interactive affordances render in embeds. Default true.",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -255,6 +279,8 @@ export const GetChartResponse = zod.object({
     emoji: zod.string(),
     status: zod.string(),
     chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -264,40 +290,46 @@ export const GetChartResponse = zod.object({
  * Updates title/subtitle/insight and logs a chart_edits row. The edit
 row counts as a 0.25-weight implicit signal in the trouble score.
 
- * @summary Edit a chart's writer-controlled copy
+ * @summary Writer edits a chart's header copy and/or spec
  */
-export const EditChartParams = zod.object({
+export const UpdateChartParams = zod.object({
   id: zod.coerce.number(),
 });
 
-export const EditChartBody = zod.object({
+export const UpdateChartBody = zod.object({
+  question: zod.string().optional(),
   title: zod.string().optional(),
   subtitle: zod.string().optional(),
   insight: zod.string().optional(),
-  editorName: zod.string().optional(),
-  summary: zod.string().optional(),
+  spec: zod.record(zod.string(), zod.unknown()).optional(),
+  interactive: zod.boolean().optional(),
+  writerId: zod.string().optional(),
 });
 
-export const EditChartResponse = zod.object({
-  chart: zod.object({
-    id: zod.number(),
-    ceId: zod.number(),
-    slug: zod.string(),
-    question: zod.string(),
-    title: zod.string(),
-    subtitle: zod.string(),
-    insight: zod.string(),
-    chartType: zod.string(),
-    spec: zod.record(zod.string(), zod.unknown()),
-    status: zod.string().optional(),
-    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
-    sortOrder: zod.number(),
-    openFeedbackCount: zod.number().optional(),
-    topFeedbackSeverity: zod.string().nullish(),
-    editCount: zod.number().optional(),
-    createdAt: zod.string(),
-    updatedAt: zod.string(),
-  }),
+export const UpdateChartResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -321,8 +353,14 @@ export const RegenerateChartResponse = zod.object({
     insight: zod.string(),
     chartType: zod.string(),
     spec: zod.record(zod.string(), zod.unknown()),
-    status: zod.string().optional(),
+    status: zod.string(),
     provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    lastEditedByWriterAt: zod.string().nullish(),
+    interactive: zod
+      .boolean()
+      .describe(
+        "Whether interactive affordances render in embeds. Default true.",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -341,9 +379,26 @@ export const RegenerateChartResponse = zod.object({
     emoji: zod.string(),
     status: zod.string(),
     chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
+});
+
+/**
+ * @summary Re-verify the chart against the CE's DRD + a fresh web check
+ */
+export const VerifyChartParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VerifyChartResponse = zod.object({
+  status: zod.enum(["ok", "issues", "skipped"]),
+  issues: zod.array(zod.string()),
+  suggestions: zod.array(zod.string()),
+  suggestedSpec: zod.record(zod.string(), zod.unknown()).nullish(),
+  verifierNotes: zod.string(),
 });
 
 /**
@@ -384,6 +439,59 @@ export const CreateChartFeedbackBody = zod.object({
 });
 
 /**
+ * @summary Flip a draft chart to published (or back to draft)
+ */
+export const PublishChartParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PublishChartBody = zod.object({
+  status: zod.enum(["draft", "published"]),
+  writerId: zod.string().optional(),
+});
+
+export const PublishChartResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Generate a new draft chart for a CE from a writer's topic
+ */
+export const CreateChartFromTopicParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const CreateChartFromTopicBody = zod.object({
+  topic: zod.string(),
+  archetype: zod.string().optional(),
+  pastedData: zod.string().optional(),
+  sourceUrl: zod.string().optional(),
+  writerId: zod.string().optional(),
+});
+
+/**
  * @summary List feedback across all charts (for triage)
  */
 export const ListAllFeedbackQueryParams = zod.object({
@@ -413,8 +521,14 @@ export const ListAllFeedbackResponseItem = zod.object({
     insight: zod.string(),
     chartType: zod.string(),
     spec: zod.record(zod.string(), zod.unknown()),
-    status: zod.string().optional(),
+    status: zod.string(),
     provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    lastEditedByWriterAt: zod.string().nullish(),
+    interactive: zod
+      .boolean()
+      .describe(
+        "Whether interactive affordances render in embeds. Default true.",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -433,6 +547,8 @@ export const ListAllFeedbackResponseItem = zod.object({
     emoji: zod.string(),
     status: zod.string(),
     chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -462,6 +578,66 @@ export const UpdateFeedbackResponse = zod.object({
   severity: zod.string(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
+});
+
+/**
+ * @summary Bulk-publish every draft chart for a CE
+ */
+export const PublishAllDraftsParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const PublishAllDraftsBody = zod.object({
+  writerId: zod.string().optional(),
+});
+
+export const PublishAllDraftsResponse = zod.object({
+  published: zod.number(),
+});
+
+/**
+ * @summary Get the ideation chatbot transcript for a CE
+ */
+export const GetIdeationParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const GetIdeationResponseItem = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+  createdAt: zod.string(),
+});
+export const GetIdeationResponse = zod.array(GetIdeationResponseItem);
+
+/**
+ * @summary Send a writer message to the ideation chatbot
+ */
+export const PostIdeationParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const PostIdeationBody = zod.object({
+  message: zod.string(),
+  writerId: zod.string().optional(),
+});
+
+export const PostIdeationResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Clear the ideation chatbot transcript
+ */
+export const ClearIdeationParams = zod.object({
+  slug: zod.coerce.string(),
 });
 
 /**

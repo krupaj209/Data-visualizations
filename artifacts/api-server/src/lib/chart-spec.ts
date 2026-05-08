@@ -244,6 +244,175 @@ export const ticketLadderSpec = z.object({
     .max(5),
 });
 
+/* -------------------------------------------------------------------------- *
+ * Curated-only chart types                                                   *
+ *                                                                            *
+ * The five archetypes below (daily_pattern, tribune_density,                 *
+ * duration_profiles, entrance_lanes, co_bookings) ship with the hand-built  *
+ * Florence cluster decks (`scripts/src/data/{accademia,uffizi,duomo}.mjs`). *
+ * The AI generation pipeline never produces them, but writers MUST be able  *
+ * to PATCH them via /charts/:id, so the union below validates them.         *
+ *                                                                           *
+ * Schemas mirror the viz-studio renderer types in                           *
+ * `artifacts/viz-studio/src/lib/chart-spec.ts` — mostly enums + small       *
+ * objects with `.passthrough()` so an unknown optional field a writer adds  *
+ * doesn't fail validation.                                                  *
+ * -------------------------------------------------------------------------- */
+
+const dailyPatternSpec = z
+  .object({
+    type: z.literal("daily_pattern"),
+    points: z
+      .array(
+        z.object({ time: z.string().max(5), crowd: z.number().min(0).max(10) }),
+      )
+      .min(1),
+    zones: z.array(
+      z.object({
+        label: z.string().max(60),
+        tone: z.enum(["best", "peak", "second_best"]),
+        start: z.string().max(5),
+        end: z.string().max(5),
+      }),
+    ),
+    caption: z
+      .object({
+        opens: z.string().max(40).optional(),
+        last_entry: z.string().max(40).optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+const tribuneDensitySpec = z
+  .object({
+    type: z.literal("tribune_density"),
+    scope: z.string().max(120),
+    y_label: z.string().max(80),
+    points: z
+      .array(
+        z.object({
+          time: z.string().max(5),
+          density: z.number().min(0).max(10),
+        }),
+      )
+      .min(1),
+    zones: z.array(
+      z.object({
+        label: z.string().max(60),
+        tone: z.enum(["quiet", "packed", "second_window"]),
+        start: z.string().max(5),
+        end: z.string().max(5),
+      }),
+    ),
+    arrow_callout: z
+      .object({
+        label: z.string().max(80),
+        at: z.string().max(5),
+        helper: z.string().max(120).optional(),
+      })
+      .optional(),
+    context_pills: z.array(
+      z
+        .object({
+          icon: z.enum([
+            "calendar",
+            "people",
+            "people_full",
+            "sun",
+            "clock",
+          ]),
+          title: z.string().max(60),
+          subtitle: z.string().max(80),
+          tone: z.enum(["candy", "okay", "purps"]),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+const durationProfilesSpec = z
+  .object({
+    type: z.literal("duration_profiles"),
+    headline: z.string().max(160),
+    scale_min: z.array(
+      z.object({
+        label: z.string().max(20),
+        minutes: z.number().int().min(0).max(600),
+      }),
+    ),
+    profiles: z
+      .array(
+        z
+          .object({
+            name: z.string().max(60),
+            icon: z.enum([
+              "stopwatch",
+              "head",
+              "column",
+              "lyre",
+              "bust",
+              "bench",
+            ]),
+            range_min: z.number().int().min(0).max(600),
+            range_max: z.number().int().min(0).max(600),
+            note: z.string().max(120).optional(),
+            highlight: z.boolean().optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    tip: z.string().max(160).optional(),
+  })
+  .passthrough();
+
+const entranceLanesSpec = z
+  .object({
+    type: z.literal("entrance_lanes"),
+    venue_label: z.string().max(80),
+    shared_caption: z.string().max(160),
+    lanes: z
+      .array(
+        z
+          .object({
+            name: z.string().max(60),
+            wait_label: z.string().max(40),
+            tone: z.enum(["candy", "purps", "okay", "slate"]),
+            dots: z.number().int().min(0).max(40),
+            dashed: z.boolean().optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+  })
+  .passthrough();
+
+const coBookingsSpec = z
+  .object({
+    type: z.literal("co_bookings"),
+    items: z
+      .array(
+        z
+          .object({
+            name: z.string().max(80),
+            share: z.number().min(0).max(100),
+            badge: z.string().max(40).optional(),
+            icon: z.enum([
+              "landmark",
+              "church",
+              "castle",
+              "building",
+              "trees",
+              "gem",
+            ]),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    highlight_top: z.number().int().min(0).max(20).optional(),
+  })
+  .passthrough();
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -254,6 +423,11 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   donutBreakdownSpec,
   seasonalCurveSpec,
   ticketLadderSpec,
+  dailyPatternSpec,
+  tribuneDensitySpec,
+  durationProfilesSpec,
+  entranceLanesSpec,
+  coBookingsSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {

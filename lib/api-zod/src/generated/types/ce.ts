@@ -17,6 +17,8 @@ export interface Ce {
   emoji: string;
   status: string;
   chartCount: number;
+  draftCount: number;
+  publishedCount: number;
   createdAt: string;
   updatedAt: string;
 }

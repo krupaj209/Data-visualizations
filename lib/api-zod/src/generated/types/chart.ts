@@ -18,8 +18,11 @@ export interface Chart {
   insight: string;
   chartType: string;
   spec: ChartSpec;
-  status?: string;
+  status: string;
   provenance?: ChartProvenance;
+  lastEditedByWriterAt?: string | null;
+  /** Whether interactive affordances render in embeds. Default true. */
+  interactive: boolean;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;

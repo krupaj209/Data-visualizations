@@ -5,8 +5,5 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { Chart } from "./chart";
 
-export type EditChart200 = {
-  chart: Chart;
-};
+export type ChartVerificationSuggestedSpec = { [key: string]: unknown } | null;

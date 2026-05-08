@@ -48,25 +48,7 @@ export const insertChartFeedbackSchema = createInsertSchema(
 export type InsertChartFeedback = z.infer<typeof insertChartFeedbackSchema>;
 export type ChartFeedback = typeof chartFeedbackTable.$inferSelect;
 
-/**
- * Implicit-edit signal log. The future writer authoring layer (task #27)
- * will append a row each time a writer edits a chart. The triage page
- * surfaces the count as "AI then edited Nx" and the trouble-score formula
- * weights each edit at 0.25 against the original AI generation.
- *
- * Defined here (not in `charts.ts`) because it's part of the feedback
- * loop's data model — chart edits are only meaningful as a quality signal.
- */
-export const chartEditsTable = pgTable("chart_edits", {
-  id: serial("id").primaryKey(),
-  chartId: integer("chart_id")
-    .notNull()
-    .references(() => chartsTable.id, { onDelete: "cascade" }),
-  editorName: text("editor_name").notNull().default(""),
-  summary: text("summary").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
-export type ChartEdit = typeof chartEditsTable.$inferSelect;
+// `chartEditsTable` lives in ./chart-edits.ts (richer schema landed via
+// task #27 — writerId/action/before/after/note). Triage scoring in
+// feedback.ts only consumes a count(*) of edit rows per chart, so the
+// schema-shape difference is invisible to it.

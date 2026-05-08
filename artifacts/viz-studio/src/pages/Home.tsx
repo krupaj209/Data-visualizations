@@ -42,10 +42,34 @@ export default function Home() {
     return () => clearInterval(id);
   }, [createMut.isPending]);
 
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">(
+    "all",
+  );
+
   const sortedCes = useMemo(
     () => [...(ces ?? [])].sort((a, b) => b.id - a.id),
     [ces],
   );
+
+  // CE-level filter buckets are derived from the per-CE chart status counts
+  // returned by GET /ces (draftCount / publishedCount). `ce.status` is the
+  // CE workflow state ("ready" / "draft" / etc.) — NOT a chart-publication
+  // signal — so it can't be used here.
+  // - "draft" bucket: any CE with at least one draft chart.
+  // - "published" bucket: any CE with at least one published chart.
+  // (A CE with both will show in both buckets, matching writer intent.)
+  const filteredCes = useMemo(() => {
+    if (statusFilter === "all") return sortedCes;
+    if (statusFilter === "draft") {
+      return sortedCes.filter((c) => (c.draftCount ?? 0) > 0);
+    }
+    return sortedCes.filter((c) => (c.publishedCount ?? c.chartCount ?? 0) > 0);
+  }, [sortedCes, statusFilter]);
+
+  const draftCesCount = sortedCes.filter((c) => (c.draftCount ?? 0) > 0).length;
+  const publishedCesCount = sortedCes.filter(
+    (c) => (c.publishedCount ?? c.chartCount ?? 0) > 0,
+  ).length;
 
   function applyQuickPick(p: (typeof QUICK_PICKS)[number]) {
     setName(p.name);
@@ -333,7 +357,7 @@ export default function Home() {
 
         {/* CE LIST */}
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <h2
               style={{
                 fontSize: 20,
@@ -354,6 +378,36 @@ export default function Home() {
                 {sortedCes.length} {sortedCes.length === 1 ? "CE" : "CEs"}
               </span>
             </h2>
+            <div className="flex items-center gap-2">
+              {(
+                [
+                  ["all", `All (${sortedCes.length})`],
+                  ["published", `Published (${publishedCesCount})`],
+                  ["draft", `Drafts (${draftCesCount})`],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatusFilter(value)}
+                  style={{
+                    background:
+                      statusFilter === value ? BRAND.purps : "white",
+                    color: statusFilter === value ? "white" : BRAND.slate700,
+                    border: `1px solid ${
+                      statusFilter === value ? BRAND.purps : BRAND.slate200
+                    }`,
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {isLoading ? (
@@ -367,11 +421,11 @@ export default function Home() {
                 color={BRAND.purps}
               />
             </div>
-          ) : sortedCes.length === 0 ? (
+          ) : filteredCes.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">
-              {sortedCes.map((ce) => (
+              {filteredCes.map((ce) => (
                 <CeCard
                   key={ce.id}
                   ce={ce}
