@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleDot,
+  FileText,
+  Upload,
 } from "lucide-react";
 import {
   useGetCeIntelligence,
@@ -102,6 +104,19 @@ export function IntelPanel({
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
+  const [rejectedContext, setRejectedContext] = useState<Record<string, string>>(
+    () => ({}),
+  );
+  const [showContextUpload, setShowContextUpload] = useState(false);
+  const [drdStatus, setDrdStatus] = useState<{
+    sourceFilename?: string | null;
+    markdownLength: number;
+    updatedAt: string;
+  } | null>(null);
+  const [drdText, setDrdText] = useState("");
+  const [drdFile, setDrdFile] = useState<File | null>(null);
+  const [drdError, setDrdError] = useState<string | null>(null);
+  const [isUploadingDrd, setIsUploadingDrd] = useState(false);
   const [createdCharts, setCreatedCharts] = useState<
     Record<string, CreatedPlanChart>
   >(
@@ -115,6 +130,74 @@ export function IntelPanel({
   useEffect(() => {
     if (!plan && savedPlan) setPlan(savedPlan);
   }, [plan, savedPlan]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDrdStatus() {
+      try {
+        const res = await fetch(`/api/drds/${slug}`);
+        if (res.status === 404) {
+          if (!cancelled) setDrdStatus(null);
+          return;
+        }
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Failed to load DRD");
+        if (!cancelled) {
+          setDrdStatus({
+            sourceFilename: json?.sourceFilename ?? null,
+            markdownLength: Number(json?.markdownLength ?? 0),
+            updatedAt: String(json?.updatedAt ?? ""),
+          });
+        }
+      } catch {
+        if (!cancelled) setDrdStatus(null);
+      }
+    }
+    loadDrdStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  async function handleUploadDrd() {
+    setIsUploadingDrd(true);
+    setDrdError(null);
+    try {
+      let res: Response;
+      if (drdFile) {
+        const form = new FormData();
+        form.append("ceSlug", slug);
+        form.append("file", drdFile);
+        res = await fetch("/api/drds", { method: "POST", body: form });
+      } else {
+        res = await fetch("/api/drds", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ceSlug: slug,
+            markdown: drdText,
+            sourceFilename: "CE Intel context",
+          }),
+        });
+      }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "DRD upload failed");
+      setDrdStatus({
+        sourceFilename: json?.sourceFilename ?? null,
+        markdownLength: Number(json?.markdownLength ?? 0),
+        updatedAt: String(json?.updatedAt ?? new Date().toISOString()),
+      });
+      setDrdText("");
+      setDrdFile(null);
+      setShowContextUpload(false);
+      setPlan(null);
+      qc.invalidateQueries({ queryKey: getGetCeIntelligenceQueryKey(slug) });
+    } catch (err) {
+      setDrdError(err instanceof Error ? err.message : "DRD upload failed");
+    } finally {
+      setIsUploadingDrd(false);
+    }
+  }
 
   async function handleRefreshAll() {
     setRefreshingSource("__all__");
@@ -196,6 +279,89 @@ export function IntelPanel({
           topic: item.question,
           archetype: item.archetype,
           plannerContext: plannerContext || undefined,
+          origin: "planner_recommendation",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Chart generation failed");
+      }
+      const chartId = Number(json?.id);
+      if (!Number.isFinite(chartId)) {
+        throw new Error("Chart was created, but the response did not include an id");
+      }
+      setCreatedCharts((prev) => ({
+        ...prev,
+        [item.question]: {
+          chartId,
+          verifyStatus: "checking",
+          verifyLabel: "Verifier running",
+        },
+      }));
+      onChartCreated?.();
+
+      try {
+        const verifyRes = await fetch(`/api/charts/${chartId}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const verifyJson = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verifyJson?.error ?? "Verification failed");
+        }
+        const notes = String(
+          verifyJson?.provenance?.verifier_notes ??
+            verifyJson?.verifier_notes ??
+            "",
+        );
+        const hasIssues =
+          /issue|unsupported|contradict|remove|not supported/i.test(notes);
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: hasIssues ? "issues" : "passed",
+            verifyLabel: hasIssues ? "Verifier found issues" : "Verifier passed",
+          },
+        }));
+        onChartCreated?.();
+      } catch (err) {
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: "failed",
+            verifyLabel:
+              err instanceof Error ? err.message : "Verification failed",
+          },
+        }));
+      }
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Chart generation failed");
+    } finally {
+      setCreatingQuestion(null);
+    }
+  }
+
+  async function handleCreateRejected(
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) {
+    const context = (rejectedContext[item.question] ?? "").trim();
+    if (!context) {
+      setPlanError("Add the missing context or data before creating this chart.");
+      return;
+    }
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/ces/${slug}/charts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: item.question,
+          archetype: item.archetype || undefined,
+          pastedData: context,
+          plannerContext: `Originally rejected by planner: ${item.reason}`,
           origin: "planner_recommendation",
         }),
       });
@@ -368,6 +534,127 @@ export function IntelPanel({
         Refresh all sources
       </button>
 
+      <section
+        style={{
+          border: `1px solid ${BRAND.slate200}`,
+          borderRadius: 12,
+          padding: 10,
+          background: drdStatus ? BRAND.bgMint : BRAND.slate50,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <FileText size={15} color={drdStatus ? BRAND.okayInk : BRAND.slate500} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 850, color: BRAND.slate950 }}>
+              {drdStatus ? "Context attached" : "Add DRD / context"}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: BRAND.slate500,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={drdStatus?.sourceFilename ?? undefined}
+            >
+              {drdStatus
+                ? `${Math.round(drdStatus.markdownLength / 1000)}k chars · updated ${relativeTime(drdStatus.updatedAt)}`
+                : "Paste notes or attach a PDF before planning"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowContextUpload((v) => !v)}
+            style={miniBtn(drdStatus ? "light" : "dark")}
+          >
+            {drdStatus ? "Replace" : "Add"}
+          </button>
+        </div>
+
+        {showContextUpload && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <textarea
+              value={drdText}
+              onChange={(e) => setDrdText(e.target.value)}
+              disabled={!!drdFile || isUploadingDrd}
+              placeholder="Paste DRD markdown, research notes, source excerpts..."
+              rows={4}
+              style={{
+                width: "100%",
+                resize: "vertical",
+                border: `1px solid ${BRAND.slate200}`,
+                borderRadius: 10,
+                padding: 9,
+                fontSize: 11,
+                fontWeight: 600,
+                color: BRAND.slate950,
+                outline: "none",
+                background: drdFile ? BRAND.slate100 : "white",
+              }}
+            />
+            <label
+              style={{
+                border: `1px dashed ${BRAND.slate200}`,
+                borderRadius: 10,
+                padding: "7px 9px",
+                background: "white",
+                color: BRAND.slate700,
+                fontSize: 11,
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: isUploadingDrd ? "not-allowed" : "pointer",
+              }}
+            >
+              <Upload size={13} />
+              {drdFile ? drdFile.name : "Attach PDF instead"}
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={isUploadingDrd}
+                onChange={(e) => setDrdFile(e.target.files?.[0] ?? null)}
+                style={{ display: "none" }}
+              />
+            </label>
+            {drdError && (
+              <div style={{ color: BRAND.candy, fontSize: 11, fontWeight: 750 }}>
+                {drdError}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleUploadDrd}
+              disabled={isUploadingDrd || (!drdFile && !drdText.trim())}
+              style={{
+                ...miniBtn("dark"),
+                justifyContent: "center",
+                opacity: isUploadingDrd || (!drdFile && !drdText.trim()) ? 0.55 : 1,
+                cursor:
+                  isUploadingDrd || (!drdFile && !drdText.trim())
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              {isUploadingDrd && <Loader2 size={12} className="animate-spin" />}
+              Save context
+            </button>
+          </div>
+        )}
+      </section>
+
       <button
         type="button"
         onClick={handlePlanVisualizations}
@@ -483,6 +770,42 @@ export function IntelPanel({
                   meta: item.archetype ?? "no chart",
                   body: item.reason,
                   tone: "warn" as const,
+                  createdChart: createdCharts[item.question],
+                  actionLabel: createdCharts[item.question]
+                    ? "Created"
+                    : "Create with context",
+                  actionDisabled:
+                    !!createdCharts[item.question] ||
+                    creatingQuestion !== null ||
+                    !(rejectedContext[item.question] ?? "").trim(),
+                  actionBusy: creatingQuestion === item.question,
+                  onAction: () => handleCreateRejected(item),
+                  extra: !createdCharts[item.question] ? (
+                    <textarea
+                      value={rejectedContext[item.question] ?? ""}
+                      onChange={(e) =>
+                        setRejectedContext((prev) => ({
+                          ...prev,
+                          [item.question]: e.target.value,
+                        }))
+                      }
+                      placeholder="Have the missing data? Paste source-backed context here..."
+                      rows={3}
+                      style={{
+                        marginTop: 8,
+                        width: "100%",
+                        resize: "vertical",
+                        border: `1px solid ${BRAND.slate200}`,
+                        borderRadius: 9,
+                        padding: 8,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: BRAND.slate950,
+                        outline: "none",
+                        background: BRAND.slate50,
+                      }}
+                    />
+                  ) : null,
                 }))}
               />
             </div>
@@ -746,6 +1069,22 @@ function evidenceColor(status: string): { bg: string; fg: string } {
   return { bg: BRAND.slate100, fg: BRAND.slate700 };
 }
 
+function miniBtn(tone: "dark" | "light") {
+  return {
+    border: tone === "dark" ? "none" : `1px solid ${BRAND.slate200}`,
+    borderRadius: 8,
+    padding: "5px 8px",
+    background: tone === "dark" ? BRAND.purps : "white",
+    color: tone === "dark" ? "white" : BRAND.slate950,
+    fontSize: 10,
+    fontWeight: 850,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    cursor: "pointer",
+  } as const;
+}
+
 function verifyTone(status: CreatedPlanChart["verifyStatus"]): {
   bg: string;
   fg: string;
@@ -771,6 +1110,7 @@ function PlanList({
     confidence?: number;
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
+    extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
     actionBusy?: boolean;
@@ -937,6 +1277,7 @@ function PlanList({
                 </a>
               </div>
             )}
+            {item.extra}
             {item.onAction && (
               <button
                 type="button"
