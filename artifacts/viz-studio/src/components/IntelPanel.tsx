@@ -55,6 +55,16 @@ const BUCKET_LABELS: Record<string, string> = {
 interface VisualizationPlan {
   summary: string;
   generatedAt: string;
+  evidence_inventory_detailed?: {
+    categories?: {
+      id: string;
+      label: string;
+      strength: string;
+      items?: { id: string; claim: string; confidence: number }[];
+      gaps?: string[];
+    }[];
+    gaps?: { category: string; reason: string }[];
+  };
   evidence_inventory?: {
     id: string;
     label: string;
@@ -734,6 +744,12 @@ export function IntelPanel({
                   />
                 ))}
               </div>
+              {plan.evidence_inventory_detailed?.categories &&
+                plan.evidence_inventory_detailed.categories.length > 0 && (
+                  <EvidenceCoverage
+                    categories={plan.evidence_inventory_detailed.categories}
+                  />
+                )}
               <PlanList
                 title={`Recommended (${plan.recommended_visualizations.length})`}
                 items={plan.recommended_visualizations.map((item) => {
@@ -1060,6 +1076,69 @@ function EvidenceChip({
       </span>
       <span style={{ opacity: 0.8 }}>· {count}</span>
     </span>
+  );
+}
+
+function EvidenceCoverage({
+  categories,
+}: {
+  categories: NonNullable<
+    VisualizationPlan["evidence_inventory_detailed"]
+  >["categories"];
+}) {
+  const visible = (categories ?? [])
+    .filter((category) => category.strength !== "missing")
+    .slice(0, 6);
+  const missingCount = (categories ?? []).filter(
+    (category) => category.strength === "missing",
+  ).length;
+  if (visible.length === 0 && missingCount === 0) return null;
+  return (
+    <div
+      style={{
+        border: `1px solid ${BRAND.slate100}`,
+        background: "white",
+        borderRadius: 10,
+        padding: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 900,
+          color: BRAND.slate500,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 6,
+        }}
+      >
+        Evidence coverage
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {visible.map((category) => (
+          <EvidenceChip
+            key={category.id}
+            label={category.label}
+            status={category.strength}
+            count={category.items?.length ?? 0}
+          />
+        ))}
+        {missingCount > 0 && (
+          <span
+            style={{
+              borderRadius: 999,
+              padding: "3px 7px",
+              background: BRAND.slate100,
+              color: BRAND.slate700,
+              fontSize: 10,
+              fontWeight: 850,
+            }}
+          >
+            {missingCount} gap{missingCount === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -13,6 +13,11 @@ import {
   type IntelBucketId,
   type IntelFact,
 } from "./ce-intelligence";
+import {
+  buildStructuredEvidenceInventory,
+  formatEvidenceInventoryForPrompt,
+  type EvidenceInventory,
+} from "./ce-evidence-inventory";
 import { logger } from "./logger";
 
 const MODEL = "gemini-2.5-pro";
@@ -61,6 +66,7 @@ export interface CeVisualizationPlan {
   ceSlug: string;
   summary: string;
   evidence_inventory: PlannerEvidenceBucket[];
+  evidence_inventory_detailed: EvidenceInventory;
   traveler_questions: PlannerQuestion[];
   recommended_visualizations: PlannerVisualization[];
   rejected_visualizations: RejectedVisualization[];
@@ -265,6 +271,10 @@ export async function buildCeVisualizationPlan(
   input: PlannerInput,
 ): Promise<CeVisualizationPlan> {
   const inventory = buildEvidenceInventory(input.drdMarkdown, input.intel);
+  const detailedInventory = buildStructuredEvidenceInventory({
+    drdMarkdown: input.drdMarkdown,
+    intel: input.intel,
+  });
   const liveNotes = await gatherPlannerLiveNotes(input);
   const intelFacts = input.intel?.facts ?? [];
   const intelBlock =
@@ -287,8 +297,11 @@ ${archetypeCatalog()}
 Question-bank seeds:
 ${questionSeedBlock(input.subcategoryId, input.subcategoryLabel, input.subcategoryDescription)}
 
-Evidence inventory already detected:
+Evidence buckets already detected:
 ${JSON.stringify(inventory, null, 2)}
+
+Structured evidence inventory:
+${formatEvidenceInventoryForPrompt(detailedInventory)}
 
 CE Intelligence facts:
 ${intelBlock}
@@ -343,6 +356,8 @@ Rules:
 - Include at least 2 rejected visualizations when there are evidence gaps. This is how we avoid fake charts.
 - Prefer question-bank seeds, but add CE-specific questions when the DRD/search clearly supports them.
 - If a chart would require unsupported day-by-day/hour-by-hour crowd data, reject it instead of estimating.
+- Treat the structured evidence inventory as the contract for what is chartable. Prefer evidence item ids in source_refs/evidence_refs.
+- If a category says "missing", reject charts that need that category unless live search notes explicitly fill the gap.
 - Do not recommend unimplemented archetypes.
 - History/origin/construction/restoration narratives should use history_timeline.
 - Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, ticket, duration, and best-fit questions over generic crowd charts.
@@ -441,6 +456,7 @@ Rules:
       parsed.summary?.slice(0, 520) ??
       `${input.ce.name} has ${recommended.length} chartable visualization opportunities.`,
     evidence_inventory: inventory,
+    evidence_inventory_detailed: detailedInventory,
     traveler_questions: travelerQuestions.sort(
       (a, b) => b.confidence - a.confidence,
     ),
