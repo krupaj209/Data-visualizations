@@ -30,6 +30,7 @@ export const CHART_TYPE_META: Record<
   seat_value_map: { label: "Seat value", emoji: "🎭" },
   optimal_departure: { label: "Optimal slot", emoji: "🚁" },
   stop_frequency: { label: "Stop frequency", emoji: "🚌" },
+  route_profile: { label: "Route profile", emoji: "🗺" },
   queue_compare: { label: "Queue compare", emoji: "🚪" },
   duration_stat: { label: "Duration stat", emoji: "⏱" },
   ride_wait_curve: { label: "Ride wait curve", emoji: "🎢" },
@@ -37,5 +38,6 @@ export const CHART_TYPE_META: Record<
   opening_hour_rank: { label: "Rope-drop rank", emoji: "🏁" },
   daily_programme: { label: "Daily programme", emoji: "📋" },
   time_split: { label: "Time split", emoji: "⏳" },
+  history_timeline: { label: "History timeline", emoji: "🏛" },
   slot_compare: { label: "Slot compare", emoji: "🌅" },
 };

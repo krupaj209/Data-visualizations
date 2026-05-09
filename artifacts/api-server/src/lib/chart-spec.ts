@@ -758,6 +758,30 @@ export const stopFrequencySpec = z.object({
     .max(20),
 });
 
+export const routeProfileSpec = z.object({
+  type: z.literal("route_profile"),
+  route_label: z.string().max(80),
+  mode: z.enum(["cruise", "bus", "walk", "day_trip", "transfer", "other"]),
+  distance_km: z.number().min(0).max(1000).optional(),
+  total_duration_min: z.number().int().min(1).max(1440).optional(),
+  headline_metric: z.string().max(60).optional(),
+  stops: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        kind: z.enum(["start", "landmark", "transfer", "stop", "end"]),
+        duration_from_start_min: z.number().int().min(0).max(1440).optional(),
+        landmark_count: z.number().int().min(0).max(40).optional(),
+        note: z.string().max(120).optional(),
+        highlight: z.boolean().optional(),
+      }),
+    )
+    .min(3)
+    .max(12),
+  best_for: z.array(z.string().max(40)).max(4).optional(),
+  callout: z.string().max(160).optional(),
+});
+
 /* -------------------------------------------------------------------------- *
  * v3 curve & promotion family (Task #33)                                     *
  *                                                                            *
@@ -989,6 +1013,35 @@ export const slotCompareSpec = z.object({
   insight: z.string().max(200).optional(),
 });
 
+export const historyTimelineSpec = z.object({
+  type: z.literal("history_timeline"),
+  span_label: z.string().max(40),
+  events: z
+    .array(
+      z.object({
+        date_label: z.string().max(24),
+        sort_year: z.number().min(-5000).max(3000),
+        title: z.string().max(60),
+        era: z.enum([
+          "origins",
+          "construction",
+          "spectacle",
+          "decline",
+          "reuse",
+          "restoration",
+          "modern",
+        ]),
+        description: z.string().max(180),
+        metric_label: z.string().max(40).optional(),
+        metric_value: z.string().max(32).optional(),
+      }),
+    )
+    .min(5)
+    .max(9),
+  highlight_event: z.string().max(60).optional(),
+  callout: z.string().max(180).optional(),
+});
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -1016,6 +1069,7 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   seatValueMapSpec,
   optimalDepartureSpec,
   stopFrequencySpec,
+  routeProfileSpec,
   queueCompareSpec,
   durationStatSpec,
   rideWaitCurveSpec,
@@ -1023,6 +1077,7 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   openingHourRankSpec,
   dailyProgrammeSpec,
   timeSplitSpec,
+  historyTimelineSpec,
   slotCompareSpec,
 ]);
 
@@ -1227,6 +1282,33 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["recommended_slot"],
       });
     }
+  } else if (val.type === "route_profile") {
+    let prev = -1;
+    val.stops.forEach((stop, i) => {
+      if (stop.duration_from_start_min === undefined) return;
+      if (stop.duration_from_start_min < prev) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "duration_from_start_min must be non-decreasing",
+          path: ["stops", i, "duration_from_start_min"],
+        });
+      }
+      prev = stop.duration_from_start_min;
+    });
+    if (
+      val.total_duration_min !== undefined &&
+      val.stops.some(
+        (stop) =>
+          stop.duration_from_start_min !== undefined &&
+          stop.duration_from_start_min > val.total_duration_min!,
+      )
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "stops must fall within total_duration_min",
+        path: ["stops"],
+      });
+    }
   } else if (val.type === "daily_programme") {
     const toMin = (t: string) => {
       const [h, m] = t.split(":").map(Number);
@@ -1259,6 +1341,26 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         code: z.ZodIssueCode.custom,
         message: `segment minutes (${sum}) must sum to within ${tol}m of total_min (${val.total_min})`,
         path: ["segments"],
+      });
+    }
+  } else if (val.type === "history_timeline") {
+    for (let i = 1; i < val.events.length; i += 1) {
+      if (val.events[i]!.sort_year < val.events[i - 1]!.sort_year) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "history_timeline.events must be in chronological order",
+          path: ["events", i, "sort_year"],
+        });
+      }
+    }
+    if (
+      val.highlight_event &&
+      !val.events.some((e) => e.title === val.highlight_event)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "highlight_event must match one events[].title",
+        path: ["highlight_event"],
       });
     }
   } else if (val.type === "slot_compare") {
@@ -1343,6 +1445,7 @@ export const CHART_TYPES = [
   "seat_value_map",
   "optimal_departure",
   "stop_frequency",
+  "route_profile",
   "queue_compare",
   "duration_stat",
   "ride_wait_curve",
@@ -1350,5 +1453,6 @@ export const CHART_TYPES = [
   "opening_hour_rank",
   "daily_programme",
   "time_split",
+  "history_timeline",
   "slot_compare",
 ] as const;

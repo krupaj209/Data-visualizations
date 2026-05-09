@@ -464,6 +464,8 @@ const topicBody = z.object({
   topic: z.string().min(4).max(400),
   archetype: z.string().optional(),
   pastedData: z.string().max(20_000).optional(),
+  plannerContext: z.string().max(5_000).optional(),
+  origin: z.enum(["topic_to_chart", "planner_recommendation"]).optional(),
   sourceUrl: z.string().url().max(800).optional(),
   writerId: z.string().max(120).optional(),
 });
@@ -507,6 +509,11 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
   }
   if (parsed.data.sourceUrl) {
     writerContextParts.push(`--- SOURCE LINK ---\n${parsed.data.sourceUrl}`);
+  }
+  if (parsed.data.plannerContext) {
+    writerContextParts.push(
+      `--- PLANNER CONTEXT (use to understand the requested chart; do not treat as a primary source) ---\n${parsed.data.plannerContext}`,
+    );
   }
   const drdMarkdown =
     (drd?.markdown ?? "") +
@@ -599,7 +606,7 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
         ...generated.provenance,
         source_question: parsed.data.topic,
         recommended_archetype: archetype,
-        origin: "topic_to_chart",
+        origin: parsed.data.origin ?? "topic_to_chart",
       },
       sortOrder: Number(maxOrder ?? 0) + 1,
     })
@@ -624,20 +631,22 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
 /**
  * Tiny heuristic archetype picker for when the writer doesn't specify one.
  * Looks for keywords in the topic. Designed to be cheap (no extra LLM call)
- * and to fall through to weekly_pattern as a sensible default.
+ * and to return null when the topic does not clearly match a built archetype.
  */
-function inferArchetype(topic: string): ChartArchetypeId {
+function inferArchetype(topic: string): ChartArchetypeId | null {
   const t = topic.toLowerCase();
+  if (/\bhistory|timeline|origin|origins|built|construction|opened|restoration|restored|medieval|ancient|modern era|turning points?\b/.test(t)) return "history_timeline";
   if (/\bhour|hourly|time of day|when in the day\b/.test(t)) return "hourly_heatmap";
   if (/\bday of (the )?week|weekday|weekend\b/.test(t)) return "weekly_pattern";
   if (/\bseason|month|monthly|year\b/.test(t)) return "seasonal_curve";
   if (/\bbook|in advance|days before|sell out|sold out\b/.test(t)) return "booking_window";
   if (/\bticket|tier|price|pass|skip the line\b/.test(t)) return "ticket_ladder";
+  if (/\broute|routes|stop|stops|pier|piers|landmark coverage|itinerary|covers|coverage\b/.test(t)) return "route_profile";
   if (/\bzone|hall|wing|area|room|gallery|section\b/.test(t)) return "compare_zones";
   if (/\bshare|breakdown|split|percentage|percent of\b/.test(t)) return "donut_breakdown";
   if (/\bdate|calendar|next \d+ (weeks|months|days)\b/.test(t)) return "month_calendar";
   if (/\bduration|how long|takes|spend\b/.test(t)) return "stat_grid";
-  return "weekly_pattern";
+  return null;
 }
 
 /**

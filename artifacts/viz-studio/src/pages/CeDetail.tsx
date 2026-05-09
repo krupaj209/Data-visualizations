@@ -82,6 +82,7 @@ const CHART_FRAME: Record<
   seat_value_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
+  route_profile: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 380 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,
@@ -105,6 +106,7 @@ const CHART_FRAME: Record<
   opening_hour_rank: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
   daily_programme: { aspectRatio: "16 / 7", minHeight: 280, maxHeight: 380 },
   time_split: { aspectRatio: "16 / 7", minHeight: 240, maxHeight: 340 },
+  history_timeline: { aspectRatio: "16 / 7", minHeight: 300, maxHeight: 440 },
   slot_compare: { aspectRatio: "5 / 4", minHeight: 320, maxHeight: 460 },
 };
 
@@ -566,7 +568,15 @@ function CeDetailInner({
         </div>
 
         {showIntel && (
-          <IntelPanel slug={slug} onClose={() => setShowIntel(false)} />
+          <IntelPanel
+            slug={slug}
+            onClose={() => setShowIntel(false)}
+            onChartCreated={() => {
+              qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+              qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+              setStatusFilter("draft");
+            }}
+          />
         )}
 
         {showIdeation && !showIntel && (
@@ -1434,6 +1444,7 @@ const ARCHETYPE_OPTIONS = [
   "compare_zones",
   "donut_breakdown",
   "ticket_ladder",
+  "route_profile",
 ];
 
 function NewChartForm({

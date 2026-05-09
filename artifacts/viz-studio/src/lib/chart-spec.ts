@@ -460,6 +460,25 @@ export interface StopFrequencySpec {
   }[];
 }
 
+export interface RouteProfileSpec {
+  type: "route_profile";
+  route_label: string;
+  mode: "cruise" | "bus" | "walk" | "day_trip" | "transfer" | "other";
+  distance_km?: number;
+  total_duration_min?: number;
+  headline_metric?: string;
+  stops: {
+    name: string;
+    kind: "start" | "landmark" | "transfer" | "stop" | "end";
+    duration_from_start_min?: number;
+    landmark_count?: number;
+    note?: string;
+    highlight?: boolean;
+  }[];
+  best_for?: string[];
+  callout?: string;
+}
+
 /**
  * Promoted Accademia bespokes (Task #33). Same shapes as
  * EntranceLanesSpec / DurationProfilesSpec — the renderers wrap the
@@ -662,6 +681,30 @@ export interface TimeSplitSpec {
   callout?: string;
 }
 
+/** Chronological narrative timeline for historical attractions. */
+export interface HistoryTimelineSpec {
+  type: "history_timeline";
+  span_label: string;
+  events: {
+    date_label: string;
+    sort_year: number;
+    title: string;
+    era:
+      | "origins"
+      | "construction"
+      | "spectacle"
+      | "decline"
+      | "reuse"
+      | "restoration"
+      | "modern";
+    description: string;
+    metric_label?: string;
+    metric_value?: string;
+  }[];
+  highlight_event?: string;
+  callout?: string;
+}
+
 /** 2–3 named time slots compared on 3–5 dimensions (grouped horizontal bars). */
 export interface SlotCompareSpec {
   type: "slot_compare";
@@ -707,6 +750,7 @@ export type ChartSpec =
   | SeatValueMapSpec
   | OptimalDepartureSpec
   | StopFrequencySpec
+  | RouteProfileSpec
   | QueueCompareSpec
   | DurationStatSpec
   | RideWaitCurveSpec
@@ -714,6 +758,7 @@ export type ChartSpec =
   | OpeningHourRankSpec
   | DailyProgrammeSpec
   | TimeSplitSpec
+  | HistoryTimelineSpec
   | SlotCompareSpec;
 
 /** Subset of the chart provenance object the renderers may surface to users. */

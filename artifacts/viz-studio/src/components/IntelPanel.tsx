@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   X,
+  Plus,
   ExternalLink,
   AlertTriangle,
   CheckCircle2,
@@ -20,6 +22,12 @@ import {
   type CeIntelligenceSource,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+
+type CreatedPlanChart = {
+  chartId: number;
+  verifyStatus: "checking" | "passed" | "issues" | "failed";
+  verifyLabel: string;
+};
 
 const SOURCE_LABELS: Record<string, string> = {
   official_site: "Official site",
@@ -41,20 +49,72 @@ const BUCKET_LABELS: Record<string, string> = {
   ops_notes: "Operational notes",
 };
 
+interface VisualizationPlan {
+  summary: string;
+  generatedAt: string;
+  evidence_inventory?: {
+    id: string;
+    label: string;
+    fact_count: number;
+    confidence: string;
+    sample_facts?: string[];
+  }[];
+  recommended_visualizations: {
+    question: string;
+    archetype: string;
+    why_it_matters: string;
+    data_needed?: string[];
+    evidence_refs?: string[];
+    priority: number;
+  }[];
+  rejected_visualizations: {
+    question: string;
+    archetype?: string;
+    reason: string;
+  }[];
+  traveler_questions: {
+    question: string;
+    recommended_archetype: string;
+    chartable: boolean;
+    evidence_status: string;
+    evidence_reason?: string;
+    confidence: number;
+    source_refs?: string[];
+  }[];
+  live_search_notes?: { finding: string; source_url?: string }[];
+}
+
 export function IntelPanel({
   slug,
   onClose,
+  onChartCreated,
 }: {
   slug: string;
   onClose: () => void;
+  onChartCreated?: () => void;
 }) {
   const { data, isLoading, error } = useGetCeIntelligence(slug);
   const refreshMut = useRefreshCeIntelligence();
   const deleteSourceMut = useDeleteCeIntelligenceSource();
   const qc = useQueryClient();
   const [refreshingSource, setRefreshingSource] = useState<string | null>(null);
+  const [plan, setPlan] = useState<VisualizationPlan | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
+  const [createdCharts, setCreatedCharts] = useState<
+    Record<string, CreatedPlanChart>
+  >(
+    () => ({}),
+  );
 
   const intel = (data ?? null) as CeIntelligence | null;
+  const savedPlan = (intel as unknown as { visualizationPlan?: unknown } | null)
+    ?.visualizationPlan as VisualizationPlan | undefined;
+
+  useEffect(() => {
+    if (!plan && savedPlan) setPlan(savedPlan);
+  }, [plan, savedPlan]);
 
   async function handleRefreshAll() {
     setRefreshingSource("__all__");
@@ -90,6 +150,116 @@ export function IntelPanel({
     qc.invalidateQueries({ queryKey: getGetCeIntelligenceQueryKey(slug) });
   }
 
+  async function handlePlanVisualizations() {
+    setIsPlanning(true);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/ce-intelligence/${slug}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ includeLiveSearch: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Visualization planning failed");
+      }
+      setPlan(json as VisualizationPlan);
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Visualization planning failed");
+    } finally {
+      setIsPlanning(false);
+    }
+  }
+
+  async function handleCreateFromPlan(
+    item: VisualizationPlan["recommended_visualizations"][number],
+  ) {
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      const plannerContext = [
+        item.why_it_matters ? `Why it matters: ${item.why_it_matters}` : "",
+        item.data_needed?.length
+          ? `Data needed: ${item.data_needed.join("; ")}`
+          : "",
+        item.evidence_refs?.length
+          ? `Evidence refs: ${item.evidence_refs.join("; ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const res = await fetch(`/api/ces/${slug}/charts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: item.question,
+          archetype: item.archetype,
+          plannerContext: plannerContext || undefined,
+          origin: "planner_recommendation",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Chart generation failed");
+      }
+      const chartId = Number(json?.id);
+      if (!Number.isFinite(chartId)) {
+        throw new Error("Chart was created, but the response did not include an id");
+      }
+      setCreatedCharts((prev) => ({
+        ...prev,
+        [item.question]: {
+          chartId,
+          verifyStatus: "checking",
+          verifyLabel: "Verifier running",
+        },
+      }));
+      onChartCreated?.();
+
+      try {
+        const verifyRes = await fetch(`/api/charts/${chartId}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const verifyJson = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verifyJson?.error ?? "Verification failed");
+        }
+        const notes = String(
+          verifyJson?.provenance?.verifier_notes ??
+            verifyJson?.verifier_notes ??
+            "",
+        );
+        const hasIssues =
+          /issue|unsupported|contradict|remove|not supported/i.test(notes);
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: hasIssues ? "issues" : "passed",
+            verifyLabel: hasIssues ? "Verifier found issues" : "Verifier passed",
+          },
+        }));
+        onChartCreated?.();
+      } catch (err) {
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: "failed",
+            verifyLabel:
+              err instanceof Error ? err.message : "Verification failed",
+          },
+        }));
+      }
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Chart generation failed");
+    } finally {
+      setCreatingQuestion(null);
+    }
+  }
+
   // Source rows always render the canonical 6 even if the profile is empty,
   // so writers can kick off any single adapter from a never-built CE.
   const ALL_SOURCES = [
@@ -110,6 +280,9 @@ export function IntelPanel({
     arr.push(f);
     factsByBucket.set(f.bucket, arr);
   }
+  const questionsByText = new Map(
+    (plan?.traveler_questions ?? []).map((q) => [q.question, q]),
+  );
 
   return (
     <aside
@@ -195,7 +368,127 @@ export function IntelPanel({
         Refresh all sources
       </button>
 
+      <button
+        type="button"
+        onClick={handlePlanVisualizations}
+        disabled={isPlanning}
+        style={{
+          background: "white",
+          color: BRAND.slate950,
+          border: `1px solid ${BRAND.slate200}`,
+          padding: "8px 12px",
+          borderRadius: 10,
+          fontWeight: 800,
+          fontSize: 12,
+          cursor: isPlanning ? "not-allowed" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          opacity: isPlanning ? 0.7 : 1,
+        }}
+      >
+        {isPlanning ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <Sparkles size={14} />
+        )}
+        Find chart opportunities
+      </button>
+
       <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+        {planError && (
+          <div
+            style={{
+              color: BRAND.candy,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: 10,
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 10,
+              background: "#fff7f7",
+            }}
+          >
+            {planError}
+          </div>
+        )}
+
+        {plan && (
+          <section>
+            <h4 style={sectionLabel()}>Visualization plan</h4>
+            <div
+              style={{
+                padding: 10,
+                borderRadius: 12,
+                border: `1px solid ${BRAND.slate200}`,
+                background: BRAND.slate50,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, color: BRAND.slate700, fontWeight: 650, lineHeight: 1.45 }}>
+                {plan.summary}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                {(plan.evidence_inventory ?? []).slice(0, 4).map((bucket) => (
+                  <EvidenceChip
+                    key={`${bucket.id}-${bucket.label}`}
+                    label={bucket.label}
+                    status={bucket.confidence}
+                    count={bucket.fact_count}
+                  />
+                ))}
+              </div>
+              <PlanList
+                title={`Recommended (${plan.recommended_visualizations.length})`}
+                items={plan.recommended_visualizations.map((item) => {
+                  const question = questionsByText.get(item.question);
+                  const created = createdCharts[item.question];
+                  return {
+                    key: `${item.priority}-${item.question}`,
+                    title: item.question,
+                    meta: item.archetype,
+                    body: item.why_it_matters,
+                    tone: "good" as const,
+                    evidenceStatus: question?.evidence_status,
+                    confidence: question?.confidence,
+                    sourceRefs: [
+                      ...(question?.source_refs ?? []),
+                      ...(item.evidence_refs ?? []),
+                    ],
+                    createdChart: created,
+                    actionLabel: created
+                      ? "Created"
+                      : "Create chart",
+                    actionDisabled:
+                      !!created ||
+                      creatingQuestion !== null,
+                    actionBusy: creatingQuestion === item.question,
+                    onAction: () => handleCreateFromPlan(item),
+                  };
+                })}
+              />
+              <PlanList
+                title={`Rejected (${plan.rejected_visualizations.length})`}
+                items={plan.rejected_visualizations.slice(0, 4).map((item) => ({
+                  key: item.question,
+                  title: item.question,
+                  meta: item.archetype ?? "no chart",
+                  body: item.reason,
+                  tone: "warn" as const,
+                }))}
+              />
+            </div>
+          </section>
+        )}
+
         {/* Sources strip */}
         <section>
           <h4 style={sectionLabel()}>Sources</h4>
@@ -406,6 +699,281 @@ function SourceStatusDot({ status }: { status: string }) {
   return <CircleDot size={14} color={BRAND.slate300} />;
 }
 
+function EvidenceChip({
+  label,
+  status,
+  count,
+}: {
+  label: string;
+  status: string;
+  count: number;
+}) {
+  const color = evidenceColor(status);
+  return (
+    <span
+      style={{
+        borderRadius: 999,
+        padding: "3px 7px",
+        background: color.bg,
+        color: color.fg,
+        fontSize: 10,
+        fontWeight: 850,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        maxWidth: "100%",
+      }}
+      title={`${label}: ${status}`}
+    >
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ opacity: 0.8 }}>· {count}</span>
+    </span>
+  );
+}
+
+function evidenceColor(status: string): { bg: string; fg: string } {
+  if (status === "strong") return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+  if (status === "partial") return { bg: BRAND.bgCool, fg: BRAND.purps };
+  if (status === "weak") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  return { bg: BRAND.slate100, fg: BRAND.slate700 };
+}
+
+function verifyTone(status: CreatedPlanChart["verifyStatus"]): {
+  bg: string;
+  fg: string;
+} {
+  if (status === "passed") return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+  if (status === "issues") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  if (status === "failed") return { bg: BRAND.candySoft, fg: BRAND.candy };
+  return { bg: BRAND.bgCool, fg: BRAND.purps };
+}
+
+function PlanList({
+  title,
+  items,
+}: {
+  title: string;
+  items: {
+    key: string;
+    title: string;
+    meta: string;
+    body: string;
+    tone: "good" | "warn";
+    evidenceStatus?: string;
+    confidence?: number;
+    sourceRefs?: string[];
+    createdChart?: CreatedPlanChart;
+    actionLabel?: string;
+    actionDisabled?: boolean;
+    actionBusy?: boolean;
+    onAction?: () => void;
+  }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 900,
+          color: BRAND.slate500,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {items.map((item) => (
+          <li
+            key={item.key}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              background: "white",
+              border: `1px solid ${
+                item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft
+              }`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
+                alignItems: "flex-start",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  color: BRAND.slate950,
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {item.title}
+              </div>
+              <span
+                style={{
+                  flex: "0 0 auto",
+                  borderRadius: 999,
+                  padding: "2px 6px",
+                  fontSize: 9,
+                  fontWeight: 900,
+                  color: item.tone === "good" ? BRAND.okayInk : BRAND.hola,
+                  background:
+                    item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft,
+                }}
+              >
+                {item.meta}
+              </span>
+            </div>
+            {item.body && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: BRAND.slate700,
+                  fontWeight: 600,
+                  lineHeight: 1.35,
+                }}
+              >
+                {item.body}
+              </div>
+            )}
+            {(item.evidenceStatus || item.confidence !== undefined) && (
+              <div
+                style={{
+                  marginTop: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                {item.evidenceStatus && (
+                  <EvidenceChip
+                    label={item.evidenceStatus}
+                    status={item.evidenceStatus}
+                    count={item.confidence ?? 0}
+                  />
+                )}
+                {item.confidence !== undefined && (
+                  <span
+                    style={{
+                      color: BRAND.slate500,
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    confidence {item.confidence}
+                  </span>
+                )}
+              </div>
+            )}
+            {item.sourceRefs && item.sourceRefs.length > 0 && (
+              <div
+                style={{
+                  marginTop: 5,
+                  fontSize: 10,
+                  color: BRAND.slate500,
+                  fontWeight: 650,
+                  lineHeight: 1.35,
+                }}
+                title={item.sourceRefs.join("\n")}
+              >
+                Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
+              </div>
+            )}
+            {item.createdChart && (
+              <div
+                style={{
+                  marginTop: 7,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  fontSize: 10,
+                  fontWeight: 850,
+                }}
+              >
+                <span
+                  style={{
+                    color: verifyTone(item.createdChart.verifyStatus).fg,
+                    background: verifyTone(item.createdChart.verifyStatus).bg,
+                    borderRadius: 999,
+                    padding: "3px 7px",
+                  }}
+                >
+                  {item.createdChart.verifyLabel}
+                </span>
+                <a
+                  href={`?edit=${item.createdChart.chartId}`}
+                  style={{
+                    color: BRAND.purps,
+                    textDecoration: "none",
+                  }}
+                >
+                  Open draft
+                </a>
+              </div>
+            )}
+            {item.onAction && (
+              <button
+                type="button"
+                onClick={item.onAction}
+                disabled={item.actionDisabled}
+                style={{
+                  marginTop: 8,
+                  border: "none",
+                  borderRadius: 9,
+                  padding: "6px 9px",
+                  background: item.actionDisabled
+                    ? BRAND.slate100
+                    : BRAND.purps,
+                  color: item.actionDisabled ? BRAND.slate500 : "white",
+                  fontSize: 11,
+                  fontWeight: 850,
+                  cursor: item.actionDisabled ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                {item.actionBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Plus size={12} />
+                )}
+                {item.actionLabel ?? "Create chart"}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const s = Math.round(ms / 1000);
@@ -416,6 +984,10 @@ function relativeTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
   return `${d}d ago`;
+}
+
+function dedupe(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 }
 
 function sectionLabel(): React.CSSProperties {

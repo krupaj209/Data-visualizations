@@ -29,6 +29,7 @@ import { ReturnBufferRankChart } from "./ReturnBufferRankChart";
 import { SeatValueMapChart } from "./SeatValueMapChart";
 import { OptimalDepartureChart } from "./OptimalDepartureChart";
 import { StopFrequencyChart } from "./StopFrequencyChart";
+import { RouteProfileChart } from "./RouteProfileChart";
 import {
   RideWaitCurveChart,
   ActivityWindowChart,
@@ -36,6 +37,7 @@ import {
 import { OpeningHourRankChart } from "./OpeningHourRankChart";
 import { DailyProgrammeChart } from "./DailyProgrammeChart";
 import { TimeSplitChart } from "./TimeSplitChart";
+import { HistoryTimelineChart } from "./HistoryTimelineChart";
 import { SlotCompareChart } from "./SlotCompareChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
@@ -235,6 +237,10 @@ export function ChartRenderer({
       return (
         <StopFrequencyChart spec={spec} context={context} compact={compact} />
       );
+    case "route_profile":
+      return (
+        <RouteProfileChart spec={spec} context={context} compact={compact} />
+      );
     case "ride_wait_curve":
       return (
         <RideWaitCurveChart spec={spec} context={context} compact={compact} />
@@ -250,6 +256,14 @@ export function ChartRenderer({
     case "time_split":
       return (
         <TimeSplitChart spec={spec} context={context} compact={compact} />
+      );
+    case "history_timeline":
+      return (
+        <HistoryTimelineChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
       );
     case "slot_compare":
       return (
