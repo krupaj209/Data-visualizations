@@ -84,6 +84,18 @@ interface VisualizationPlan {
     why_it_matters: string;
     data_needed?: string[];
     evidence_refs?: string[];
+    quality_score?: {
+      traveler_usefulness?: number;
+      evidence_strength?: number;
+      uniqueness?: number;
+      visual_fit?: number;
+      ce_specificity?: number;
+      cms_value?: number;
+      verifier_risk?: number;
+      overall?: number;
+      label?: string;
+      rationale?: string;
+    };
     priority: number;
   }[];
   rejected_visualizations: {
@@ -794,6 +806,7 @@ export function IntelPanel({
                       ...(question?.source_refs ?? []),
                       ...(item.evidence_refs ?? []),
                     ],
+                    qualityScore: item.quality_score,
                     createdChart: created,
                     actionLabel: created
                       ? "Created"
@@ -1273,6 +1286,7 @@ function PlanList({
     confidence?: number;
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
+    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
     extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
@@ -1341,6 +1355,7 @@ function PlanListItem({
     confidence?: number;
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
+    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
     extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
@@ -1430,6 +1445,9 @@ function PlanListItem({
                 {item.createdChart.verifyLabel}
               </span>
             )}
+            {item.qualityScore && (
+              <QualityScorePill score={item.qualityScore} compact />
+            )}
           </div>
         </div>
         <ChevronDown
@@ -1474,6 +1492,9 @@ function PlanListItem({
             >
               Confidence {item.confidence}
             </div>
+          )}
+          {item.qualityScore && (
+            <QualityScoreBlock score={item.qualityScore} />
           )}
           {item.sourceRefs && item.sourceRefs.length > 0 && (
             <div
@@ -1546,6 +1567,111 @@ function PlanListItem({
         </div>
       )}
     </li>
+  );
+}
+
+function qualityLabel(label: string | undefined): string {
+  if (label === "needs_evidence") return "Needs evidence";
+  if (label === "not_worth_charting") return "Not worth charting";
+  if (label === "good_but_duplicate") return "Good but duplicate";
+  return "Recommended";
+}
+
+function qualityTone(label: string | undefined): { bg: string; fg: string } {
+  if (label === "needs_evidence") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  if (label === "not_worth_charting") {
+    return { bg: BRAND.candySoft, fg: BRAND.candy };
+  }
+  if (label === "good_but_duplicate") {
+    return { bg: BRAND.slate100, fg: BRAND.slate700 };
+  }
+  return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+}
+
+function QualityScorePill({
+  score,
+  compact = false,
+}: {
+  score: NonNullable<
+    VisualizationPlan["recommended_visualizations"][number]["quality_score"]
+  >;
+  compact?: boolean;
+}) {
+  const tone = qualityTone(score.label);
+  return (
+    <span
+      style={{
+        borderRadius: 999,
+        padding: compact ? "2px 6px" : "3px 7px",
+        background: tone.bg,
+        color: tone.fg,
+        fontSize: compact ? 9 : 10,
+        fontWeight: 850,
+      }}
+    >
+      {qualityLabel(score.label)} · {Math.round(score.overall ?? 0)}
+    </span>
+  );
+}
+
+function QualityScoreBlock({
+  score,
+}: {
+  score: NonNullable<
+    VisualizationPlan["recommended_visualizations"][number]["quality_score"]
+  >;
+}) {
+  const metrics = [
+    ["Useful", score.traveler_usefulness],
+    ["Evidence", score.evidence_strength],
+    ["Unique", score.uniqueness],
+    ["Visual fit", score.visual_fit],
+    ["CE-specific", score.ce_specificity],
+    ["CMS value", score.cms_value],
+    ["Risk", score.verifier_risk],
+  ] as const;
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        border: `1px solid ${BRAND.slate100}`,
+        background: "white",
+        borderRadius: 9,
+        padding: 8,
+      }}
+    >
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        <QualityScorePill score={score} />
+        {metrics.map(([label, value]) => (
+          <span
+            key={label}
+            style={{
+              color: BRAND.slate500,
+              background: BRAND.slate50,
+              borderRadius: 999,
+              padding: "3px 7px",
+              fontSize: 10,
+              fontWeight: 800,
+            }}
+          >
+            {label} {Math.round(value ?? 0)}
+          </span>
+        ))}
+      </div>
+      {score.rationale && (
+        <div
+          style={{
+            marginTop: 6,
+            color: BRAND.slate700,
+            fontSize: 10,
+            fontWeight: 650,
+            lineHeight: 1.35,
+          }}
+        >
+          {score.rationale}
+        </div>
+      )}
+    </div>
   );
 }
 

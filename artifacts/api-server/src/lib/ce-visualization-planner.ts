@@ -53,6 +53,22 @@ export interface PlannerVisualization {
   why_it_matters: string;
   data_needed: string[];
   evidence_refs: string[];
+  quality_score: {
+    traveler_usefulness: number;
+    evidence_strength: number;
+    uniqueness: number;
+    visual_fit: number;
+    ce_specificity: number;
+    cms_value: number;
+    verifier_risk: number;
+    overall: number;
+    label:
+      | "recommended"
+      | "needs_evidence"
+      | "not_worth_charting"
+      | "good_but_duplicate";
+    rationale: string;
+  };
   priority: number;
 }
 
@@ -336,6 +352,18 @@ Return STRICT JSON only, shape:
       "why_it_matters": "one sentence",
       "data_needed": ["specific fields the chart needs"],
       "evidence_refs": ["DRD phrase, fact id, or source domain"],
+      "quality_score": {
+        "traveler_usefulness": 0-100,
+        "evidence_strength": 0-100,
+        "uniqueness": 0-100,
+        "visual_fit": 0-100,
+        "ce_specificity": 0-100,
+        "cms_value": 0-100,
+        "verifier_risk": 0-100,
+        "overall": 0-100,
+        "label": "recommended|needs_evidence|not_worth_charting|good_but_duplicate",
+        "rationale": "short reason for the score"
+      },
       "priority": 1
     }
   ],
@@ -363,7 +391,10 @@ Rules:
 - Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, ticket, duration, and best-fit questions over generic crowd charts.
 - Use evidence_status "strong" only when multiple sources or a very explicit DRD/source supports the chart data.
 - Use "partial" when a chart is directionally supportable but will need careful verification.
-- Use "weak" or "missing" for rejected items.`;
+- Use "weak" or "missing" for rejected items.
+- Score every recommended candidate across traveler usefulness, evidence strength, uniqueness, visual fit, CE specificity, CMS/page value, and verifier risk.
+- verifier_risk means risk of unsupported/stale/misleading claims; lower is better. overall should penalize high verifier risk and weak evidence.
+- Only use quality_score.label "recommended" for strong overall candidates. Use "needs_evidence" when useful but under-supported, "good_but_duplicate" when it overlaps an existing/recommended chart, and "not_worth_charting" only if it slips into recommendations despite low page value.`;
 
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -414,6 +445,25 @@ Rules:
   for (const v of parsed.recommended_visualizations ?? []) {
     if (!v.question || !isArchetypeId(v.archetype)) continue;
     if (!isImplementedArchetype(v.archetype)) continue;
+    const rawScore = v.quality_score;
+    const qualityScore = {
+      traveler_usefulness: clampInt(rawScore?.traveler_usefulness ?? 70, 0, 100),
+      evidence_strength: clampInt(rawScore?.evidence_strength ?? 60, 0, 100),
+      uniqueness: clampInt(rawScore?.uniqueness ?? 70, 0, 100),
+      visual_fit: clampInt(rawScore?.visual_fit ?? 70, 0, 100),
+      ce_specificity: clampInt(rawScore?.ce_specificity ?? 70, 0, 100),
+      cms_value: clampInt(rawScore?.cms_value ?? 70, 0, 100),
+      verifier_risk: clampInt(rawScore?.verifier_risk ?? 35, 0, 100),
+      overall: clampInt(rawScore?.overall ?? 70, 0, 100),
+      label:
+        rawScore?.label === "needs_evidence" ||
+        rawScore?.label === "not_worth_charting" ||
+        rawScore?.label === "good_but_duplicate" ||
+        rawScore?.label === "recommended"
+          ? rawScore.label
+          : "recommended",
+      rationale: String(rawScore?.rationale ?? "").slice(0, 180),
+    };
     recommended.push({
       question: String(v.question).slice(0, 180),
       archetype: v.archetype,
@@ -424,6 +474,7 @@ Rules:
       evidence_refs: Array.isArray(v.evidence_refs)
         ? v.evidence_refs.map((r) => String(r).slice(0, 160)).slice(0, 8)
         : [],
+      quality_score: qualityScore,
       priority: clampInt(v.priority ?? recommended.length + 1, 1, 99),
     });
   }

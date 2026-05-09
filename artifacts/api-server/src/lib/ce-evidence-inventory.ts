@@ -12,6 +12,8 @@ export const EVIDENCE_CATEGORY_IDS = [
   "seasonality",
   "prices",
   "restrictions",
+  "visitor_sentiment",
+  "comparison_dimensions",
   "nearby_pairings",
 ] as const;
 
@@ -54,6 +56,8 @@ const CATEGORY_LABELS: Record<EvidenceCategoryId, string> = {
   seasonality: "Seasonality",
   prices: "Prices",
   restrictions: "Restrictions",
+  visitor_sentiment: "Visitor sentiment",
+  comparison_dimensions: "Comparison dimensions",
   nearby_pairings: "Nearby pairings",
 };
 
@@ -93,6 +97,12 @@ const CATEGORY_PATTERNS: Record<EvidenceCategoryId, RegExp[]> = {
   restrictions: [
     /\b(restriction|restricted|not allowed|prohibited|closed|closure|bag|dress code|age|height)\b/i,
   ],
+  visitor_sentiment: [
+    /\b(review|reviews|visitor|traveler|traveller|complain|complaint|love|liked|disliked|confusing|worth it|overrated|highlight)\b/i,
+  ],
+  comparison_dimensions: [
+    /\b(compare|comparison|versus|vs\.?|better|best for|option|tier|type|package|operator|included|difference|trade[- ]off)\b/i,
+  ],
   nearby_pairings: [
     /\b(nearby|pair|combine|co[- ]book|next to|walking distance|museum|gallery|gardens|palace)\b/i,
   ],
@@ -105,7 +115,7 @@ const INTEL_BUCKET_TO_CATEGORY: Partial<Record<string, EvidenceCategoryId[]>> = 
   wait_times: ["wait_times", "crowd_claims"],
   zones: ["routes_stops", "nearby_pairings"],
   co_bookings: ["nearby_pairings"],
-  sentiment: ["crowd_claims"],
+  sentiment: ["visitor_sentiment", "crowd_claims"],
   ops_notes: ["restrictions", "opening_hours"],
 };
 
@@ -159,6 +169,8 @@ function gapFor(category: EvidenceCategoryId): string {
     seasonality: "No month/season/weather pattern evidence found.",
     prices: "No current price or price-tier evidence found.",
     restrictions: "No operational restriction or closure evidence found.",
+    visitor_sentiment: "No clear visitor sentiment or recurring pain-point evidence found.",
+    comparison_dimensions: "No clear dimensions for comparing options found.",
     nearby_pairings: "No nearby pairing or co-booking evidence found.",
   };
   return gaps[category];
