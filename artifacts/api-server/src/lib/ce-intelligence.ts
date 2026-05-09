@@ -156,12 +156,15 @@ async function runGroundedAdapter(
   source: IntelSourceId,
   ctx: AdapterContext,
   searchQuery: string,
+  sourceGuidance: string,
 ): Promise<AdapterResult> {
   const prompt = `You are building a research profile for a Headout listing-page tool.
 
 CE: ${ctx.ce.name} (${ctx.ce.city}, ${ctx.ce.country})
 
-Use Google Search with this query to gather information ONLY from the indicated source:
+Source to inspect: ${sourceGuidance}
+
+Use Google Search with this query to gather information from that source:
 "${searchQuery}"
 
 Extract concrete, useful facts a ticketing CMS team would want when designing visualizations. Group every fact under one of these buckets:
@@ -183,8 +186,10 @@ Output STRICT JSON only (no markdown), shape:
 
 Rules:
 - Do NOT invent facts. If the source has nothing useful, return { "facts": [] }.
+- For OTA/review/forum sources, useful facts may come from listing pages, product pages, review snippets, Q&A pages, or category pages on that source.
+- Stay on the named source. Do not fill TripAdvisor/GetYourGuide/Viator/Reddit rows with official-site facts.
 - Each "value" should be standalone and readable — no pronouns referring to context.
-- Prefer numbers, dates, opening hours, prices, named zones, crowd descriptions, queue minutes.
+- Prefer numbers, dates, opening hours, prices, named zones, route/stop details, crowd descriptions, review themes, queue minutes, tour durations, inclusions, and cancellation or access notes.
 - If the source contradicts common knowledge, prefer what the source says — confidence reflects clarity, not plausibility.
 - Today is ${new Date().toISOString().slice(0, 10)}.`;
 
@@ -244,34 +249,39 @@ const officialSiteAdapter: IntelAdapter = (ctx) =>
     "official_site",
     ctx,
     `${ctx.ce.name} ${ctx.ce.city} official site opening hours tickets visitor information`,
+    "the attraction/operator official website or official ticketing page",
   );
 
 const tripAdvisorAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "tripadvisor",
     ctx,
-    `site:tripadvisor.com ${ctx.ce.name} ${ctx.ce.city} reviews wait time tips`,
+    `TripAdvisor ${ctx.ce.name} ${ctx.ce.city} reviews tickets wait time visitor tips`,
+    "TripAdvisor pages only, including attraction reviews, forum posts, Q&A, and traveler tips",
   );
 
 const getYourGuideAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "getyourguide",
     ctx,
-    `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} ticket types prices skip the line`,
+    `GetYourGuide ${ctx.ce.name} ${ctx.ce.city} tickets tours prices duration inclusions`,
+    "GetYourGuide product or category pages only",
   );
 
 const viatorAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "viator",
     ctx,
-    `site:viator.com ${ctx.ce.name} ${ctx.ce.city} ticket types tour options`,
+    `Viator ${ctx.ce.name} ${ctx.ce.city} tours tickets prices duration inclusions`,
+    "Viator product or category pages only",
   );
 
 const redditAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "reddit",
     ctx,
-    `site:reddit.com ${ctx.ce.name} ${ctx.ce.city} best time to visit crowds tips`,
+    `Reddit ${ctx.ce.name} ${ctx.ce.city} best time visit crowds tickets tips`,
+    "Reddit posts and comment threads only",
   );
 
 /**
