@@ -13,6 +13,7 @@ import {
   CircleDot,
   FileText,
   Upload,
+  ChevronDown,
 } from "lucide-react";
 import {
   useGetCeIntelligence,
@@ -1117,6 +1118,9 @@ function PlanList({
     onAction?: () => void;
   }[];
 }) {
+  const [openItems, setOpenItems] = useState<Record<string, boolean>>(
+    () => ({}),
+  );
   if (items.length === 0) return null;
   return (
     <div>
@@ -1143,175 +1147,243 @@ function PlanList({
         }}
       >
         {items.map((item) => (
-          <li
+          <PlanListItem
             key={item.key}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              background: "white",
-              border: `1px solid ${
-                item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft
-              }`,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                alignItems: "flex-start",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  color: BRAND.slate950,
-                  fontWeight: 750,
-                  lineHeight: 1.35,
-                }}
-              >
-                {item.title}
-              </div>
-              <span
-                style={{
-                  flex: "0 0 auto",
-                  borderRadius: 999,
-                  padding: "2px 6px",
-                  fontSize: 9,
-                  fontWeight: 900,
-                  color: item.tone === "good" ? BRAND.okayInk : BRAND.hola,
-                  background:
-                    item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft,
-                }}
-              >
-                {item.meta}
-              </span>
-            </div>
-            {item.body && (
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 11,
-                  color: BRAND.slate700,
-                  fontWeight: 600,
-                  lineHeight: 1.35,
-                }}
-              >
-                {item.body}
-              </div>
-            )}
-            {(item.evidenceStatus || item.confidence !== undefined) && (
-              <div
-                style={{
-                  marginTop: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  flexWrap: "wrap",
-                }}
-              >
-                {item.evidenceStatus && (
-                  <EvidenceChip
-                    label={item.evidenceStatus}
-                    status={item.evidenceStatus}
-                    count={item.confidence ?? 0}
-                  />
-                )}
-                {item.confidence !== undefined && (
-                  <span
-                    style={{
-                      color: BRAND.slate500,
-                      fontSize: 10,
-                      fontWeight: 800,
-                    }}
-                  >
-                    confidence {item.confidence}
-                  </span>
-                )}
-              </div>
-            )}
-            {item.sourceRefs && item.sourceRefs.length > 0 && (
-              <div
-                style={{
-                  marginTop: 5,
-                  fontSize: 10,
-                  color: BRAND.slate500,
-                  fontWeight: 650,
-                  lineHeight: 1.35,
-                }}
-                title={item.sourceRefs.join("\n")}
-              >
-                Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
-              </div>
-            )}
-            {item.createdChart && (
-              <div
-                style={{
-                  marginTop: 7,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  fontSize: 10,
-                  fontWeight: 850,
-                }}
-              >
-                <span
-                  style={{
-                    color: verifyTone(item.createdChart.verifyStatus).fg,
-                    background: verifyTone(item.createdChart.verifyStatus).bg,
-                    borderRadius: 999,
-                    padding: "3px 7px",
-                  }}
-                >
-                  {item.createdChart.verifyLabel}
-                </span>
-                <a
-                  href={`?edit=${item.createdChart.chartId}`}
-                  style={{
-                    color: BRAND.purps,
-                    textDecoration: "none",
-                  }}
-                >
-                  Open draft
-                </a>
-              </div>
-            )}
-            {item.extra}
-            {item.onAction && (
-              <button
-                type="button"
-                onClick={item.onAction}
-                disabled={item.actionDisabled}
-                style={{
-                  marginTop: 8,
-                  border: "none",
-                  borderRadius: 9,
-                  padding: "6px 9px",
-                  background: item.actionDisabled
-                    ? BRAND.slate100
-                    : BRAND.purps,
-                  color: item.actionDisabled ? BRAND.slate500 : "white",
-                  fontSize: 11,
-                  fontWeight: 850,
-                  cursor: item.actionDisabled ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                {item.actionBusy ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Plus size={12} />
-                )}
-                {item.actionLabel ?? "Create chart"}
-              </button>
-            )}
-          </li>
+            item={item}
+            isOpen={!!openItems[item.key]}
+            onToggle={() =>
+              setOpenItems((prev) => ({
+                ...prev,
+                [item.key]: !prev[item.key],
+              }))
+            }
+          />
         ))}
       </ul>
     </div>
+  );
+}
+
+function PlanListItem({
+  item,
+  isOpen,
+  onToggle,
+}: {
+  item: {
+    key: string;
+    title: string;
+    meta: string;
+    body: string;
+    tone: "good" | "warn";
+    evidenceStatus?: string;
+    confidence?: number;
+    sourceRefs?: string[];
+    createdChart?: CreatedPlanChart;
+    extra?: ReactNode;
+    actionLabel?: string;
+    actionDisabled?: boolean;
+    actionBusy?: boolean;
+    onAction?: () => void;
+  };
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const toneBg = item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft;
+  const toneFg = item.tone === "good" ? BRAND.okayInk : BRAND.hola;
+  return (
+    <li
+      style={{
+        borderRadius: 10,
+        background: "white",
+        border: `1px solid ${isOpen ? toneBg : BRAND.slate100}`,
+        overflow: "hidden",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          border: "none",
+          background: "transparent",
+          padding: "8px 10px",
+          cursor: "pointer",
+          textAlign: "left",
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 8,
+          alignItems: "start",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: BRAND.slate950,
+              fontWeight: 750,
+              lineHeight: 1.35,
+            }}
+          >
+            {item.title}
+          </div>
+          <div
+            style={{
+              marginTop: 5,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                borderRadius: 999,
+                padding: "2px 6px",
+                fontSize: 9,
+                fontWeight: 900,
+                color: toneFg,
+                background: toneBg,
+              }}
+            >
+              {item.meta}
+            </span>
+            {item.evidenceStatus && (
+              <EvidenceChip
+                label={item.evidenceStatus}
+                status={item.evidenceStatus}
+                count={item.confidence ?? 0}
+              />
+            )}
+            {item.createdChart && (
+              <span
+                style={{
+                  color: verifyTone(item.createdChart.verifyStatus).fg,
+                  background: verifyTone(item.createdChart.verifyStatus).bg,
+                  borderRadius: 999,
+                  padding: "2px 6px",
+                  fontSize: 9,
+                  fontWeight: 850,
+                }}
+              >
+                {item.createdChart.verifyLabel}
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          size={14}
+          color={BRAND.slate500}
+          style={{
+            marginTop: 2,
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 140ms ease",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            borderTop: `1px solid ${BRAND.slate100}`,
+            padding: "8px 10px 10px",
+            background: BRAND.slate50,
+          }}
+        >
+          {item.body && (
+            <div
+              style={{
+                fontSize: 11,
+                color: BRAND.slate700,
+                fontWeight: 600,
+                lineHeight: 1.35,
+              }}
+            >
+              {item.body}
+            </div>
+          )}
+          {item.confidence !== undefined && (
+            <div
+              style={{
+                marginTop: 6,
+                color: BRAND.slate500,
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              Confidence {item.confidence}
+            </div>
+          )}
+          {item.sourceRefs && item.sourceRefs.length > 0 && (
+            <div
+              style={{
+                marginTop: 5,
+                fontSize: 10,
+                color: BRAND.slate500,
+                fontWeight: 650,
+                lineHeight: 1.35,
+              }}
+              title={item.sourceRefs.join("\n")}
+            >
+              Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
+            </div>
+          )}
+          {item.createdChart && (
+            <div
+              style={{
+                marginTop: 7,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                fontSize: 10,
+                fontWeight: 850,
+              }}
+            >
+              <a
+                href={`?edit=${item.createdChart.chartId}`}
+                style={{
+                  color: BRAND.purps,
+                  textDecoration: "none",
+                }}
+              >
+                Open draft
+              </a>
+            </div>
+          )}
+          {item.extra}
+          {item.onAction && (
+            <button
+              type="button"
+              onClick={item.onAction}
+              disabled={item.actionDisabled}
+              style={{
+                marginTop: 8,
+                border: "none",
+                borderRadius: 9,
+                padding: "6px 9px",
+                background: item.actionDisabled
+                  ? BRAND.slate100
+                  : BRAND.purps,
+                color: item.actionDisabled ? BRAND.slate500 : "white",
+                fontSize: 11,
+                fontWeight: 850,
+                cursor: item.actionDisabled ? "not-allowed" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              {item.actionBusy ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Plus size={12} />
+              )}
+              {item.actionLabel ?? "Create chart"}
+            </button>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 
