@@ -657,6 +657,7 @@ function ChartRow({
   const updateMut = useUpdateChart();
   const publishMut = usePublishChart();
   const verifyMut = useVerifyChart();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const spec = chart.spec as unknown as ChartSpec;
   const meta = CHART_TYPE_META[spec.type] ?? { label: spec.type, emoji: "📈" };
@@ -681,6 +682,36 @@ function ChartRow({
     setVerification(null);
     const result = await verifyMut.mutateAsync({ id: chart.id });
     setVerification(result);
+  }
+
+  async function handleDeleteChart() {
+    if (
+      !confirm(
+        `Delete "${headline}"? This removes the chart from this CE and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/charts/${chart.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        let message = `Delete failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          // keep default
+        }
+        throw new Error(message);
+      }
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+      await qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete chart");
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -802,6 +833,25 @@ function ChartRow({
             )}
 
           <EmbedActions chartId={chart.id} />
+          <button
+            type="button"
+            onClick={handleDeleteChart}
+            disabled={isDeleting}
+            style={{
+              ...ghostBtn(false),
+              color: BRAND.candy,
+              borderColor: BRAND.candySoft,
+              background: "white",
+            }}
+            title="Delete chart"
+          >
+            {isDeleting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete
+          </button>
         </div>
       </div>
 

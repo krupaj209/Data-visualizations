@@ -24,6 +24,7 @@ import {
 } from "@workspace/question-bank";
 import { slugify } from "../lib/generate-ce";
 import { openai } from "../lib/openai";
+import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
 
 const router: IRouter = Router();
 
@@ -214,6 +215,47 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
         err instanceof Error ? `Failed to update: ${err.message}` : "Failed",
     });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* DELETE /charts/:id — remove one chart                                       */
+/* -------------------------------------------------------------------------- */
+
+router.delete("/charts/:id", async (req, res): Promise<void> => {
+  const params = GetChartParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [row] = await db
+    .select({ chart: chartsTable, ce: cesTable })
+    .from(chartsTable)
+    .innerJoin(cesTable, eq(cesTable.id, chartsTable.ceId))
+    .where(eq(chartsTable.id, params.data.id));
+  if (!row) {
+    res.status(404).json({ error: "Chart not found" });
+    return;
+  }
+
+  if (LOCKED_CE_SLUGS.has(row.ce.slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and its charts cannot be deleted.",
+    });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(chartsTable)
+    .where(eq(chartsTable.id, row.chart.id))
+    .returning();
+  if (!deleted) {
+    res.status(500).json({ error: "Failed to delete chart" });
+    return;
+  }
+
+  res.json(serializeChart(deleted));
 });
 
 /* -------------------------------------------------------------------------- */
