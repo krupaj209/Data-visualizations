@@ -48,6 +48,11 @@ import {
   type ChartProvenanceLite,
   type ChartSpec,
 } from "@/lib/chart-spec";
+import {
+  buildChartFactRows,
+  type ChartFactRow,
+  type ChartFactStatus,
+} from "@/lib/chart-fact-table";
 import { toSentenceCase } from "@/lib/text";
 import { SpecEditor } from "@/components/SpecEditor";
 import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
@@ -652,6 +657,7 @@ function ChartRow({
   // the saved one. This is just a stash that flows into ChartEditor as
   // `initialSpec`; once the editor closes we drop it.
   const [editorSeed, setEditorSeed] = useState<ChartSpec | null>(null);
+  const [editFocus, setEditFocus] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const updateMut = useUpdateChart();
@@ -865,6 +871,7 @@ function ChartRow({
                   setEditorSeed(
                     verification.suggestedSpec as unknown as ChartSpec,
                   );
+                  setEditFocus(null);
                   setMode("edit");
                   setVerification(null);
                 }
@@ -951,6 +958,14 @@ function ChartRow({
           <ProvenanceDisclosure
             provenance={chart.provenance as ChartProvenanceLite | null}
           />
+          <ChartFactTable
+            spec={spec}
+            provenance={chart.provenance as ChartProvenanceLite | null}
+            onEdit={(path) => {
+              setEditFocus(path);
+              setMode("edit");
+            }}
+          />
         </aside>
       </div>
 
@@ -961,18 +976,219 @@ function ChartRow({
           onCancel={() => {
             setMode("view");
             setEditorSeed(null);
+            setEditFocus(null);
           }}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
             setMode("view");
             setEditorSeed(null);
+            setEditFocus(null);
           }}
           updateMut={updateMut}
           initialSpec={editorSeed ?? undefined}
+          focusPath={editFocus ?? undefined}
         />
       )}
     </section>
   );
+}
+
+function ChartFactTable({
+  spec,
+  provenance,
+  onEdit,
+}: {
+  spec: ChartSpec;
+  provenance: ChartProvenanceLite | null;
+  onEdit: (path: string) => void;
+}) {
+  const rows = useMemo(
+    () => buildChartFactRows(spec, provenance).slice(0, 14),
+    [spec, provenance],
+  );
+
+  if (rows.length === 0) return null;
+
+  return (
+    <details
+      style={{
+        border: `1px solid ${BRAND.slate200}`,
+        borderRadius: 12,
+        background: "white",
+        overflow: "hidden",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          listStyle: "none",
+          padding: "10px 12px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          color: BRAND.slate900,
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        Fact table
+        <span
+          style={{
+            color: BRAND.slate500,
+            fontSize: 10,
+            fontWeight: 800,
+          }}
+        >
+          {rows.length} claim{rows.length === 1 ? "" : "s"}
+        </span>
+      </summary>
+      <div style={{ borderTop: `1px solid ${BRAND.slate100}` }}>
+        {rows.map((row) => (
+          <FactTableRow key={row.id} row={row} onEdit={onEdit} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function FactTableRow({
+  row,
+  onEdit,
+}: {
+  row: ChartFactRow;
+  onEdit: (path: string) => void;
+}) {
+  const statusStyle = factStatusStyle(row.status);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 8,
+        padding: "10px 12px",
+        borderBottom: `1px solid ${BRAND.slate100}`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div
+            style={{
+              color: BRAND.slate950,
+              fontSize: 12,
+              fontWeight: 800,
+              lineHeight: 1.25,
+            }}
+          >
+            {row.claim}
+          </div>
+          <div
+            style={{
+              color: BRAND.slate700,
+              fontSize: 11,
+              fontWeight: 600,
+              lineHeight: 1.35,
+              marginTop: 3,
+            }}
+          >
+            {row.value}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onEdit(row.path)}
+          style={{
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 8,
+            background: BRAND.slate50,
+            color: BRAND.slate900,
+            fontSize: 10,
+            fontWeight: 800,
+            padding: "5px 7px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Edit
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span
+          style={{
+            borderRadius: 999,
+            padding: "3px 7px",
+            background: statusStyle.bg,
+            color: statusStyle.fg,
+            fontSize: 10,
+            fontWeight: 800,
+          }}
+        >
+          {statusStyle.label}
+        </span>
+        <span
+          style={{
+            borderRadius: 999,
+            padding: "3px 7px",
+            background: BRAND.slate100,
+            color: BRAND.slate700,
+            fontSize: 10,
+            fontWeight: 800,
+          }}
+        >
+          conf {row.confidence}
+        </span>
+        {row.sourceUrl ? (
+          <a
+            href={row.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              borderRadius: 999,
+              padding: "3px 7px",
+              background: "#F3EAFF",
+              color: BRAND.purps,
+              fontSize: 10,
+              fontWeight: 800,
+              display: "inline-flex",
+              gap: 3,
+              alignItems: "center",
+              textDecoration: "none",
+            }}
+          >
+            {row.sourceLabel}
+            <ExternalLink size={10} />
+          </a>
+        ) : (
+          <span
+            style={{
+              borderRadius: 999,
+              padding: "3px 7px",
+              background: "#F3EAFF",
+              color: BRAND.purps,
+              fontSize: 10,
+              fontWeight: 800,
+            }}
+          >
+            {row.sourceLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function factStatusStyle(status: ChartFactStatus) {
+  if (status === "verified") {
+    return { label: "Verified", bg: BRAND.bgMint, fg: "#0E8F4E" };
+  }
+  if (status === "source_backed") {
+    return { label: "Source backed", bg: "#F3EAFF", fg: BRAND.purps };
+  }
+  if (status === "needs_review") {
+    return { label: "Needs review", bg: "#FFF6E0", fg: "#9A5B00" };
+  }
+  return { label: "Estimated", bg: BRAND.candySoft, fg: BRAND.candy };
 }
 
 function ProvenanceDisclosure({
@@ -1199,6 +1415,7 @@ function ChartEditor({
   onSaved,
   updateMut,
   initialSpec,
+  focusPath,
 }: {
   chart: Chart;
   ceSlug: string;
@@ -1212,6 +1429,8 @@ function ChartEditor({
    * suggestion instead of the saved spec.
    */
   initialSpec?: ChartSpec;
+  /** Optional JSON path selected from the fact table. */
+  focusPath?: string;
 }) {
   const [question, setQuestion] = useState(chart.question || "");
   const [title, setTitle] = useState(chart.title);
@@ -1363,6 +1582,24 @@ function ChartEditor({
             </label>
           </div>
 
+          {focusPath && (
+            <div
+              style={{
+                border: `1px solid ${BRAND.slate200}`,
+                background: "#F3EAFF",
+                borderRadius: 10,
+                padding: "8px 10px",
+                color: BRAND.slate900,
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              Editing fact path:{" "}
+              <code style={{ color: BRAND.purps, fontWeight: 800 }}>
+                spec.{focusPath}
+              </code>
+            </div>
+          )}
           <SpecEditor spec={spec} onChange={setSpec} />
           <label
             className="flex items-center gap-2 mt-1"
