@@ -948,6 +948,9 @@ function ChartRow({
               Block subtitle: {toSentenceCase(chart.subtitle, opts)}
             </p>
           )}
+          <ProvenanceDisclosure
+            provenance={chart.provenance as ChartProvenanceLite | null}
+          />
         </aside>
       </div>
 
@@ -969,6 +972,181 @@ function ChartRow({
         />
       )}
     </section>
+  );
+}
+
+function ProvenanceDisclosure({
+  provenance,
+}: {
+  provenance: ChartProvenanceLite | null;
+}) {
+  if (!provenance) return null;
+
+  const drdSnippets = (provenance.drd_snippets ?? []).filter(Boolean);
+  const webSources = (provenance.web_sources ?? []).filter(
+    (source) => source?.title || source?.url,
+  );
+  const estimates = (provenance.estimates ?? []).filter(
+    (estimate) => estimate?.field || estimate?.reasoning,
+  );
+  const intelRefs = provenance.intelligence_refs ?? [];
+  const verifierNotes = provenance.verifier_notes?.trim();
+
+  if (
+    drdSnippets.length === 0 &&
+    webSources.length === 0 &&
+    estimates.length === 0 &&
+    intelRefs.length === 0 &&
+    !verifierNotes &&
+    !provenance.status
+  ) {
+    return null;
+  }
+
+  const status = provenance.status ?? "estimated";
+  const isEstimated = status === "estimated" || estimates.length > 0;
+  const statusCopy =
+    status === "drd_grounded"
+      ? "DRD grounded"
+      : status === "web_grounded"
+        ? "Source grounded"
+        : "Estimated";
+
+  return (
+    <details
+      open={isEstimated}
+      style={{
+        border: `1px solid ${isEstimated ? BRAND.candySoft : BRAND.slate200}`,
+        borderRadius: 12,
+        background: isEstimated ? "#FFF7FB" : "white",
+        padding: "10px 12px",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          listStyle: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          color: BRAND.slate900,
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        Evidence & estimates
+        <span
+          style={{
+            borderRadius: 999,
+            padding: "3px 8px",
+            background: isEstimated ? BRAND.candySoft : BRAND.bgMint,
+            color: isEstimated ? BRAND.candy : "#0E8F4E",
+            fontSize: 10,
+            fontWeight: 800,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {statusCopy}
+        </span>
+      </summary>
+
+      <div className="mt-3 flex flex-col gap-3">
+        {drdSnippets.length > 0 && (
+          <ProvenanceSection title="Facts we know">
+            {drdSnippets.slice(0, 3).map((snippet, index) => (
+              <p key={`${snippet}-${index}`} style={provenanceTextStyle}>
+                {snippet}
+              </p>
+            ))}
+          </ProvenanceSection>
+        )}
+
+        {intelRefs.length > 0 && (
+          <ProvenanceSection title="CE Intel references">
+            <p style={provenanceTextStyle}>
+              {intelRefs.length} source-backed fact
+              {intelRefs.length === 1 ? "" : "s"} used. Open citations from the
+              chart actions to inspect them.
+            </p>
+          </ProvenanceSection>
+        )}
+
+        {webSources.length > 0 && (
+          <ProvenanceSection title="Sources">
+            {webSources.slice(0, 4).map((source, index) => (
+              <a
+                key={`${source.url ?? source.title}-${index}`}
+                href={source.url || undefined}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  ...provenanceTextStyle,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  color: BRAND.purps,
+                  fontWeight: 700,
+                  textDecoration: "none",
+                }}
+              >
+                {source.title || source.url || "Source"}
+                {source.url && <ExternalLink size={11} />}
+              </a>
+            ))}
+          </ProvenanceSection>
+        )}
+
+        {estimates.length > 0 && (
+          <ProvenanceSection title="Claims inferred or estimated">
+            {estimates.slice(0, 4).map((estimate, index) => (
+              <p key={`${estimate.field}-${index}`} style={provenanceTextStyle}>
+                <strong>{estimate.field || "Estimated field"}:</strong>{" "}
+                {estimate.reasoning || "Marked as estimated by the generator."}
+              </p>
+            ))}
+          </ProvenanceSection>
+        )}
+
+        {verifierNotes && (
+          <ProvenanceSection title="Verifier note">
+            <p style={provenanceTextStyle}>{verifierNotes}</p>
+          </ProvenanceSection>
+        )}
+      </div>
+    </details>
+  );
+}
+
+const provenanceTextStyle: React.CSSProperties = {
+  color: BRAND.slate700,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1.45,
+};
+
+function ProvenanceSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div
+        style={{
+          color: BRAND.slate500,
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
   );
 }
 

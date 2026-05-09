@@ -763,8 +763,12 @@ export type ChartSpec =
 
 /** Subset of the chart provenance object the renderers may surface to users. */
 export interface ChartProvenanceLite {
-  status?: string;
+  status?: "drd_grounded" | "web_grounded" | "estimated" | string;
+  drd_snippets?: string[];
   web_sources?: { title?: string; url?: string }[];
+  estimates?: { field?: string; reasoning?: string }[];
+  verifier_notes?: string;
+  intelligence_refs?: string[];
 }
 
 export interface ChartHeader {
