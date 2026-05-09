@@ -567,7 +567,15 @@ function CeDetailInner({
         </div>
 
         {showIntel && (
-          <IntelPanel slug={slug} onClose={() => setShowIntel(false)} />
+          <IntelPanel
+            slug={slug}
+            onClose={() => setShowIntel(false)}
+            onChartCreated={() => {
+              qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+              qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+              setStatusFilter("draft");
+            }}
+          />
         )}
 
         {showIdeation && !showIntel && (

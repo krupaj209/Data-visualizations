@@ -464,6 +464,8 @@ const topicBody = z.object({
   topic: z.string().min(4).max(400),
   archetype: z.string().optional(),
   pastedData: z.string().max(20_000).optional(),
+  plannerContext: z.string().max(5_000).optional(),
+  origin: z.enum(["topic_to_chart", "planner_recommendation"]).optional(),
   sourceUrl: z.string().url().max(800).optional(),
   writerId: z.string().max(120).optional(),
 });
@@ -507,6 +509,11 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
   }
   if (parsed.data.sourceUrl) {
     writerContextParts.push(`--- SOURCE LINK ---\n${parsed.data.sourceUrl}`);
+  }
+  if (parsed.data.plannerContext) {
+    writerContextParts.push(
+      `--- PLANNER CONTEXT (use to understand the requested chart; do not treat as a primary source) ---\n${parsed.data.plannerContext}`,
+    );
   }
   const drdMarkdown =
     (drd?.markdown ?? "") +
@@ -599,7 +606,7 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
         ...generated.provenance,
         source_question: parsed.data.topic,
         recommended_archetype: archetype,
-        origin: "topic_to_chart",
+        origin: parsed.data.origin ?? "topic_to_chart",
       },
       sortOrder: Number(maxOrder ?? 0) + 1,
     })

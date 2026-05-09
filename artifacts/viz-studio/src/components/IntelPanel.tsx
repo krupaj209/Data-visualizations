@@ -6,6 +6,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  Plus,
   ExternalLink,
   AlertTriangle,
   CheckCircle2,
@@ -49,6 +50,8 @@ interface VisualizationPlan {
     question: string;
     archetype: string;
     why_it_matters: string;
+    data_needed?: string[];
+    evidence_refs?: string[];
     priority: number;
   }[];
   rejected_visualizations: {
@@ -68,9 +71,11 @@ interface VisualizationPlan {
 export function IntelPanel({
   slug,
   onClose,
+  onChartCreated,
 }: {
   slug: string;
   onClose: () => void;
+  onChartCreated?: () => void;
 }) {
   const { data, isLoading, error } = useGetCeIntelligence(slug);
   const refreshMut = useRefreshCeIntelligence();
@@ -80,6 +85,10 @@ export function IntelPanel({
   const [plan, setPlan] = useState<VisualizationPlan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
+  const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
+  const [createdQuestions, setCreatedQuestions] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const intel = (data ?? null) as CeIntelligence | null;
 
@@ -135,6 +144,51 @@ export function IntelPanel({
       setPlanError(err instanceof Error ? err.message : "Visualization planning failed");
     } finally {
       setIsPlanning(false);
+    }
+  }
+
+  async function handleCreateFromPlan(
+    item: VisualizationPlan["recommended_visualizations"][number],
+  ) {
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      const plannerContext = [
+        item.why_it_matters ? `Why it matters: ${item.why_it_matters}` : "",
+        item.data_needed?.length
+          ? `Data needed: ${item.data_needed.join("; ")}`
+          : "",
+        item.evidence_refs?.length
+          ? `Evidence refs: ${item.evidence_refs.join("; ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const res = await fetch(`/api/ces/${slug}/charts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: item.question,
+          archetype: item.archetype,
+          plannerContext: plannerContext || undefined,
+          origin: "planner_recommendation",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Chart generation failed");
+      }
+      setCreatedQuestions((prev) => {
+        const next = new Set(prev);
+        next.add(item.question);
+        return next;
+      });
+      onChartCreated?.();
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Chart generation failed");
+    } finally {
+      setCreatingQuestion(null);
     }
   }
 
@@ -313,6 +367,14 @@ export function IntelPanel({
                   meta: item.archetype,
                   body: item.why_it_matters,
                   tone: "good" as const,
+                  actionLabel: createdQuestions.has(item.question)
+                    ? "Created"
+                    : "Create chart",
+                  actionDisabled:
+                    createdQuestions.has(item.question) ||
+                    creatingQuestion !== null,
+                  actionBusy: creatingQuestion === item.question,
+                  onAction: () => handleCreateFromPlan(item),
                 }))}
               />
               <PlanList
@@ -550,6 +612,10 @@ function PlanList({
     meta: string;
     body: string;
     tone: "good" | "warn";
+    actionLabel?: string;
+    actionDisabled?: boolean;
+    actionBusy?: boolean;
+    onAction?: () => void;
   }[];
 }) {
   if (items.length === 0) return null;
@@ -634,6 +700,36 @@ function PlanList({
               >
                 {item.body}
               </div>
+            )}
+            {item.onAction && (
+              <button
+                type="button"
+                onClick={item.onAction}
+                disabled={item.actionDisabled}
+                style={{
+                  marginTop: 8,
+                  border: "none",
+                  borderRadius: 9,
+                  padding: "6px 9px",
+                  background: item.actionDisabled
+                    ? BRAND.slate100
+                    : BRAND.purps,
+                  color: item.actionDisabled ? BRAND.slate500 : "white",
+                  fontSize: 11,
+                  fontWeight: 850,
+                  cursor: item.actionDisabled ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                {item.actionBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Plus size={12} />
+                )}
+                {item.actionLabel ?? "Create chart"}
+              </button>
             )}
           </li>
         ))}
