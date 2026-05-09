@@ -8,6 +8,7 @@ import {
   getCeIntelligence,
   refreshCeIntelligence,
   deleteIntelSource,
+  saveCeVisualizationPlan,
 } from "../lib/ce-intelligence";
 import { buildCeVisualizationPlan } from "../lib/ce-visualization-planner";
 
@@ -146,6 +147,7 @@ router.post(
         intel,
         includeLiveSearch: parsed.data.includeLiveSearch ?? true,
       });
+      await saveCeVisualizationPlan(ce.slug, plan);
       res.json(plan);
     } catch (err) {
       req.log.error({ err }, "Visualization planner failed");

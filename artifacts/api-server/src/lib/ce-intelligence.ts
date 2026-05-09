@@ -75,12 +75,14 @@ export interface IntelSourceStatus {
 
 export interface IntelProfile {
   facts: IntelFact[];
+  visualization_plan?: unknown;
 }
 
 export interface CeIntelligenceView {
   ceSlug: string;
   facts: IntelFact[];
   sources: IntelSourceStatus[];
+  visualizationPlan?: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -390,6 +392,9 @@ export async function refreshCeIntelligence(
   }
 
   const profile: IntelProfile = { facts };
+  if (existing?.profile?.visualization_plan) {
+    profile.visualization_plan = existing.profile.visualization_plan;
+  }
   const sourcesValue = sources as unknown as Record<string, unknown>;
   const profileValue = profile as unknown as Record<string, unknown>;
 
@@ -433,7 +438,12 @@ export async function deleteIntelSource(
   const [updated] = await db
     .update(ceIntelligenceTable)
     .set({
-      profile: { facts } as unknown as Record<string, unknown>,
+      profile: {
+        facts,
+        ...(profile.visualization_plan
+          ? { visualization_plan: profile.visualization_plan }
+          : {}),
+      } as unknown as Record<string, unknown>,
       sources: sources as unknown as Record<string, unknown>,
     })
     .where(eq(ceIntelligenceTable.ceSlug, ceSlug))
@@ -492,9 +502,44 @@ function serializeIntel(row: CeIntelligence): CeIntelligenceView {
     ceSlug: row.ceSlug,
     facts: profile.facts ?? [],
     sources,
+    ...(profile.visualization_plan
+      ? { visualizationPlan: profile.visualization_plan }
+      : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export async function saveCeVisualizationPlan(
+  ceSlug: string,
+  plan: unknown,
+): Promise<CeIntelligenceView> {
+  const existing = await loadIntelRow(ceSlug);
+  const profile: IntelProfile = {
+    facts: existing?.profile?.facts ?? [],
+    visualization_plan: plan,
+  };
+  const sources =
+    existing?.sources ??
+    Object.fromEntries(INTEL_SOURCE_IDS.map((id) => [id, emptyStatus(id)]));
+
+  const [row] = await db
+    .insert(ceIntelligenceTable)
+    .values({
+      ceSlug,
+      profile: profile as unknown as Record<string, unknown>,
+      sources: sources as unknown as Record<string, unknown>,
+    })
+    .onConflictDoUpdate({
+      target: ceIntelligenceTable.ceSlug,
+      set: {
+        profile: profile as unknown as Record<string, unknown>,
+        sources: sources as unknown as Record<string, unknown>,
+      },
+    })
+    .returning();
+  if (!row) throw new Error("Failed to persist CE visualization plan");
+  return serializeIntel(row);
 }
 
 /* -------------------------------------------------------------------------- */

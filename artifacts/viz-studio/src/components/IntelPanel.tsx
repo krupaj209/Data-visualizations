@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -23,6 +23,12 @@ import {
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 
+type CreatedPlanChart = {
+  chartId: number;
+  verifyStatus: "checking" | "passed" | "issues" | "failed";
+  verifyLabel: string;
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   official_site: "Official site",
   tripadvisor: "TripAdvisor",
@@ -46,6 +52,13 @@ const BUCKET_LABELS: Record<string, string> = {
 interface VisualizationPlan {
   summary: string;
   generatedAt: string;
+  evidence_inventory?: {
+    id: string;
+    label: string;
+    fact_count: number;
+    confidence: string;
+    sample_facts?: string[];
+  }[];
   recommended_visualizations: {
     question: string;
     archetype: string;
@@ -64,8 +77,11 @@ interface VisualizationPlan {
     recommended_archetype: string;
     chartable: boolean;
     evidence_status: string;
+    evidence_reason?: string;
     confidence: number;
+    source_refs?: string[];
   }[];
+  live_search_notes?: { finding: string; source_url?: string }[];
 }
 
 export function IntelPanel({
@@ -86,11 +102,19 @@ export function IntelPanel({
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
-  const [createdQuestions, setCreatedQuestions] = useState<Set<string>>(
-    () => new Set(),
+  const [createdCharts, setCreatedCharts] = useState<
+    Record<string, CreatedPlanChart>
+  >(
+    () => ({}),
   );
 
   const intel = (data ?? null) as CeIntelligence | null;
+  const savedPlan = (intel as unknown as { visualizationPlan?: unknown } | null)
+    ?.visualizationPlan as VisualizationPlan | undefined;
+
+  useEffect(() => {
+    if (!plan && savedPlan) setPlan(savedPlan);
+  }, [plan, savedPlan]);
 
   async function handleRefreshAll() {
     setRefreshingSource("__all__");
@@ -179,12 +203,56 @@ export function IntelPanel({
       if (!res.ok) {
         throw new Error(json?.error ?? "Chart generation failed");
       }
-      setCreatedQuestions((prev) => {
-        const next = new Set(prev);
-        next.add(item.question);
-        return next;
-      });
+      const chartId = Number(json?.id);
+      if (!Number.isFinite(chartId)) {
+        throw new Error("Chart was created, but the response did not include an id");
+      }
+      setCreatedCharts((prev) => ({
+        ...prev,
+        [item.question]: {
+          chartId,
+          verifyStatus: "checking",
+          verifyLabel: "Verifier running",
+        },
+      }));
       onChartCreated?.();
+
+      try {
+        const verifyRes = await fetch(`/api/charts/${chartId}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const verifyJson = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verifyJson?.error ?? "Verification failed");
+        }
+        const notes = String(
+          verifyJson?.provenance?.verifier_notes ??
+            verifyJson?.verifier_notes ??
+            "",
+        );
+        const hasIssues =
+          /issue|unsupported|contradict|remove|not supported/i.test(notes);
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: hasIssues ? "issues" : "passed",
+            verifyLabel: hasIssues ? "Verifier found issues" : "Verifier passed",
+          },
+        }));
+        onChartCreated?.();
+      } catch (err) {
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: "failed",
+            verifyLabel:
+              err instanceof Error ? err.message : "Verification failed",
+          },
+        }));
+      }
     } catch (err) {
       setPlanError(err instanceof Error ? err.message : "Chart generation failed");
     } finally {
@@ -212,6 +280,9 @@ export function IntelPanel({
     arr.push(f);
     factsByBucket.set(f.bucket, arr);
   }
+  const questionsByText = new Map(
+    (plan?.traveler_questions ?? []).map((q) => [q.question, q]),
+  );
 
   return (
     <aside
@@ -322,7 +393,7 @@ export function IntelPanel({
         ) : (
           <Sparkles size={14} />
         )}
-        Plan visualizations
+        Find chart opportunities
       </button>
 
       <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -359,23 +430,50 @@ export function IntelPanel({
               <div style={{ fontSize: 12, color: BRAND.slate700, fontWeight: 650, lineHeight: 1.45 }}>
                 {plan.summary}
               </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                {(plan.evidence_inventory ?? []).slice(0, 4).map((bucket) => (
+                  <EvidenceChip
+                    key={`${bucket.id}-${bucket.label}`}
+                    label={bucket.label}
+                    status={bucket.confidence}
+                    count={bucket.fact_count}
+                  />
+                ))}
+              </div>
               <PlanList
                 title={`Recommended (${plan.recommended_visualizations.length})`}
-                items={plan.recommended_visualizations.map((item) => ({
-                  key: `${item.priority}-${item.question}`,
-                  title: item.question,
-                  meta: item.archetype,
-                  body: item.why_it_matters,
-                  tone: "good" as const,
-                  actionLabel: createdQuestions.has(item.question)
-                    ? "Created"
-                    : "Create chart",
-                  actionDisabled:
-                    createdQuestions.has(item.question) ||
-                    creatingQuestion !== null,
-                  actionBusy: creatingQuestion === item.question,
-                  onAction: () => handleCreateFromPlan(item),
-                }))}
+                items={plan.recommended_visualizations.map((item) => {
+                  const question = questionsByText.get(item.question);
+                  const created = createdCharts[item.question];
+                  return {
+                    key: `${item.priority}-${item.question}`,
+                    title: item.question,
+                    meta: item.archetype,
+                    body: item.why_it_matters,
+                    tone: "good" as const,
+                    evidenceStatus: question?.evidence_status,
+                    confidence: question?.confidence,
+                    sourceRefs: [
+                      ...(question?.source_refs ?? []),
+                      ...(item.evidence_refs ?? []),
+                    ],
+                    createdChart: created,
+                    actionLabel: created
+                      ? "Created"
+                      : "Create chart",
+                    actionDisabled:
+                      !!created ||
+                      creatingQuestion !== null,
+                    actionBusy: creatingQuestion === item.question,
+                    onAction: () => handleCreateFromPlan(item),
+                  };
+                })}
               />
               <PlanList
                 title={`Rejected (${plan.rejected_visualizations.length})`}
@@ -601,6 +699,63 @@ function SourceStatusDot({ status }: { status: string }) {
   return <CircleDot size={14} color={BRAND.slate300} />;
 }
 
+function EvidenceChip({
+  label,
+  status,
+  count,
+}: {
+  label: string;
+  status: string;
+  count: number;
+}) {
+  const color = evidenceColor(status);
+  return (
+    <span
+      style={{
+        borderRadius: 999,
+        padding: "3px 7px",
+        background: color.bg,
+        color: color.fg,
+        fontSize: 10,
+        fontWeight: 850,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        maxWidth: "100%",
+      }}
+      title={`${label}: ${status}`}
+    >
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ opacity: 0.8 }}>· {count}</span>
+    </span>
+  );
+}
+
+function evidenceColor(status: string): { bg: string; fg: string } {
+  if (status === "strong") return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+  if (status === "partial") return { bg: BRAND.bgCool, fg: BRAND.purps };
+  if (status === "weak") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  return { bg: BRAND.slate100, fg: BRAND.slate700 };
+}
+
+function verifyTone(status: CreatedPlanChart["verifyStatus"]): {
+  bg: string;
+  fg: string;
+} {
+  if (status === "passed") return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+  if (status === "issues") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  if (status === "failed") return { bg: BRAND.candySoft, fg: BRAND.candy };
+  return { bg: BRAND.bgCool, fg: BRAND.purps };
+}
+
 function PlanList({
   title,
   items,
@@ -612,6 +767,10 @@ function PlanList({
     meta: string;
     body: string;
     tone: "good" | "warn";
+    evidenceStatus?: string;
+    confidence?: number;
+    sourceRefs?: string[];
+    createdChart?: CreatedPlanChart;
     actionLabel?: string;
     actionDisabled?: boolean;
     actionBusy?: boolean;
@@ -701,6 +860,83 @@ function PlanList({
                 {item.body}
               </div>
             )}
+            {(item.evidenceStatus || item.confidence !== undefined) && (
+              <div
+                style={{
+                  marginTop: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                {item.evidenceStatus && (
+                  <EvidenceChip
+                    label={item.evidenceStatus}
+                    status={item.evidenceStatus}
+                    count={item.confidence ?? 0}
+                  />
+                )}
+                {item.confidence !== undefined && (
+                  <span
+                    style={{
+                      color: BRAND.slate500,
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    confidence {item.confidence}
+                  </span>
+                )}
+              </div>
+            )}
+            {item.sourceRefs && item.sourceRefs.length > 0 && (
+              <div
+                style={{
+                  marginTop: 5,
+                  fontSize: 10,
+                  color: BRAND.slate500,
+                  fontWeight: 650,
+                  lineHeight: 1.35,
+                }}
+                title={item.sourceRefs.join("\n")}
+              >
+                Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
+              </div>
+            )}
+            {item.createdChart && (
+              <div
+                style={{
+                  marginTop: 7,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  fontSize: 10,
+                  fontWeight: 850,
+                }}
+              >
+                <span
+                  style={{
+                    color: verifyTone(item.createdChart.verifyStatus).fg,
+                    background: verifyTone(item.createdChart.verifyStatus).bg,
+                    borderRadius: 999,
+                    padding: "3px 7px",
+                  }}
+                >
+                  {item.createdChart.verifyLabel}
+                </span>
+                <a
+                  href={`?edit=${item.createdChart.chartId}`}
+                  style={{
+                    color: BRAND.purps,
+                    textDecoration: "none",
+                  }}
+                >
+                  Open draft
+                </a>
+              </div>
+            )}
             {item.onAction && (
               <button
                 type="button"
@@ -748,6 +984,10 @@ function relativeTime(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
   return `${d}d ago`;
+}
+
+function dedupe(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 }
 
 function sectionLabel(): React.CSSProperties {
