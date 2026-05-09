@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -104,6 +104,9 @@ export function IntelPanel({
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
+  const [rejectedContext, setRejectedContext] = useState<Record<string, string>>(
+    () => ({}),
+  );
   const [showContextUpload, setShowContextUpload] = useState(false);
   const [drdStatus, setDrdStatus] = useState<{
     sourceFilename?: string | null;
@@ -276,6 +279,89 @@ export function IntelPanel({
           topic: item.question,
           archetype: item.archetype,
           plannerContext: plannerContext || undefined,
+          origin: "planner_recommendation",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Chart generation failed");
+      }
+      const chartId = Number(json?.id);
+      if (!Number.isFinite(chartId)) {
+        throw new Error("Chart was created, but the response did not include an id");
+      }
+      setCreatedCharts((prev) => ({
+        ...prev,
+        [item.question]: {
+          chartId,
+          verifyStatus: "checking",
+          verifyLabel: "Verifier running",
+        },
+      }));
+      onChartCreated?.();
+
+      try {
+        const verifyRes = await fetch(`/api/charts/${chartId}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const verifyJson = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verifyJson?.error ?? "Verification failed");
+        }
+        const notes = String(
+          verifyJson?.provenance?.verifier_notes ??
+            verifyJson?.verifier_notes ??
+            "",
+        );
+        const hasIssues =
+          /issue|unsupported|contradict|remove|not supported/i.test(notes);
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: hasIssues ? "issues" : "passed",
+            verifyLabel: hasIssues ? "Verifier found issues" : "Verifier passed",
+          },
+        }));
+        onChartCreated?.();
+      } catch (err) {
+        setCreatedCharts((prev) => ({
+          ...prev,
+          [item.question]: {
+            chartId,
+            verifyStatus: "failed",
+            verifyLabel:
+              err instanceof Error ? err.message : "Verification failed",
+          },
+        }));
+      }
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : "Chart generation failed");
+    } finally {
+      setCreatingQuestion(null);
+    }
+  }
+
+  async function handleCreateRejected(
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) {
+    const context = (rejectedContext[item.question] ?? "").trim();
+    if (!context) {
+      setPlanError("Add the missing context or data before creating this chart.");
+      return;
+    }
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/ces/${slug}/charts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: item.question,
+          archetype: item.archetype || undefined,
+          pastedData: context,
+          plannerContext: `Originally rejected by planner: ${item.reason}`,
           origin: "planner_recommendation",
         }),
       });
@@ -684,6 +770,42 @@ export function IntelPanel({
                   meta: item.archetype ?? "no chart",
                   body: item.reason,
                   tone: "warn" as const,
+                  createdChart: createdCharts[item.question],
+                  actionLabel: createdCharts[item.question]
+                    ? "Created"
+                    : "Create with context",
+                  actionDisabled:
+                    !!createdCharts[item.question] ||
+                    creatingQuestion !== null ||
+                    !(rejectedContext[item.question] ?? "").trim(),
+                  actionBusy: creatingQuestion === item.question,
+                  onAction: () => handleCreateRejected(item),
+                  extra: !createdCharts[item.question] ? (
+                    <textarea
+                      value={rejectedContext[item.question] ?? ""}
+                      onChange={(e) =>
+                        setRejectedContext((prev) => ({
+                          ...prev,
+                          [item.question]: e.target.value,
+                        }))
+                      }
+                      placeholder="Have the missing data? Paste source-backed context here..."
+                      rows={3}
+                      style={{
+                        marginTop: 8,
+                        width: "100%",
+                        resize: "vertical",
+                        border: `1px solid ${BRAND.slate200}`,
+                        borderRadius: 9,
+                        padding: 8,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: BRAND.slate950,
+                        outline: "none",
+                        background: BRAND.slate50,
+                      }}
+                    />
+                  ) : null,
                 }))}
               />
             </div>
@@ -988,6 +1110,7 @@ function PlanList({
     confidence?: number;
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
+    extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
     actionBusy?: boolean;
@@ -1154,6 +1277,7 @@ function PlanList({
                 </a>
               </div>
             )}
+            {item.extra}
             {item.onAction && (
               <button
                 type="button"

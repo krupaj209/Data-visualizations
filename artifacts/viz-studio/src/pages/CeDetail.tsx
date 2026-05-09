@@ -586,6 +586,7 @@ function CeDetailInner({
             onUseProposal={(p) => {
               setTopicSeed({ topic: p.topic, archetype: p.archetype });
               setShowNewChart(true);
+              setShowIdeation(false);
             }}
           />
         )}
@@ -1445,6 +1446,7 @@ const ARCHETYPE_OPTIONS = [
   "donut_breakdown",
   "ticket_ladder",
   "route_profile",
+  "history_timeline",
 ];
 
 function NewChartForm({
@@ -1736,7 +1738,8 @@ function IdeationPanel({
         }
         throw new Error(msg);
       }
-      qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+      await qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+      await qc.refetchQueries({ queryKey: getGetIdeationQueryKey(slug) });
       setPendingEcho(null);
     } catch (err) {
       const aborted =
