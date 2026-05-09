@@ -268,14 +268,25 @@ function ChartTriageRow({
   }
 
   async function regenerate() {
-    if (
-      !confirm(
-        `Regenerate "${chart.title}" using the current DRD? The visual will be replaced.`,
-      )
-    )
+    const feedback = prompt(
+      `What should improve when regenerating "${chart.title}"?\n\nThe visual will be replaced and the current DRD will be used.`,
+      items
+        .map((item) => item.feedback.note || item.feedback.category)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join("\n"),
+    );
+    if (feedback === null)
       return;
+    if (feedback.trim().length < 8) {
+      alert("Add a short note on what should improve before regenerating.");
+      return;
+    }
     try {
-      await regenMut.mutateAsync({ id: chart.id });
+      await regenMut.mutateAsync({
+        id: chart.id,
+        data: { feedback: feedback.trim() },
+      });
       qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
       qc.invalidateQueries({ queryKey: getListAllFeedbackQueryKey() });
     } catch (err) {

@@ -244,6 +244,14 @@ function CeDetailInner({
     topic: string;
     archetype?: string;
   } | null>(null);
+  const [showRegenFeedback, setShowRegenFeedback] = useState(false);
+
+  async function regenerateWithFeedback(feedback: string) {
+    await regenMut.mutateAsync({ slug, data: { feedback } });
+    qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+    qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    setShowRegenFeedback(false);
+  }
 
   async function handlePublishAll() {
     if (
@@ -450,17 +458,7 @@ function CeDetailInner({
           ) : (
             <button
               type="button"
-              onClick={async () => {
-                if (
-                  !confirm(
-                    "Replace these charts with a freshly generated set? The current ones will be discarded.",
-                  )
-                )
-                  return;
-                await regenMut.mutateAsync({ slug });
-                qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
-                qc.invalidateQueries({ queryKey: getListCesQueryKey() });
-              }}
+              onClick={() => setShowRegenFeedback(true)}
               disabled={regenMut.isPending}
               style={{
                 background: regenMut.isPending ? BRAND.slate100 : "white",
@@ -486,6 +484,16 @@ function CeDetailInner({
           )}
         </div>
       </header>
+
+      {showRegenFeedback && (
+        <RegenerateFeedbackDialog
+          title="Regenerate chart set"
+          description="Tell the AI what should improve. The current chart set will be replaced with a fresh version guided by this feedback."
+          isPending={regenMut.isPending}
+          onCancel={() => setShowRegenFeedback(false)}
+          onSubmit={regenerateWithFeedback}
+        />
+      )}
 
       <main
         className="max-w-[1400px] mx-auto px-6 py-8"
@@ -1383,6 +1391,176 @@ function StatusBadge({ status }: { status: string }) {
     >
       {isDraft ? "Draft" : "Published"}
     </span>
+  );
+}
+
+function RegenerateFeedbackDialog({
+  title,
+  description,
+  isPending,
+  onCancel,
+  onSubmit,
+}: {
+  title: string;
+  description: string;
+  isPending: boolean;
+  onCancel: () => void;
+  onSubmit: (feedback: string) => Promise<void>;
+}) {
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = feedback.trim();
+
+  async function handleSubmit() {
+    if (trimmed.length < 8) {
+      setError("Add a short note on what should improve before regenerating.");
+      return;
+    }
+    setError(null);
+    try {
+      await onSubmit(trimmed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Regeneration failed.");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "rgba(15, 23, 42, 0.38)" }}
+    >
+      <div
+        className="w-full max-w-[520px] rounded-3xl p-5"
+        style={{ background: "white", border: `1px solid ${BRAND.slate200}` }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3
+              style={{
+                color: BRAND.slate950,
+                fontSize: 20,
+                fontWeight: 800,
+                lineHeight: 1.2,
+              }}
+            >
+              {title}
+            </h3>
+            <p
+              style={{
+                color: BRAND.slate700,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1.5,
+                marginTop: 6,
+              }}
+            >
+              {description}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            style={{
+              border: `1px solid ${BRAND.slate200}`,
+              background: "white",
+              borderRadius: 10,
+              width: 34,
+              height: 34,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: isPending ? "wait" : "pointer",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <label className="mt-4 flex flex-col gap-2">
+          <span
+            style={{
+              color: BRAND.slate700,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            What should improve?
+          </span>
+          <textarea
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+            placeholder="Example: Make this more source-backed, avoid crowd estimates, include history timeline, remove generic ticket charts..."
+            rows={5}
+            autoFocus
+            style={{
+              width: "100%",
+              resize: "vertical",
+              minHeight: 120,
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 14,
+              padding: 12,
+              color: BRAND.slate950,
+              fontSize: 13,
+              fontWeight: 600,
+              lineHeight: 1.5,
+              outlineColor: BRAND.purps,
+            }}
+          />
+        </label>
+
+        {error && (
+          <p
+            style={{
+              color: BRAND.candy,
+              fontSize: 12,
+              fontWeight: 700,
+              marginTop: 10,
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            style={ghostBtn(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isPending}
+            style={{
+              background: BRAND.purps,
+              color: "white",
+              border: "none",
+              padding: "9px 14px",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: isPending ? "wait" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            Regenerate
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

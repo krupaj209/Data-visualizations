@@ -23,6 +23,10 @@ import { openai } from "../lib/openai";
 
 const router: IRouter = Router();
 
+const RegenerateCeBody = z.object({
+  feedback: z.string().trim().max(4000).optional(),
+});
+
 function serializeCe(
   ce: Ce,
   chartCount: number,
@@ -343,6 +347,11 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const body = RegenerateCeBody.safeParse(req.body ?? {});
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
 
   if (LOCKED_CE_SLUGS.has(params.data.slug)) {
     res.status(409).json({
@@ -368,6 +377,7 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
       city: ce.city,
       country: ce.country,
       category: ce.category,
+      regenerationFeedback: body.data.feedback,
     });
   } catch (err) {
     req.log.error({ err }, "AI regeneration failed");

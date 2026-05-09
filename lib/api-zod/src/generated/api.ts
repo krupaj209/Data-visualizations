@@ -113,6 +113,10 @@ export const RegenerateCeParams = zod.object({
   slug: zod.coerce.string(),
 });
 
+export const RegenerateFeedbackInput = zod.object({
+  feedback: zod.string().max(4000).optional(),
+});
+
 export const RegenerateCeResponse = zod.object({
   ce: zod.object({
     id: zod.number(),

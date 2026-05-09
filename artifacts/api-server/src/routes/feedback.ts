@@ -31,6 +31,10 @@ const ISSUE_CATEGORIES = [
 ] as const;
 const STATUSES = ["open", "escalated", "resolved", "dismissed"] as const;
 
+const RegenerateChartBody = z.object({
+  feedback: z.string().trim().max(4000).optional(),
+});
+
 /**
  * Severity is derived from issue category. Drives the inline badge color
  * and the trouble-score weight. "high" = factual problem; "medium" =
@@ -398,6 +402,11 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid chart id" });
     return;
   }
+  const body = RegenerateChartBody.safeParse(req.body ?? {});
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
 
   const [chart] = await db
     .select()
@@ -463,6 +472,7 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
       question: chart.question,
       archetype: recommended as ChartArchetypeId,
       drdMarkdown: drd.markdown,
+      feedback: body.data.feedback,
     });
   } catch (err) {
     req.log.error({ err }, "Single-chart regeneration failed");
@@ -487,6 +497,9 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
         ...result.provenance,
         source_question: chart.question,
         recommended_archetype: recommended,
+        ...(body.data.feedback
+          ? { regeneration_feedback: body.data.feedback }
+          : {}),
       } as Record<string, unknown>,
     })
     .where(eq(chartsTable.id, id))
