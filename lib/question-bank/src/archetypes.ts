@@ -490,13 +490,20 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   route_profile: {
     id: "route_profile",
     label: "Route profile",
-    answers: "How long is the route and how hilly is it?",
+    answers: "What does this route cover, in what order, and who is it best for?",
     data_shape: [
-      "Distance bar (km) + elevation gain bar (m) for one named route",
+      "3-12 ordered stops, piers, landmarks, or segments for one named route",
+      "Optional duration, distance, landmark count, and best-for labels",
     ],
-    typical_subcategories: ["walking_tours", "hiking_trails"],
+    typical_subcategories: [
+      "sightseeing_cruises",
+      "hop_on_hop_off",
+      "walking_tours",
+      "day_trips",
+      "hiking_trails",
+    ],
     interactive: false,
-    implemented: false,
+    implemented: true,
   },
 };
 

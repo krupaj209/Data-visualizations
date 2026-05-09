@@ -460,6 +460,25 @@ export interface StopFrequencySpec {
   }[];
 }
 
+export interface RouteProfileSpec {
+  type: "route_profile";
+  route_label: string;
+  mode: "cruise" | "bus" | "walk" | "day_trip" | "transfer" | "other";
+  distance_km?: number;
+  total_duration_min?: number;
+  headline_metric?: string;
+  stops: {
+    name: string;
+    kind: "start" | "landmark" | "transfer" | "stop" | "end";
+    duration_from_start_min?: number;
+    landmark_count?: number;
+    note?: string;
+    highlight?: boolean;
+  }[];
+  best_for?: string[];
+  callout?: string;
+}
+
 /**
  * Promoted Accademia bespokes (Task #33). Same shapes as
  * EntranceLanesSpec / DurationProfilesSpec — the renderers wrap the
@@ -731,6 +750,7 @@ export type ChartSpec =
   | SeatValueMapSpec
   | OptimalDepartureSpec
   | StopFrequencySpec
+  | RouteProfileSpec
   | QueueCompareSpec
   | DurationStatSpec
   | RideWaitCurveSpec

@@ -566,6 +566,7 @@ const ARCHETYPE_BUCKET_HINTS: Record<string, IntelBucketId[]> = {
   sighting_probability: ["ops_notes"],
   departure_reliability: ["ops_notes"],
   price_curve: ["tickets"],
+  route_profile: ["zones", "hours_programme", "ops_notes"],
   daily_pattern: ["crowd_patterns"],
   tribune_density: ["crowd_patterns"],
   duration_profiles: ["zones"],

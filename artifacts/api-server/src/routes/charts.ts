@@ -641,6 +641,7 @@ function inferArchetype(topic: string): ChartArchetypeId | null {
   if (/\bseason|month|monthly|year\b/.test(t)) return "seasonal_curve";
   if (/\bbook|in advance|days before|sell out|sold out\b/.test(t)) return "booking_window";
   if (/\bticket|tier|price|pass|skip the line\b/.test(t)) return "ticket_ladder";
+  if (/\broute|routes|stop|stops|pier|piers|landmark coverage|itinerary|covers|coverage\b/.test(t)) return "route_profile";
   if (/\bzone|hall|wing|area|room|gallery|section\b/.test(t)) return "compare_zones";
   if (/\bshare|breakdown|split|percentage|percent of\b/.test(t)) return "donut_breakdown";
   if (/\bdate|calendar|next \d+ (weeks|months|days)\b/.test(t)) return "month_calendar";

@@ -222,5 +222,14 @@ SOURCING: base_value and every monthly index MUST come from a real, citable pric
   "route_label"?: "Big Bus London — Red Route",
   "stops": [ { "name": "Trafalgar Square", "peak_headway_min": <int — minutes between buses at peak>, "offpeak_headway_min": <int — minutes off-peak>, "note"?: "Adds Westminster shuttle" }, ... 4-20 items ] }
 Order is the bus route order (first stop first). peak_headway_min ≤ offpeak_headway_min in almost every realistic case. Real example: Big Bus London Red Route — Trafalgar Square 8/15 min, St Paul's 10/18, Tower of London 12/22, Marble Arch 8/15, etc.`,
-  route_profile: STUB("route_profile"),
+  route_profile: `{ "type": "route_profile",
+  "route_label": "<route/product name>",
+  "mode": "cruise" | "bus" | "walk" | "day_trip" | "transfer" | "other",
+  "distance_km"?: <number>,
+  "total_duration_min"?: <integer>,
+  "headline_metric"?: "<e.g. 8 landmarks / 2 piers / 90 min>",
+  "stops": [ { "name": "<stop/landmark/pier>", "kind": "start"|"landmark"|"transfer"|"stop"|"end", "duration_from_start_min"?: <integer>, "landmark_count"?: <integer>, "note"?: "<why it matters>", "highlight"?: true }, ... 3-12 items ],
+  "best_for"?: ["first-timers", "families", "photographers"],
+  "callout"?: "<one-sentence route choice takeaway>" }
+Use for route, pier, stop, landmark coverage, itinerary shape, and "which route/product covers what?" questions. Stops must be in travel order. Use duration_from_start_min only when the DRD/search supports timings; otherwise omit rather than invent. For cruises, stops can be piers and visible landmarks; landmark_count is cumulative or segment-level, but be clear in notes.`,
 };

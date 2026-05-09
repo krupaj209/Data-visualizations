@@ -758,6 +758,30 @@ export const stopFrequencySpec = z.object({
     .max(20),
 });
 
+export const routeProfileSpec = z.object({
+  type: z.literal("route_profile"),
+  route_label: z.string().max(80),
+  mode: z.enum(["cruise", "bus", "walk", "day_trip", "transfer", "other"]),
+  distance_km: z.number().min(0).max(1000).optional(),
+  total_duration_min: z.number().int().min(1).max(1440).optional(),
+  headline_metric: z.string().max(60).optional(),
+  stops: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        kind: z.enum(["start", "landmark", "transfer", "stop", "end"]),
+        duration_from_start_min: z.number().int().min(0).max(1440).optional(),
+        landmark_count: z.number().int().min(0).max(40).optional(),
+        note: z.string().max(120).optional(),
+        highlight: z.boolean().optional(),
+      }),
+    )
+    .min(3)
+    .max(12),
+  best_for: z.array(z.string().max(40)).max(4).optional(),
+  callout: z.string().max(160).optional(),
+});
+
 /* -------------------------------------------------------------------------- *
  * v3 curve & promotion family (Task #33)                                     *
  *                                                                            *
@@ -1045,6 +1069,7 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   seatValueMapSpec,
   optimalDepartureSpec,
   stopFrequencySpec,
+  routeProfileSpec,
   queueCompareSpec,
   durationStatSpec,
   rideWaitCurveSpec,
@@ -1257,6 +1282,33 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["recommended_slot"],
       });
     }
+  } else if (val.type === "route_profile") {
+    let prev = -1;
+    val.stops.forEach((stop, i) => {
+      if (stop.duration_from_start_min === undefined) return;
+      if (stop.duration_from_start_min < prev) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "duration_from_start_min must be non-decreasing",
+          path: ["stops", i, "duration_from_start_min"],
+        });
+      }
+      prev = stop.duration_from_start_min;
+    });
+    if (
+      val.total_duration_min !== undefined &&
+      val.stops.some(
+        (stop) =>
+          stop.duration_from_start_min !== undefined &&
+          stop.duration_from_start_min > val.total_duration_min!,
+      )
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "stops must fall within total_duration_min",
+        path: ["stops"],
+      });
+    }
   } else if (val.type === "daily_programme") {
     const toMin = (t: string) => {
       const [h, m] = t.split(":").map(Number);
@@ -1393,6 +1445,7 @@ export const CHART_TYPES = [
   "seat_value_map",
   "optimal_departure",
   "stop_frequency",
+  "route_profile",
   "queue_compare",
   "duration_stat",
   "ride_wait_curve",

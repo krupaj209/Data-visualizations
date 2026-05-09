@@ -29,6 +29,7 @@ import { ReturnBufferRankChart } from "./ReturnBufferRankChart";
 import { SeatValueMapChart } from "./SeatValueMapChart";
 import { OptimalDepartureChart } from "./OptimalDepartureChart";
 import { StopFrequencyChart } from "./StopFrequencyChart";
+import { RouteProfileChart } from "./RouteProfileChart";
 import {
   RideWaitCurveChart,
   ActivityWindowChart,
@@ -235,6 +236,10 @@ export function ChartRenderer({
     case "stop_frequency":
       return (
         <StopFrequencyChart spec={spec} context={context} compact={compact} />
+      );
+    case "route_profile":
+      return (
+        <RouteProfileChart spec={spec} context={context} compact={compact} />
       );
     case "ride_wait_curve":
       return (

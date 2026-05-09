@@ -30,6 +30,7 @@ export const CHART_TYPE_META: Record<
   seat_value_map: { label: "Seat value", emoji: "🎭" },
   optimal_departure: { label: "Optimal slot", emoji: "🚁" },
   stop_frequency: { label: "Stop frequency", emoji: "🚌" },
+  route_profile: { label: "Route profile", emoji: "🗺" },
   queue_compare: { label: "Queue compare", emoji: "🚪" },
   duration_stat: { label: "Duration stat", emoji: "⏱" },
   ride_wait_curve: { label: "Ride wait curve", emoji: "🎢" },
