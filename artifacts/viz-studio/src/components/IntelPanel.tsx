@@ -60,7 +60,13 @@ interface VisualizationPlan {
       id: string;
       label: string;
       strength: string;
-      items?: { id: string; claim: string; confidence: number }[];
+      items?: {
+        id: string;
+        claim: string;
+        confidence: number;
+        source_type?: string;
+        source_ref?: string;
+      }[];
       gaps?: string[];
     }[];
     gaps?: { category: string; reason: string }[];
@@ -271,6 +277,7 @@ export function IntelPanel({
     setCreatingQuestion(item.question);
     setPlanError(null);
     try {
+      const evidenceSnippets = relevantEvidenceForVisualization(plan, item);
       const plannerContext = [
         item.why_it_matters ? `Why it matters: ${item.why_it_matters}` : "",
         item.data_needed?.length
@@ -279,9 +286,28 @@ export function IntelPanel({
         item.evidence_refs?.length
           ? `Evidence refs: ${item.evidence_refs.join("; ")}`
           : "",
+        evidenceSnippets.length
+          ? `Evidence snippets passed into generation: ${evidenceSnippets.length}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n");
+      const pastedData = [
+        evidenceSnippets.length
+          ? `--- PLANNER-SELECTED EVIDENCE SNIPPETS ---\n${evidenceSnippets.join("\n")}`
+          : "",
+        plan?.live_search_notes?.length
+          ? `--- LIVE SEARCH FINDINGS ---\n${plan.live_search_notes
+              .slice(0, 8)
+              .map(
+                (note) =>
+                  `- ${note.finding}${note.source_url ? ` (${note.source_url})` : ""}`,
+              )
+              .join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
       const res = await fetch(`/api/ces/${slug}/charts`, {
         method: "POST",
@@ -290,6 +316,7 @@ export function IntelPanel({
           topic: item.question,
           archetype: item.archetype,
           plannerContext: plannerContext || undefined,
+          pastedData: pastedData || undefined,
           origin: "planner_recommendation",
         }),
       });
@@ -1140,6 +1167,62 @@ function EvidenceCoverage({
       </div>
     </div>
   );
+}
+
+function relevantEvidenceForVisualization(
+  plan: VisualizationPlan | null,
+  item: VisualizationPlan["recommended_visualizations"][number],
+): string[] {
+  const categories = plan?.evidence_inventory_detailed?.categories ?? [];
+  const evidenceRefs = new Set(
+    (item.evidence_refs ?? []).map((ref) => ref.toLowerCase()),
+  );
+  const categoriesForArchetype: Record<string, string[]> = {
+    ticket_ladder: ["tickets", "prices", "restrictions"],
+    route_profile: ["routes_stops", "durations", "opening_hours"],
+    history_timeline: ["historical_events", "restrictions"],
+    duration_profiles: ["durations", "routes_stops"],
+    duration_stat: ["durations"],
+    entrance_lanes: ["wait_times", "opening_hours", "tickets"],
+    queue_compare: ["wait_times", "tickets"],
+    weekly_pattern: ["crowd_claims", "opening_hours"],
+    hourly_heatmap: ["crowd_claims", "opening_hours"],
+    daily_pattern: ["crowd_claims", "opening_hours"],
+    seasonal_curve: ["seasonality", "crowd_claims"],
+    month_calendar: ["seasonality", "restrictions"],
+    compare_zones: ["routes_stops", "crowd_claims", "wait_times"],
+    stat_grid: ["tickets", "opening_hours", "durations"],
+    co_bookings: ["nearby_pairings"],
+    donut_breakdown: ["tickets", "nearby_pairings"],
+  };
+  const allowedCategories = new Set(categoriesForArchetype[item.archetype] ?? []);
+  const selected: string[] = [];
+
+  for (const category of categories) {
+    for (const evidence of category.items ?? []) {
+      const haystack = [
+        evidence.id,
+        evidence.source_ref ?? "",
+        evidence.claim,
+        category.id,
+        category.label,
+      ]
+        .join(" ")
+        .toLowerCase();
+      const directlyReferenced =
+        evidenceRefs.size > 0 &&
+        Array.from(evidenceRefs).some((ref) => haystack.includes(ref));
+      const categoryMatch = allowedCategories.has(category.id);
+      if (!directlyReferenced && !categoryMatch) continue;
+      selected.push(
+        `- [${evidence.id}] ${evidence.claim} (${evidence.source_type ?? "evidence"}, conf ${evidence.confidence}${
+          evidence.source_ref ? `, ${evidence.source_ref}` : ""
+        })`,
+      );
+    }
+  }
+
+  return Array.from(new Set(selected)).slice(0, 10);
 }
 
 function evidenceColor(status: string): { bg: string; fg: string } {
