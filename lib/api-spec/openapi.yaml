@@ -90,6 +90,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: CE with charts
@@ -394,6 +400,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Chart
@@ -969,6 +981,12 @@ components:
           type: string
       required:
         - status
+    RegenerateFeedbackInput:
+      type: object
+      properties:
+        feedback:
+          type: string
+          maxLength: 4000
     TopicChartInput:
       type: object
       properties:

@@ -13,6 +13,7 @@ import {
   CircleDot,
   FileText,
   Upload,
+  ChevronDown,
 } from "lucide-react";
 import {
   useGetCeIntelligence,
@@ -54,6 +55,22 @@ const BUCKET_LABELS: Record<string, string> = {
 interface VisualizationPlan {
   summary: string;
   generatedAt: string;
+  evidence_inventory_detailed?: {
+    categories?: {
+      id: string;
+      label: string;
+      strength: string;
+      items?: {
+        id: string;
+        claim: string;
+        confidence: number;
+        source_type?: string;
+        source_ref?: string;
+      }[];
+      gaps?: string[];
+    }[];
+    gaps?: { category: string; reason: string }[];
+  };
   evidence_inventory?: {
     id: string;
     label: string;
@@ -67,6 +84,18 @@ interface VisualizationPlan {
     why_it_matters: string;
     data_needed?: string[];
     evidence_refs?: string[];
+    quality_score?: {
+      traveler_usefulness?: number;
+      evidence_strength?: number;
+      uniqueness?: number;
+      visual_fit?: number;
+      ce_specificity?: number;
+      cms_value?: number;
+      verifier_risk?: number;
+      overall?: number;
+      label?: string;
+      rationale?: string;
+    };
     priority: number;
   }[];
   rejected_visualizations: {
@@ -260,6 +289,7 @@ export function IntelPanel({
     setCreatingQuestion(item.question);
     setPlanError(null);
     try {
+      const evidenceSnippets = relevantEvidenceForVisualization(plan, item);
       const plannerContext = [
         item.why_it_matters ? `Why it matters: ${item.why_it_matters}` : "",
         item.data_needed?.length
@@ -268,9 +298,28 @@ export function IntelPanel({
         item.evidence_refs?.length
           ? `Evidence refs: ${item.evidence_refs.join("; ")}`
           : "",
+        evidenceSnippets.length
+          ? `Evidence snippets passed into generation: ${evidenceSnippets.length}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n");
+      const pastedData = [
+        evidenceSnippets.length
+          ? `--- PLANNER-SELECTED EVIDENCE SNIPPETS ---\n${evidenceSnippets.join("\n")}`
+          : "",
+        plan?.live_search_notes?.length
+          ? `--- LIVE SEARCH FINDINGS ---\n${plan.live_search_notes
+              .slice(0, 8)
+              .map(
+                (note) =>
+                  `- ${note.finding}${note.source_url ? ` (${note.source_url})` : ""}`,
+              )
+              .join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
       const res = await fetch(`/api/ces/${slug}/charts`, {
         method: "POST",
@@ -279,6 +328,7 @@ export function IntelPanel({
           topic: item.question,
           archetype: item.archetype,
           plannerContext: plannerContext || undefined,
+          pastedData: pastedData || undefined,
           origin: "planner_recommendation",
         }),
       });
@@ -733,6 +783,12 @@ export function IntelPanel({
                   />
                 ))}
               </div>
+              {plan.evidence_inventory_detailed?.categories &&
+                plan.evidence_inventory_detailed.categories.length > 0 && (
+                  <EvidenceCoverage
+                    categories={plan.evidence_inventory_detailed.categories}
+                  />
+                )}
               <PlanList
                 title={`Recommended (${plan.recommended_visualizations.length})`}
                 items={plan.recommended_visualizations.map((item) => {
@@ -750,6 +806,7 @@ export function IntelPanel({
                       ...(question?.source_refs ?? []),
                       ...(item.evidence_refs ?? []),
                     ],
+                    qualityScore: item.quality_score,
                     createdChart: created,
                     actionLabel: created
                       ? "Created"
@@ -1062,6 +1119,125 @@ function EvidenceChip({
   );
 }
 
+function EvidenceCoverage({
+  categories,
+}: {
+  categories: NonNullable<
+    VisualizationPlan["evidence_inventory_detailed"]
+  >["categories"];
+}) {
+  const visible = (categories ?? [])
+    .filter((category) => category.strength !== "missing")
+    .slice(0, 6);
+  const missingCount = (categories ?? []).filter(
+    (category) => category.strength === "missing",
+  ).length;
+  if (visible.length === 0 && missingCount === 0) return null;
+  return (
+    <div
+      style={{
+        border: `1px solid ${BRAND.slate100}`,
+        background: "white",
+        borderRadius: 10,
+        padding: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 900,
+          color: BRAND.slate500,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 6,
+        }}
+      >
+        Evidence coverage
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {visible.map((category) => (
+          <EvidenceChip
+            key={category.id}
+            label={category.label}
+            status={category.strength}
+            count={category.items?.length ?? 0}
+          />
+        ))}
+        {missingCount > 0 && (
+          <span
+            style={{
+              borderRadius: 999,
+              padding: "3px 7px",
+              background: BRAND.slate100,
+              color: BRAND.slate700,
+              fontSize: 10,
+              fontWeight: 850,
+            }}
+          >
+            {missingCount} gap{missingCount === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function relevantEvidenceForVisualization(
+  plan: VisualizationPlan | null,
+  item: VisualizationPlan["recommended_visualizations"][number],
+): string[] {
+  const categories = plan?.evidence_inventory_detailed?.categories ?? [];
+  const evidenceRefs = new Set(
+    (item.evidence_refs ?? []).map((ref) => ref.toLowerCase()),
+  );
+  const categoriesForArchetype: Record<string, string[]> = {
+    ticket_ladder: ["tickets", "prices", "restrictions"],
+    route_profile: ["routes_stops", "durations", "opening_hours"],
+    history_timeline: ["historical_events", "restrictions"],
+    duration_profiles: ["durations", "routes_stops"],
+    duration_stat: ["durations"],
+    entrance_lanes: ["wait_times", "opening_hours", "tickets"],
+    queue_compare: ["wait_times", "tickets"],
+    weekly_pattern: ["crowd_claims", "opening_hours"],
+    hourly_heatmap: ["crowd_claims", "opening_hours"],
+    daily_pattern: ["crowd_claims", "opening_hours"],
+    seasonal_curve: ["seasonality", "crowd_claims"],
+    month_calendar: ["seasonality", "restrictions"],
+    compare_zones: ["routes_stops", "crowd_claims", "wait_times"],
+    stat_grid: ["tickets", "opening_hours", "durations"],
+    co_bookings: ["nearby_pairings"],
+    donut_breakdown: ["tickets", "nearby_pairings"],
+  };
+  const allowedCategories = new Set(categoriesForArchetype[item.archetype] ?? []);
+  const selected: string[] = [];
+
+  for (const category of categories) {
+    for (const evidence of category.items ?? []) {
+      const haystack = [
+        evidence.id,
+        evidence.source_ref ?? "",
+        evidence.claim,
+        category.id,
+        category.label,
+      ]
+        .join(" ")
+        .toLowerCase();
+      const directlyReferenced =
+        evidenceRefs.size > 0 &&
+        Array.from(evidenceRefs).some((ref) => haystack.includes(ref));
+      const categoryMatch = allowedCategories.has(category.id);
+      if (!directlyReferenced && !categoryMatch) continue;
+      selected.push(
+        `- [${evidence.id}] ${evidence.claim} (${evidence.source_type ?? "evidence"}, conf ${evidence.confidence}${
+          evidence.source_ref ? `, ${evidence.source_ref}` : ""
+        })`,
+      );
+    }
+  }
+
+  return Array.from(new Set(selected)).slice(0, 10);
+}
+
 function evidenceColor(status: string): { bg: string; fg: string } {
   if (status === "strong") return { bg: BRAND.bgMint, fg: BRAND.okayInk };
   if (status === "partial") return { bg: BRAND.bgCool, fg: BRAND.purps };
@@ -1110,6 +1286,7 @@ function PlanList({
     confidence?: number;
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
+    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
     extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
@@ -1117,6 +1294,9 @@ function PlanList({
     onAction?: () => void;
   }[];
 }) {
+  const [openItems, setOpenItems] = useState<Record<string, boolean>>(
+    () => ({}),
+  );
   if (items.length === 0) return null;
   return (
     <div>
@@ -1143,174 +1323,354 @@ function PlanList({
         }}
       >
         {items.map((item) => (
-          <li
+          <PlanListItem
             key={item.key}
+            item={item}
+            isOpen={!!openItems[item.key]}
+            onToggle={() =>
+              setOpenItems((prev) => ({
+                ...prev,
+                [item.key]: !prev[item.key],
+              }))
+            }
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PlanListItem({
+  item,
+  isOpen,
+  onToggle,
+}: {
+  item: {
+    key: string;
+    title: string;
+    meta: string;
+    body: string;
+    tone: "good" | "warn";
+    evidenceStatus?: string;
+    confidence?: number;
+    sourceRefs?: string[];
+    createdChart?: CreatedPlanChart;
+    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
+    extra?: ReactNode;
+    actionLabel?: string;
+    actionDisabled?: boolean;
+    actionBusy?: boolean;
+    onAction?: () => void;
+  };
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const toneBg = item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft;
+  const toneFg = item.tone === "good" ? BRAND.okayInk : BRAND.hola;
+  return (
+    <li
+      style={{
+        borderRadius: 10,
+        background: "white",
+        border: `1px solid ${isOpen ? toneBg : BRAND.slate100}`,
+        overflow: "hidden",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          border: "none",
+          background: "transparent",
+          padding: "8px 10px",
+          cursor: "pointer",
+          textAlign: "left",
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 8,
+          alignItems: "start",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
             style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              background: "white",
-              border: `1px solid ${
-                item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft
-              }`,
+              fontSize: 12,
+              color: BRAND.slate950,
+              fontWeight: 750,
+              lineHeight: 1.35,
             }}
           >
-            <div
+            {item.title}
+          </div>
+          <div
+            style={{
+              marginTop: 5,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              flexWrap: "wrap",
+            }}
+          >
+            <span
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                alignItems: "flex-start",
+                borderRadius: 999,
+                padding: "2px 6px",
+                fontSize: 9,
+                fontWeight: 900,
+                color: toneFg,
+                background: toneBg,
               }}
             >
-              <div
-                style={{
-                  fontSize: 12,
-                  color: BRAND.slate950,
-                  fontWeight: 750,
-                  lineHeight: 1.35,
-                }}
-              >
-                {item.title}
-              </div>
+              {item.meta}
+            </span>
+            {item.evidenceStatus && (
+              <EvidenceChip
+                label={item.evidenceStatus}
+                status={item.evidenceStatus}
+                count={item.confidence ?? 0}
+              />
+            )}
+            {item.createdChart && (
               <span
                 style={{
-                  flex: "0 0 auto",
+                  color: verifyTone(item.createdChart.verifyStatus).fg,
+                  background: verifyTone(item.createdChart.verifyStatus).bg,
                   borderRadius: 999,
                   padding: "2px 6px",
                   fontSize: 9,
-                  fontWeight: 900,
-                  color: item.tone === "good" ? BRAND.okayInk : BRAND.hola,
-                  background:
-                    item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft,
+                  fontWeight: 850,
                 }}
               >
-                {item.meta}
+                {item.createdChart.verifyLabel}
               </span>
+            )}
+            {item.qualityScore && (
+              <QualityScorePill score={item.qualityScore} compact />
+            )}
+          </div>
+        </div>
+        <ChevronDown
+          size={14}
+          color={BRAND.slate500}
+          style={{
+            marginTop: 2,
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 140ms ease",
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            borderTop: `1px solid ${BRAND.slate100}`,
+            padding: "8px 10px 10px",
+            background: BRAND.slate50,
+          }}
+        >
+          {item.body && (
+            <div
+              style={{
+                fontSize: 11,
+                color: BRAND.slate700,
+                fontWeight: 600,
+                lineHeight: 1.35,
+              }}
+            >
+              {item.body}
             </div>
-            {item.body && (
-              <div
+          )}
+          {item.confidence !== undefined && (
+            <div
+              style={{
+                marginTop: 6,
+                color: BRAND.slate500,
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              Confidence {item.confidence}
+            </div>
+          )}
+          {item.qualityScore && (
+            <QualityScoreBlock score={item.qualityScore} />
+          )}
+          {item.sourceRefs && item.sourceRefs.length > 0 && (
+            <div
+              style={{
+                marginTop: 5,
+                fontSize: 10,
+                color: BRAND.slate500,
+                fontWeight: 650,
+                lineHeight: 1.35,
+              }}
+              title={item.sourceRefs.join("\n")}
+            >
+              Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
+            </div>
+          )}
+          {item.createdChart && (
+            <div
+              style={{
+                marginTop: 7,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                fontSize: 10,
+                fontWeight: 850,
+              }}
+            >
+              <a
+                href={`?edit=${item.createdChart.chartId}`}
                 style={{
-                  marginTop: 4,
-                  fontSize: 11,
-                  color: BRAND.slate700,
-                  fontWeight: 600,
-                  lineHeight: 1.35,
+                  color: BRAND.purps,
+                  textDecoration: "none",
                 }}
               >
-                {item.body}
-              </div>
-            )}
-            {(item.evidenceStatus || item.confidence !== undefined) && (
-              <div
-                style={{
-                  marginTop: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  flexWrap: "wrap",
-                }}
-              >
-                {item.evidenceStatus && (
-                  <EvidenceChip
-                    label={item.evidenceStatus}
-                    status={item.evidenceStatus}
-                    count={item.confidence ?? 0}
-                  />
-                )}
-                {item.confidence !== undefined && (
-                  <span
-                    style={{
-                      color: BRAND.slate500,
-                      fontSize: 10,
-                      fontWeight: 800,
-                    }}
-                  >
-                    confidence {item.confidence}
-                  </span>
-                )}
-              </div>
-            )}
-            {item.sourceRefs && item.sourceRefs.length > 0 && (
-              <div
-                style={{
-                  marginTop: 5,
-                  fontSize: 10,
-                  color: BRAND.slate500,
-                  fontWeight: 650,
-                  lineHeight: 1.35,
-                }}
-                title={item.sourceRefs.join("\n")}
-              >
-                Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
-              </div>
-            )}
-            {item.createdChart && (
-              <div
-                style={{
-                  marginTop: 7,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  fontSize: 10,
-                  fontWeight: 850,
-                }}
-              >
-                <span
-                  style={{
-                    color: verifyTone(item.createdChart.verifyStatus).fg,
-                    background: verifyTone(item.createdChart.verifyStatus).bg,
-                    borderRadius: 999,
-                    padding: "3px 7px",
-                  }}
-                >
-                  {item.createdChart.verifyLabel}
-                </span>
-                <a
-                  href={`?edit=${item.createdChart.chartId}`}
-                  style={{
-                    color: BRAND.purps,
-                    textDecoration: "none",
-                  }}
-                >
-                  Open draft
-                </a>
-              </div>
-            )}
-            {item.extra}
-            {item.onAction && (
-              <button
-                type="button"
-                onClick={item.onAction}
-                disabled={item.actionDisabled}
-                style={{
-                  marginTop: 8,
-                  border: "none",
-                  borderRadius: 9,
-                  padding: "6px 9px",
-                  background: item.actionDisabled
-                    ? BRAND.slate100
-                    : BRAND.purps,
-                  color: item.actionDisabled ? BRAND.slate500 : "white",
-                  fontSize: 11,
-                  fontWeight: 850,
-                  cursor: item.actionDisabled ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                {item.actionBusy ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Plus size={12} />
-                )}
-                {item.actionLabel ?? "Create chart"}
-              </button>
-            )}
-          </li>
+                Open draft
+              </a>
+            </div>
+          )}
+          {item.extra}
+          {item.onAction && (
+            <button
+              type="button"
+              onClick={item.onAction}
+              disabled={item.actionDisabled}
+              style={{
+                marginTop: 8,
+                border: "none",
+                borderRadius: 9,
+                padding: "6px 9px",
+                background: item.actionDisabled
+                  ? BRAND.slate100
+                  : BRAND.purps,
+                color: item.actionDisabled ? BRAND.slate500 : "white",
+                fontSize: 11,
+                fontWeight: 850,
+                cursor: item.actionDisabled ? "not-allowed" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              {item.actionBusy ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Plus size={12} />
+              )}
+              {item.actionLabel ?? "Create chart"}
+            </button>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function qualityLabel(label: string | undefined): string {
+  if (label === "needs_evidence") return "Needs evidence";
+  if (label === "not_worth_charting") return "Not worth charting";
+  if (label === "good_but_duplicate") return "Good but duplicate";
+  return "Recommended";
+}
+
+function qualityTone(label: string | undefined): { bg: string; fg: string } {
+  if (label === "needs_evidence") return { bg: BRAND.holaSoft, fg: BRAND.hola };
+  if (label === "not_worth_charting") {
+    return { bg: BRAND.candySoft, fg: BRAND.candy };
+  }
+  if (label === "good_but_duplicate") {
+    return { bg: BRAND.slate100, fg: BRAND.slate700 };
+  }
+  return { bg: BRAND.bgMint, fg: BRAND.okayInk };
+}
+
+function QualityScorePill({
+  score,
+  compact = false,
+}: {
+  score: NonNullable<
+    VisualizationPlan["recommended_visualizations"][number]["quality_score"]
+  >;
+  compact?: boolean;
+}) {
+  const tone = qualityTone(score.label);
+  return (
+    <span
+      style={{
+        borderRadius: 999,
+        padding: compact ? "2px 6px" : "3px 7px",
+        background: tone.bg,
+        color: tone.fg,
+        fontSize: compact ? 9 : 10,
+        fontWeight: 850,
+      }}
+    >
+      {qualityLabel(score.label)} · {Math.round(score.overall ?? 0)}
+    </span>
+  );
+}
+
+function QualityScoreBlock({
+  score,
+}: {
+  score: NonNullable<
+    VisualizationPlan["recommended_visualizations"][number]["quality_score"]
+  >;
+}) {
+  const metrics = [
+    ["Useful", score.traveler_usefulness],
+    ["Evidence", score.evidence_strength],
+    ["Unique", score.uniqueness],
+    ["Visual fit", score.visual_fit],
+    ["CE-specific", score.ce_specificity],
+    ["CMS value", score.cms_value],
+    ["Risk", score.verifier_risk],
+  ] as const;
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        border: `1px solid ${BRAND.slate100}`,
+        background: "white",
+        borderRadius: 9,
+        padding: 8,
+      }}
+    >
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        <QualityScorePill score={score} />
+        {metrics.map(([label, value]) => (
+          <span
+            key={label}
+            style={{
+              color: BRAND.slate500,
+              background: BRAND.slate50,
+              borderRadius: 999,
+              padding: "3px 7px",
+              fontSize: 10,
+              fontWeight: 800,
+            }}
+          >
+            {label} {Math.round(value ?? 0)}
+          </span>
         ))}
-      </ul>
+      </div>
+      {score.rationale && (
+        <div
+          style={{
+            marginTop: 6,
+            color: BRAND.slate700,
+            fontSize: 10,
+            fontWeight: 650,
+            lineHeight: 1.35,
+          }}
+        >
+          {score.rationale}
+        </div>
+      )}
     </div>
   );
 }

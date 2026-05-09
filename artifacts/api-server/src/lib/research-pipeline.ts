@@ -1406,13 +1406,17 @@ export async function regenerateSingleChart(args: {
   question: string;
   archetype: ChartArchetypeId;
   drdMarkdown: string;
+  feedback?: string;
 }): Promise<{ chart: AiChart; provenance: ChartProvenance }> {
   const input: ResearchPipelineInput = {
     ce: args.ce,
     subcategoryId: "single_chart_regen",
     drdMarkdown: args.drdMarkdown,
   };
-  const generated = await generateOneChart(input, args.question, args.archetype);
+  const question = args.feedback?.trim()
+    ? `${args.question}\n\nWriter feedback to address in this regeneration:\n${args.feedback.trim()}\n\nRegenerate this chart so it directly fixes that feedback while keeping the same visitor question and archetype unless the existing framing is the problem.`
+    : args.question;
+  const generated = await generateOneChart(input, question, args.archetype);
   const provenance = await verifyChart(input, generated.spec, generated.provenance);
   return { chart: generated.spec, provenance };
 }

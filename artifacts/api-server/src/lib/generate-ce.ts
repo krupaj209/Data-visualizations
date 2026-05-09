@@ -147,6 +147,7 @@ interface GenerateInput {
   city: string;
   country: string;
   category?: string;
+  regenerationFeedback?: string;
 }
 
 async function callGemini(
@@ -179,6 +180,17 @@ Category: ${input.category ?? "attraction"}
 Today is ${new Date().toISOString().slice(0, 10)} — when generating month_calendar dates, start from today or the next available open day.
 
 Pick 4-6 charts from the menu. Match each chart to the SPECIFIC questions visitors ask about THIS CE — do not produce a generic suite. Make sure at least one chart is uniquely tailored (e.g. compare_zones for the David hall, or a ticket_ladder if there are dramatically different tiers).
+
+${
+  input.regenerationFeedback?.trim()
+    ? `Writer feedback to address in this regeneration:
+"""
+${input.regenerationFeedback.trim()}
+"""
+
+Treat this as the brief for what must improve. Keep anything that still works, but change chart choices, questions, copy, or numbers where needed to satisfy the feedback.`
+    : ""
+}
 
 Choose a single emoji that best represents this CE. Write a 2-sentence summary of what makes this CE worth visiting.
 

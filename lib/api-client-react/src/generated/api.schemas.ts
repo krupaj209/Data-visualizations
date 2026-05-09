@@ -82,6 +82,10 @@ export interface ChartPublishInput {
   writerId?: string;
 }
 
+export interface RegenerateFeedbackInput {
+  feedback?: string;
+}
+
 export interface TopicChartInput {
   topic: string;
   archetype?: string;
