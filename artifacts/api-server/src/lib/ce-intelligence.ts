@@ -112,6 +112,13 @@ interface GroundingChunk {
   web?: { uri?: string; title?: string };
 }
 
+const SOURCE_DOMAIN_HINTS: Partial<Record<IntelSourceId, string[]>> = {
+  tripadvisor: ["tripadvisor."],
+  getyourguide: ["getyourguide."],
+  viator: ["viator."],
+  reddit: ["reddit.com"],
+};
+
 function pullGroundingUrls(resp: unknown): string[] {
   const candidates = (resp as { candidates?: unknown[] } | undefined)
     ?.candidates;
@@ -188,6 +195,7 @@ Rules:
 - Do NOT invent facts. If the source has nothing useful, return { "facts": [] }.
 - For OTA/review/forum sources, useful facts may come from listing pages, product pages, review snippets, Q&A pages, or category pages on that source.
 - Stay on the named source. Do not fill TripAdvisor/GetYourGuide/Viator/Reddit rows with official-site facts.
+- If Google Search only surfaces official/operator pages while this adapter is for TripAdvisor/GetYourGuide/Viator/Reddit, return an empty facts array instead of copying those official facts.
 - Each "value" should be standalone and readable — no pronouns referring to context.
 - Prefer numbers, dates, opening hours, prices, named zones, route/stop details, crowd descriptions, review themes, queue minutes, tour durations, inclusions, and cancellation or access notes.
 - If the source contradicts common knowledge, prefer what the source says — confidence reflects clarity, not plausibility.
@@ -217,25 +225,36 @@ Rules:
   const rawFacts = parsed?.facts ?? [];
 
   const out: AdapterResult["facts"] = [];
+  const allowedDomains = SOURCE_DOMAIN_HINTS[source] ?? [];
   for (const f of rawFacts) {
     const bucket = f.bucket as IntelBucketId | undefined;
     const value = (f.value ?? "").trim();
     if (!bucket || !INTEL_BUCKET_IDS.includes(bucket)) continue;
     if (!value) continue;
+    const sourceUrl = f.source_url
+      ? String(f.source_url)
+      : groundedUrls.find((url) => sourceUrlMatches(url, allowedDomains)) ??
+        groundedUrls[0];
+    if (allowedDomains.length > 0 && !sourceUrlMatches(sourceUrl, allowedDomains)) {
+      continue;
+    }
     out.push({
       bucket,
       value: value.slice(0, 220),
       ...(f.quote ? { quote: String(f.quote).slice(0, 280) } : {}),
-      ...(f.source_url
-        ? { source_url: String(f.source_url) }
-        : groundedUrls[0]
-          ? { source_url: groundedUrls[0] }
-          : {}),
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
       confidence: clampInt(f.confidence ?? 60, 0, 100),
     });
   }
 
   return { source, facts: out };
+}
+
+function sourceUrlMatches(url: string | undefined, hints: string[]): boolean {
+  if (!url) return hints.length === 0;
+  if (hints.length === 0) return true;
+  const lower = url.toLowerCase();
+  return hints.some((hint) => lower.includes(hint));
 }
 
 function clampInt(v: unknown, lo: number, hi: number): number {
@@ -256,7 +275,7 @@ const tripAdvisorAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "tripadvisor",
     ctx,
-    `TripAdvisor ${ctx.ce.name} ${ctx.ce.city} reviews tickets wait time visitor tips`,
+    `site:tripadvisor.com ${ctx.ce.name} ${ctx.ce.city} reviews tickets wait time visitor tips`,
     "TripAdvisor pages only, including attraction reviews, forum posts, Q&A, and traveler tips",
   );
 
@@ -264,7 +283,7 @@ const getYourGuideAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "getyourguide",
     ctx,
-    `GetYourGuide ${ctx.ce.name} ${ctx.ce.city} tickets tours prices duration inclusions`,
+    `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} tickets tours prices duration inclusions`,
     "GetYourGuide product or category pages only",
   );
 
@@ -272,7 +291,7 @@ const viatorAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "viator",
     ctx,
-    `Viator ${ctx.ce.name} ${ctx.ce.city} tours tickets prices duration inclusions`,
+    `site:viator.com ${ctx.ce.name} ${ctx.ce.city} tours tickets prices duration inclusions`,
     "Viator product or category pages only",
   );
 
@@ -280,7 +299,7 @@ const redditAdapter: IntelAdapter = (ctx) =>
   runGroundedAdapter(
     "reddit",
     ctx,
-    `Reddit ${ctx.ce.name} ${ctx.ce.city} best time visit crowds tickets tips`,
+    `site:reddit.com ${ctx.ce.name} ${ctx.ce.city} best time visit crowds tickets tips`,
     "Reddit posts and comment threads only",
   );
 

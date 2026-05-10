@@ -257,7 +257,13 @@ async function gatherPlannerLiveNotes(input: PlannerInput): Promise<string> {
 
 CE: ${input.ce.name} (${input.ce.city}, ${input.ce.country})
 
-Use Google Search to find current, visitor-facing facts that would help decide which data visualizations to create. Prefer official/operator pages, current ticket pages, attraction pages, and recent high-signal review/forum summaries.
+Use Google Search to find current, visitor-facing facts that would help decide which data visualizations to create. Use a balanced source mix:
+- official/operator pages for hours, access rules, routes, and policies
+- Headout/GetYourGuide/Viator/other OTA pages for ticket options, durations, inclusions, live availability, and price dynamics
+- TripAdvisor/Reddit/review/forum sources for sentiment, crowd anecdotes, queue pain points, and traveler anxieties
+- tourism/government/reputable travel sources for seasonality and practical context
+
+Do not rely only on official pages unless the question is strictly operational. When the potential chart is about queues, value, sentiment, price movement, “best for”, or what visitors worry about, include non-official sources too.
 
 Return 8-12 concise bullets. Each bullet must name the fact and the source domain in parentheses. Focus on facts that can become charts: ticket tiers, routes/stops, timings, seasonal patterns, crowds, waits, duration, accessibility, restrictions, history/timeline, and comparison dimensions.
 

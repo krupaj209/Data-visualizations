@@ -140,6 +140,9 @@ export function IntelPanel({
   const [rejectedArchetype, setRejectedArchetype] = useState<Record<string, string>>(
     () => ({}),
   );
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>(
+    () => ({}),
+  );
   const [showContextUpload, setShowContextUpload] = useState(false);
   const [drdStatus, setDrdStatus] = useState<{
     sourceFilename?: string | null;
@@ -293,11 +296,58 @@ export function IntelPanel({
     setCreatingQuestion(item.question);
     setPlanError(null);
     try {
-      await handleRefreshAll();
-      await handlePlanVisualizations();
+      const res = await fetch(`/api/ce-intelligence/${slug}/recheck-gap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: item.question,
+          archetype: item.archetype,
+          reason: item.reason,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Evidence recheck failed");
+      const status = String(json?.status ?? "not_found");
+      const context = String(json?.generation_context ?? "").trim();
+      const findings = Array.isArray(json?.findings)
+        ? json.findings.map((f: unknown) => String(f)).filter(Boolean)
+        : [];
+      const sourceRefs = Array.isArray(json?.source_refs)
+        ? json.source_refs.map((f: unknown) => String(f)).filter(Boolean)
+        : [];
+      const repairContext = [
+        context,
+        findings.length ? `Recheck findings:\n${findings.map((f: string) => `- ${f}`).join("\n")}` : "",
+        sourceRefs.length ? `Sources:\n${sourceRefs.map((s: string) => `- ${s}`).join("\n")}` : "",
+        status === "partial"
+          ? "Evidence recheck status: partial. Mark any unsupported fields as estimates."
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      if ((status === "found" || status === "partial") && repairContext) {
+        setRejectedContext((prev) => ({
+          ...prev,
+          [item.question]: repairContext,
+        }));
+        await handleCreateRejected(item, "context", repairContext);
+        return;
+      }
+      setRejectedContext((prev) => ({
+        ...prev,
+        [item.question]:
+          repairContext ||
+          String(json?.reason ?? "No stronger evidence found after recheck."),
+      }));
+      setPlanError(
+        String(
+          json?.reason ??
+            "I rechecked the DRD and live sources, but still could not find enough evidence.",
+        ),
+      );
     } catch (err) {
       setPlanError(
-        err instanceof Error ? err.message : "Could not search for more evidence",
+        err instanceof Error ? err.message : "Could not recheck evidence",
       );
     } finally {
       setCreatingQuestion(null);
@@ -417,8 +467,9 @@ export function IntelPanel({
   async function handleCreateRejected(
     item: VisualizationPlan["rejected_visualizations"][number],
     mode: "context" | "estimate" | "changed_archetype",
+    contextOverride?: string,
   ) {
-    const context = (rejectedContext[item.question] ?? "").trim();
+    const context = (contextOverride ?? rejectedContext[item.question] ?? "").trim();
     const chosenArchetype =
       rejectedArchetype[item.question] || item.archetype || undefined;
     if (mode === "context" && !context) {
@@ -539,8 +590,12 @@ export function IntelPanel({
   for (const s of intel?.sources ?? []) sourceMap.set(s.source, s);
 
   const facts: CeIntelligenceFact[] = intel?.facts ?? [];
+  const factsBySource = new Map<string, CeIntelligenceFact[]>();
   const factsByBucket = new Map<string, CeIntelligenceFact[]>();
   for (const f of facts) {
+    const sourceArr = factsBySource.get(f.source) ?? [];
+    sourceArr.push(f);
+    factsBySource.set(f.source, sourceArr);
     const arr = factsByBucket.get(f.bucket) ?? [];
     arr.push(f);
     factsByBucket.set(f.bucket, arr);
@@ -932,78 +987,109 @@ export function IntelPanel({
                   error: null,
                 } as CeIntelligenceSource);
               const isRefreshing = refreshingSource === id;
+              const sourceFacts = factsBySource.get(id) ?? [];
+              const expanded = !!expandedSources[id];
               return (
-                <div
-                  key={id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "auto 1fr auto auto",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    background: BRAND.slate50,
-                  }}
-                >
-                  <SourceStatusDot status={s.status} />
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: BRAND.slate950,
-                      }}
-                    >
-                      {SOURCE_LABELS[id] ?? id}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: BRAND.slate500,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={s.error ?? undefined}
-                    >
-                      {s.fact_count} fact{s.fact_count === 1 ? "" : "s"} ·{" "}
-                      {s.last_tried_at
-                        ? `tried ${relativeTime(s.last_tried_at)}`
-                        : "never tried"}
-                      {s.error ? ` · error` : ""}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRefreshOne(id)}
-                    disabled={refreshingSource !== null}
-                    style={iconBtn()}
-                    aria-label={`Refresh ${id}`}
-                  >
-                    {isRefreshing ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <RefreshCw size={12} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSource(id)}
-                    disabled={s.fact_count === 0 || deleteSourceMut.isPending}
+                <div key={id}>
+                  <div
                     style={{
-                      ...iconBtn(),
-                      opacity: s.fact_count === 0 ? 0.4 : 1,
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto auto auto",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: expanded ? "white" : BRAND.slate50,
+                      border: `1px solid ${expanded ? BRAND.slate200 : "transparent"}`,
                     }}
-                    aria-label={`Drop ${id} facts`}
                   >
-                    <Trash2 size={12} />
-                  </button>
+                    <SourceStatusDot status={s.status} />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedSources((prev) => ({
+                          ...prev,
+                          [id]: !prev[id],
+                        }))
+                      }
+                      style={{
+                        minWidth: 0,
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: BRAND.slate950,
+                        }}
+                      >
+                        {SOURCE_LABELS[id] ?? id}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: BRAND.slate500,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={s.error ?? undefined}
+                      >
+                        {s.fact_count} fact{s.fact_count === 1 ? "" : "s"} ·{" "}
+                        {s.last_tried_at
+                          ? `tried ${relativeTime(s.last_tried_at)}`
+                          : "never tried"}
+                        {s.error ? ` · error` : ""}
+                      </div>
+                    </button>
+                    <ChevronDown
+                      size={14}
+                      color={BRAND.slate500}
+                      style={{
+                        transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 140ms ease",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshOne(id)}
+                      disabled={refreshingSource !== null}
+                      style={iconBtn()}
+                      aria-label={`Refresh ${id}`}
+                    >
+                      {isRefreshing ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={12} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSource(id)}
+                      disabled={s.fact_count === 0 || deleteSourceMut.isPending}
+                      style={{
+                        ...iconBtn(),
+                        opacity: s.fact_count === 0 ? 0.4 : 1,
+                      }}
+                      aria-label={`Drop ${id} facts`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {expanded && <SourceFactsList facts={sourceFacts} />}
                 </div>
               );
             })}
           </div>
         </section>
+
+        {facts.length > 0 && <MergedFactsSection facts={facts} />}
 
         {/* Loading / error */}
         {isLoading && (
@@ -1047,51 +1133,7 @@ export function IntelPanel({
                 }}
               >
                 {items.map((f) => (
-                  <li
-                    key={f.id}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      background: "white",
-                      border: `1px solid ${BRAND.slate100}`,
-                    }}
-                  >
-                    <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 600, lineHeight: 1.4 }}>
-                      {f.value}
-                    </div>
-                    <div
-                      className="flex items-center gap-2"
-                      style={{ marginTop: 4, fontSize: 10, fontWeight: 700, color: BRAND.slate500 }}
-                    >
-                      <span
-                        style={{
-                          background: BRAND.bgLilac,
-                          color: BRAND.purps,
-                          padding: "1px 6px",
-                          borderRadius: 999,
-                        }}
-                      >
-                        {SOURCE_LABELS[f.source] ?? f.source}
-                      </span>
-                      <span>conf {f.confidence}</span>
-                      {f.source_url && (
-                        <a
-                          href={f.source_url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          style={{
-                            color: BRAND.slate700,
-                            textDecoration: "none",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                        >
-                          source <ExternalLink size={10} />
-                        </a>
-                      )}
-                    </div>
-                  </li>
+                  <FactListItem key={f.id} fact={f} />
                 ))}
               </ul>
             </section>
@@ -1124,6 +1166,191 @@ function SourceStatusDot({ status }: { status: string }) {
   if (status === "empty")
     return <CircleDot size={14} color={BRAND.slate500} />;
   return <CircleDot size={14} color={BRAND.slate300} />;
+}
+
+function SourceFactsList({ facts }: { facts: CeIntelligenceFact[] }) {
+  if (facts.length === 0) {
+    return (
+      <div
+        style={{
+          marginTop: 4,
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: `1px dashed ${BRAND.slate200}`,
+          color: BRAND.slate500,
+          fontSize: 11,
+          fontWeight: 650,
+          background: "white",
+        }}
+      >
+        No facts captured from this source yet.
+      </div>
+    );
+  }
+  return (
+    <ul
+      style={{
+        listStyle: "none",
+        margin: "4px 0 0 0",
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+      }}
+    >
+      {facts.map((f) => (
+        <FactListItem key={f.id} fact={f} compact />
+      ))}
+    </ul>
+  );
+}
+
+function MergedFactsSection({ facts }: { facts: CeIntelligenceFact[] }) {
+  const groups = groupMergedFacts(facts);
+  if (groups.length === 0) return null;
+  return (
+    <section>
+      <h4 style={sectionLabel()}>Merged facts</h4>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {groups.slice(0, 12).map((group) => (
+          <li
+            key={group.key}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              background: "white",
+              border: `1px solid ${group.sources.length > 1 ? BRAND.bgMint : BRAND.slate100}`,
+            }}
+          >
+            <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 650, lineHeight: 1.4 }}>
+              {group.claim}
+            </div>
+            <div
+              style={{
+                marginTop: 5,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+                fontSize: 10,
+                fontWeight: 800,
+                color: BRAND.slate500,
+              }}
+            >
+              <span
+                style={{
+                  background: group.sources.length > 1 ? BRAND.bgMint : BRAND.slate100,
+                  color: group.sources.length > 1 ? BRAND.okayInk : BRAND.slate700,
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                }}
+              >
+                {group.sources.length} source{group.sources.length === 1 ? "" : "s"}
+              </span>
+              <span>{group.sources.map((s) => SOURCE_LABELS[s] ?? s).join(" · ")}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function FactListItem({
+  fact,
+  compact = false,
+}: {
+  fact: CeIntelligenceFact;
+  compact?: boolean;
+}) {
+  return (
+    <li
+      style={{
+        padding: compact ? "7px 9px" : "8px 10px",
+        borderRadius: 10,
+        background: compact ? BRAND.slate50 : "white",
+        border: `1px solid ${BRAND.slate100}`,
+      }}
+    >
+      <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 600, lineHeight: 1.4 }}>
+        {fact.value}
+      </div>
+      <div
+        className="flex items-center gap-2"
+        style={{ marginTop: 4, fontSize: 10, fontWeight: 700, color: BRAND.slate500 }}
+      >
+        <span
+          style={{
+            background: BRAND.bgLilac,
+            color: BRAND.purps,
+            padding: "1px 6px",
+            borderRadius: 999,
+          }}
+        >
+          {SOURCE_LABELS[fact.source] ?? fact.source}
+        </span>
+        <span>conf {fact.confidence}</span>
+        {fact.source_url && (
+          <a
+            href={fact.source_url}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{
+              color: BRAND.slate700,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            source <ExternalLink size={10} />
+          </a>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function groupMergedFacts(facts: CeIntelligenceFact[]): {
+  key: string;
+  claim: string;
+  sources: string[];
+}[] {
+  const groups = new Map<string, CeIntelligenceFact[]>();
+  for (const fact of facts) {
+    const key = normalizeFactKey(fact.value);
+    const arr = groups.get(key) ?? [];
+    arr.push(fact);
+    groups.set(key, arr);
+  }
+  return Array.from(groups.entries())
+    .map(([key, items]) => ({
+      key,
+      claim: items.sort((a, b) => b.confidence - a.confidence)[0]?.value ?? key,
+      sources: Array.from(new Set(items.map((item) => item.source))),
+    }))
+    .sort((a, b) => b.sources.length - a.sources.length || a.claim.localeCompare(b.claim));
+}
+
+function normalizeFactKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\b(the|a|an|and|or|from|to|for|with|typically|usually)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 14)
+    .join(" ");
 }
 
 function EvidenceChip({
@@ -1382,7 +1609,7 @@ function RejectedRepairTools({
           onClick={onAddContext}
         />
         <RepairButton
-          label="Search more"
+          label="Recheck evidence"
           busy={isBusy}
           disabled={!canAct}
           onClick={onSearchMore}
