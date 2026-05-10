@@ -49,7 +49,11 @@ export type ChartArchetypeId =
   | "landmark_coverage"
   | "itinerary_flow"
   | "best_for_matrix"
-  | "season_weather_fit";
+  | "season_weather_fit"
+  // Curated florence-cluster chart-spec types now exposed to the planner
+  // (Task #80: needed so the cruise/category-CE timing floor can pick a
+  // single-day crowd curve when no full hourly grid is grounded).
+  | "daily_pattern";
 
 export interface ChartArchetype {
   id: ChartArchetypeId;

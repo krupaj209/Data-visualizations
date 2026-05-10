@@ -661,6 +661,27 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     interactive: false,
     implemented: true,
   },
+
+  /* ---------------- Task #80: cruise/category-CE timing floor ---------------- */
+  daily_pattern: {
+    id: "daily_pattern",
+    label: "Daily pattern",
+    answers:
+      "Across a single representative day, when is the venue / route quietest vs at peak?",
+    data_shape: [
+      "8-30 time-stamped points (HH:MM × crowd 0-10) covering one open day",
+      "1-4 named zones (best / peak / second_best) with start-end times",
+      "Optional opens / last_entry caption",
+    ],
+    typical_subcategories: [
+      "sightseeing_cruises",
+      "landmarks",
+      "museums",
+      "religious_sites",
+    ],
+    interactive: true,
+    implemented: true,
+  },
 };
 
 export const CHART_ARCHETYPE_IDS = Object.keys(

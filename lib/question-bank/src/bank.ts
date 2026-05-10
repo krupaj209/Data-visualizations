@@ -796,13 +796,46 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       skip_if: { type: "no_data_signal", signal: "tour_time_breakdown" },
     }),
     // Light/visibility-by-slot — kept from v2 but now narrowly scoped.
+    // Task #80: notes broadened to surface the sunset-cruise-by-month case
+    // and the skip signal expanded so a CE whose sunset slot drifts across
+    // the year (and isn't named in the DRD) doesn't fall through unnoticed.
     sig({
       question: "Which departure time gives the best views?",
       recommended_archetype: "optimal_departure",
       skip_if: {
         type: "no_data_signal",
-        signal: "light_and_clarity_by_slot",
+        signal: "light_and_clarity_or_sunset_shift_by_slot",
       },
+      notes:
+        "Slots = named departures (morning / midday / sunset / after-dark). Score on light quality, conditions/visibility, and crowd. EXPLICITLY cover the sunset-cruise-by-month framing: golden hour shifts ~5pm in Dec to ~9pm in Jun in mid-latitude cities, so the 'sunset' slot's true clock time changes month-to-month — name the operator's actual sunset departures (or note 'shifts with season') rather than fabricating a fixed 19:00. Skip when the DRD doesn't surface light/clarity-by-slot AND doesn't describe a seasonal sunset-departure rotation.",
+    }),
+    // Task #80: cruise-framed BOOKING_WINDOW signature so the deck offers
+    // booking lead time as a CE-specific question — not only via the
+    // standards auto-restore branch. Anchored on the summer sell-out
+    // dynamic the Thames-style category CEs actually exhibit.
+    sig({
+      question: "How far ahead do summer slots actually sell out?",
+      recommended_archetype: "booking_window",
+      skip_if: {
+        type: "drd_flag",
+        flag: "unlimited_capacity",
+      },
+      notes:
+        "Cruise-specific framing of the standard booking-window: focus on the SUMMER and weekend lead-time picture (Greenwich/dinner cruises sell out 7-21 days ahead in peak; Uber Boat / commuter rides almost never sell out). Skip when the DRD flags unlimited capacity or no sell-out signal across any sub-product.",
+    }),
+    // Task #80: single-day crowd curve so the deck always carries at least
+    // one timing chart even when the LLM has biased toward sub-product
+    // comparisons. Lighter-weight than hourly_heatmap (no 7×24 grid
+    // required) — fits cruise piers where boarding pressure is the story.
+    sig({
+      question: "When during the day is the river quietest?",
+      recommended_archetype: "daily_pattern",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "passenger_volume_by_hour",
+      },
+      notes:
+        "Single representative open-day curve of pier/boat boarding pressure (HH:MM × crowd 0-10) with 1-3 named windows (best / peak / second_best). Use when the DRD has any operator-grounded boarding-pressure or popular-times signal but lacks a full 7×24 grid; prefer hourly_heatmap when both day-of-week AND hour are grounded.",
     }),
   ],
   dinner_cruises: [

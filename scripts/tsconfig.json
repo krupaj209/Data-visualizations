@@ -6,5 +6,9 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/smoke-chart-spec.mts"]
+  "exclude": [
+    "src/smoke-chart-spec.mts",
+    "src/test-editorial-verdict.mts",
+    "src/test-cruise-timing-floor.mts"
+  ]
 }

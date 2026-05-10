@@ -34,6 +34,276 @@ import {
 const MODEL = "gemini-2.5-pro";
 const VERIFIER_MODEL = "gpt-5.4";
 
+// Deck-budget constants used by both step (4c) timing floor and step (5)
+// trim. Lifted to module scope so the floor can reason about TOTAL_MAX
+// before the trim runs (Task #80, code-review fix #1).
+const TOTAL_MIN = 4;
+const TOTAL_MAX = 7;
+
+/**
+ * Task #80: timing/booking archetype set used by the category-CE timing
+ * floor (step 4c) and the booking_window standards auto-restore branch.
+ * A category-CE deck must always carry at least one chart from this set
+ * unless every candidate fails the DRD signal check.
+ */
+export const TIMING_ARCHETYPES = new Set<ChartArchetypeId>([
+  "daily_pattern",
+  "hourly_heatmap",
+  "weekly_pattern",
+  "booking_window",
+  "seasonal_curve",
+  "optimal_departure",
+]);
+
+/**
+ * Reasons a `dropped` entry counts as a hard data-signal skip — meaning
+ * the candidate should NOT be auto-restored by the timing floor. Matched
+ * via case-insensitive substring against the recorded drop reason.
+ */
+const HARD_SKIP_REASON_PATTERNS: RegExp[] = [
+  /drd_flag/i,
+  /unlimited_capacity/i,
+  /no_data_signal/i,
+  /drd_low_confidence/i,
+];
+
+function isHardSkipReason(reason: string): boolean {
+  return HARD_SKIP_REASON_PATTERNS.some((re) => re.test(reason));
+}
+
+/**
+ * Deterministic check used by the category-CE booking_window
+ * auto-restore branch (Task #80, code-review fix #2). Returns true when
+ * the DRD itself surfaces phrasing that implies the operator is
+ * effectively walk-up / never-sells-out, in which case we MUST NOT
+ * auto-restore booking_window even if the model didn't record an
+ * explicit unlimited_capacity drop.
+ *
+ * Patterns are conservative — they aim to fire only when the DRD makes
+ * the claim explicitly so we don't suppress booking_window for genuine
+ * sell-out CEs whose DRDs happen to mention walk-ups in passing.
+ */
+const UNLIMITED_CAPACITY_PATTERNS: RegExp[] = [
+  /\bunlimited capacity\b/i,
+  /\bnever sells? out\b/i,
+  /\bdoes not sell out\b/i,
+  /\bdo(?:es)? not sell out\b/i,
+  /\bno booking (?:required|needed)\b/i,
+  /\bwalk[- ]up only\b/i,
+  /\bturn[- ]up and go\b/i,
+  /\bturn[- ]up-and-go\b/i,
+  /\bhop[- ]on hop[- ]off (?:freely|without booking)\b/i,
+];
+
+export function drdImpliesUnlimitedCapacity(drdMarkdown: string): boolean {
+  if (!drdMarkdown || !drdMarkdown.trim()) return false;
+  return UNLIMITED_CAPACITY_PATTERNS.some((re) => re.test(drdMarkdown));
+}
+
+/**
+ * Pure decision helper for the category-CE timing floor (step 4c).
+ *
+ * Returns the candidate that should be auto-restored as the deck's lone
+ * timing chart, or `null` when the deck already carries one or no
+ * surviving candidate exists. Exposed so the unit suite in
+ * `scripts/src/test-cruise-timing-floor.mts` can pin the deterministic
+ * behaviour without spinning up the full Gemini pipeline.
+ */
+export interface TimingFloorCandidateInput {
+  question: string;
+  archetype: ChartArchetypeId;
+  kind: BankQuestionKind;
+  topic_id?: string;
+  source: "bank" | "standard";
+}
+
+export interface TimingFloorPick {
+  pick: TimingFloorCandidateInput;
+  /** Question text to remove from `dropped` if it was previously recorded there. */
+  removeFromDropped?: string;
+}
+
+export function pickCategoryCeTimingFloor(args: {
+  isCategoryCe: boolean;
+  selectedArchetypes: ChartArchetypeId[];
+  bankQuestions: BankQuestion[];
+  standardQuestions: BankQuestion[];
+  dropped: { question: string; reason: string }[];
+}): TimingFloorPick | null {
+  if (!args.isCategoryCe) return null;
+  const alreadyHasTiming = args.selectedArchetypes.some((a) =>
+    TIMING_ARCHETYPES.has(a),
+  );
+  if (alreadyHasTiming) return null;
+
+  const droppedByQ = new Map(args.dropped.map((d) => [d.question, d.reason]));
+
+  const candidates: TimingFloorCandidateInput[] = [
+    ...args.bankQuestions.map((q) => ({
+      question: q.question,
+      archetype: q.recommended_archetype,
+      kind: q.kind,
+      ...(q.topic_id ? { topic_id: q.topic_id } : {}),
+      source: "bank" as const,
+    })),
+    ...args.standardQuestions.map((q) => ({
+      question: q.question,
+      archetype: q.recommended_archetype,
+      kind: q.kind,
+      ...(q.topic_id ? { topic_id: q.topic_id } : {}),
+      source: "standard" as const,
+    })),
+  ];
+
+  for (const c of candidates) {
+    if (!TIMING_ARCHETYPES.has(c.archetype)) continue;
+    if (!isImplementedArchetype(c.archetype)) continue;
+    const dropReason = droppedByQ.get(c.question);
+    if (dropReason && isHardSkipReason(dropReason)) continue;
+    return {
+      pick: c,
+      ...(dropReason ? { removeFromDropped: c.question } : {}),
+    };
+  }
+  return null;
+}
+
+/**
+ * Selection entry shape used by the timing-floor application helper.
+ * Mirrors `parsed.selected[i]` in `selectQuestions` (kept structural so
+ * the unit suite can hand-roll inputs without importing the full
+ * planner-output Zod type).
+ */
+export interface PlannerSelection {
+  question: string;
+  archetype: ChartArchetypeId;
+  rationale: string;
+  kind: BankQuestionKind;
+  topic_id?: string;
+}
+
+export interface ApplyTimingFloorArgs {
+  selected: PlannerSelection[];
+  dropped: { question: string; reason: string }[];
+  bankQuestions: BankQuestion[];
+  standardQuestions: BankQuestion[];
+  signatureMax: number;
+  totalMax: number;
+}
+
+export interface ApplyTimingFloorResult {
+  selected: PlannerSelection[];
+  dropped: { question: string; reason: string }[];
+  /** Set when the floor failed to seat a candidate. */
+  warning?: "all_candidates_skipped" | "no_candidate_in_bank_or_standards";
+}
+
+/**
+ * Apply the category-CE timing floor (Task #80, step 4c) to a planner
+ * selection. Pure: returns new arrays, never mutates inputs. Caller
+ * decides whether to log the `warning` field.
+ *
+ * Rules:
+ * - If the deck already carries a TIMING archetype, return inputs unchanged.
+ * - Pick the highest-priority bank-then-standards candidate whose drop
+ *   reason isn't a hard data-signal skip (`pickCategoryCeTimingFloor`).
+ * - Make room for the pick by displacing the lowest-ranked SIGNATURE
+ *   when either (a) signature count is at `signatureMax` OR (b) total
+ *   selection is at `totalMax`. Standards are NEVER displaced — they
+ *   carry contractual weight that the floor must not erode.
+ * - When the deck is at total cap and contains only standards (no
+ *   signature available to displace), refuse to seat the pick and warn
+ *   — sacrificing a contractual standard to make room for a floor pick
+ *   would be a net regression in deck quality.
+ */
+export function applyCategoryCeTimingFloor(
+  args: ApplyTimingFloorArgs,
+): ApplyTimingFloorResult {
+  const selected = args.selected.slice();
+  let dropped = args.dropped.slice();
+
+  const floorPick = pickCategoryCeTimingFloor({
+    isCategoryCe: true,
+    selectedArchetypes: selected.map((s) => s.archetype),
+    bankQuestions: args.bankQuestions,
+    standardQuestions: args.standardQuestions,
+    dropped,
+  });
+
+  if (!floorPick) {
+    const alreadyHasTiming = selected.some((s) =>
+      TIMING_ARCHETYPES.has(s.archetype),
+    );
+    if (alreadyHasTiming) {
+      return { selected, dropped };
+    }
+    const anyTimingCandidate = [
+      ...args.bankQuestions,
+      ...args.standardQuestions,
+    ].some(
+      (q) =>
+        TIMING_ARCHETYPES.has(q.recommended_archetype) &&
+        isImplementedArchetype(q.recommended_archetype),
+    );
+    return {
+      selected,
+      dropped,
+      warning: anyTimingCandidate
+        ? "all_candidates_skipped"
+        : "no_candidate_in_bank_or_standards",
+    };
+  }
+
+  // Need to make room?
+  const sigCount = selected.filter((s) => s.kind !== "standard").length;
+  const atSignatureCap =
+    floorPick.pick.kind !== "standard" && sigCount >= args.signatureMax;
+  const atTotalCap = selected.length >= args.totalMax;
+
+  if (atSignatureCap || atTotalCap) {
+    // Find the lowest-ranked SIGNATURE (last in selection order) to
+    // displace. If none exists (deck is all standards at total cap),
+    // refuse to seat the floor pick — see the docblock note above.
+    let displaceIdx = -1;
+    for (let i = selected.length - 1; i >= 0; i--) {
+      if (selected[i]!.kind !== "standard") {
+        displaceIdx = i;
+        break;
+      }
+    }
+    if (displaceIdx === -1) {
+      return {
+        selected,
+        dropped,
+        warning: "all_candidates_skipped",
+      };
+    }
+    const displaced = selected.splice(displaceIdx, 1)[0]!;
+    dropped = dropped.concat({
+      question: displaced.question,
+      reason: atSignatureCap
+        ? "displaced by category-CE timing floor (signature_max budget)"
+        : "displaced by category-CE timing floor (total_max budget)",
+    });
+  }
+
+  if (floorPick.removeFromDropped) {
+    dropped = dropped.filter(
+      (d) => d.question !== floorPick.removeFromDropped,
+    );
+  }
+
+  selected.push({
+    question: floorPick.pick.question,
+    archetype: floorPick.pick.archetype,
+    rationale: "auto-restored timing floor for category-CE",
+    kind: floorPick.pick.kind,
+    ...(floorPick.pick.topic_id ? { topic_id: floorPick.pick.topic_id } : {}),
+  });
+
+  return { selected, dropped };
+}
+
 export interface ResearchPipelineInput {
   ce: { name: string; city: string; country: string; slug: string };
   /**
@@ -340,7 +610,7 @@ ${JSON.stringify(standards, null, 2)}
 
 DRD-CONFIDENCE RULE (apply to BOTH standards and signatures): If the DRD itself rates the relevant topic as Low confidence, calls it out as an "Honest Gap", flags it as anecdotal/operator-marketing, or simply doesn't carry the evidence behind it, SKIP that question. Record it in \`dropped\` with a reason that begins \`drd_low_confidence: \` followed by a one-line explanation citing the DRD section. This is preferred over generating a chart that the verifier will then have to challenge.
 
-CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS YOUR PICKS toward comparison and route archetypes — \`slot_compare\`, \`compare_zones\`, \`landmark_coverage\`, \`itinerary_flow\`, \`time_split\`, \`month_calendar\`, \`price_curve\` — and away from single-curve generics like \`booking_window\` or \`seasonal_curve\` UNLESS the DRD has direct numeric backing for them. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. If \`is_category_ce\` is false (single-product CE), pick normally.
+CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS THE BULK OF YOUR PICKS toward comparison and route archetypes — \`slot_compare\`, \`compare_zones\`, \`landmark_coverage\`, \`itinerary_flow\`, \`time_split\`, \`month_calendar\`, \`price_curve\`. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. HOWEVER, the deck must NOT lose all timing/booking coverage: keep EXACTLY ONE timing chart (\`daily_pattern\` / \`hourly_heatmap\` / \`weekly_pattern\` / \`booking_window\` / \`seasonal_curve\` / \`optimal_departure\`) when the DRD carries direct numeric or operator-grounded backing for it (named lead-time windows, named sell-out windows, named popular-times signals, named seasonal sunset slots). Skip the timing chart only when no such grounding exists. If \`is_category_ce\` is false (single-product CE), pick normally.
 
 REGENERATION QUALITY RULE: If writer feedback says the deck is generic, too similar, poor, or asks for an Accademia-level result, do NOT repeat the existing deck. Prefer CE-specific questions anchored in named routes, piers, sub-products, departure slots, fare windows, seating/deck choices, itinerary split, or landmark coverage. Avoid exact-repeat questions and avoid generic crowd/weather charts unless the DRD has direct, specific evidence.
 
@@ -497,17 +767,46 @@ ${truncate(input.drdMarkdown, 16000)}
     if (droppedQuestions.has(std.question)) continue;
     if (!isImplementedArchetype(std.recommended_archetype)) continue;
     if (parsed.is_category_ce) {
-      parsed.dropped.push({
-        question: std.question,
-        reason:
-          "category_ce_specificity: not auto-restored; category experiences need direct evidence for generic standard charts",
-      });
-      continue;
+      // Task #80: belt-and-braces with the step (4c) timing floor — allow
+      // the booking_window standard (S2) to auto-restore for category-CEs
+      // when (a) no other timing chart was kept, (b) the LLM didn't drop
+      // it for unlimited_capacity, AND (c) the DRD itself doesn't carry
+      // explicit unlimited-capacity / walk-up phrasing. Condition (c) is
+      // a deterministic DRD check (`drdImpliesUnlimitedCapacity`) so the
+      // restore stays correct even when the model omits the standard
+      // entirely without recording any drop reason. Other standards keep
+      // today's category-specificity behaviour.
+      const isBookingWindow =
+        std.recommended_archetype === "booking_window";
+      const droppedForUnlimited = parsed.dropped.some(
+        (d) =>
+          d.question === std.question && /unlimited_capacity/i.test(d.reason),
+      );
+      const hasTimingChart = parsed.selected.some((s) =>
+        TIMING_ARCHETYPES.has(s.archetype),
+      );
+      const drdSaysUnlimited = drdImpliesUnlimitedCapacity(input.drdMarkdown);
+      if (
+        !isBookingWindow ||
+        droppedForUnlimited ||
+        hasTimingChart ||
+        drdSaysUnlimited
+      ) {
+        parsed.dropped.push({
+          question: std.question,
+          reason:
+            "category_ce_specificity: not auto-restored; category experiences need direct evidence for generic standard charts",
+        });
+        continue;
+      }
+      // Fall through to restore booking_window for the category-CE deck.
     }
     parsed.selected.push({
       question: std.question,
       archetype: std.recommended_archetype,
-      rationale: "auto-restored standard (LLM neither kept nor explicitly skipped)",
+      rationale: parsed.is_category_ce
+        ? "auto-restored standard booking_window for category-CE (no other timing chart kept)"
+        : "auto-restored standard (LLM neither kept nor explicitly skipped)",
       kind: "standard",
       ...(std.topic_id ? { topic_id: std.topic_id } : {}),
     });
@@ -654,11 +953,43 @@ ${truncate(input.drdMarkdown, 16000)}
     }
   }
 
+  // (4c) CATEGORY-CE TIMING FLOOR (Task #80): the category-CE bias above
+  // strips every standard timing chart and discourages the LLM from
+  // picking single-curve generics. That cost the Thames cruise deck 100%
+  // of timing/booking coverage. Reserve one slot here: if no chart with
+  // a TIMING archetype survived, restore the highest-priority candidate
+  // (bank first, standards second) whose drop reason isn't a hard data
+  // signal. Mirrors the slot_compare floor immediately above.
+  if (parsed.is_category_ce) {
+    const floorResult = applyCategoryCeTimingFloor({
+      selected: parsed.selected,
+      dropped: parsed.dropped,
+      bankQuestions: bank.questions,
+      standardQuestions: standards,
+      signatureMax: SIGNATURE_MAX,
+      totalMax: TOTAL_MAX,
+    });
+    parsed.selected = floorResult.selected;
+    parsed.dropped = floorResult.dropped;
+    if (floorResult.warning) {
+      logger.warn(
+        {
+          slug: input.ce.slug,
+          subcategoryId: input.subcategoryId,
+          had_candidates: floorResult.warning === "all_candidates_skipped",
+        },
+        floorResult.warning === "all_candidates_skipped"
+          ? "Research pipeline: category-CE timing floor — every timing candidate failed the DRD signal check; deck will ship without a timing chart"
+          : "Research pipeline: category-CE timing floor — no implemented timing candidate available in bank+standards",
+      );
+    }
+  }
+
   // (5) Enforce 4–7 total budget. We don't pad beyond what the bank
   // can support, but we DO trim and we DO log when we're under-budget
   // so the writer's triage view surfaces the contract miss.
-  const TOTAL_MIN = 4;
-  const TOTAL_MAX = 7;
+  // (TOTAL_MIN/TOTAL_MAX are also referenced by step 4c above via the
+  // module-level DECK_TOTAL_* constants.)
   if (parsed.selected.length > TOTAL_MAX) {
     const overflow = parsed.selected.slice(TOTAL_MAX);
     parsed.selected = parsed.selected.slice(0, TOTAL_MAX);
