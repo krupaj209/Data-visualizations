@@ -22,6 +22,33 @@ import { logger } from "./logger";
 
 const MODEL = "gemini-2.5-pro";
 
+const CATEGORY_CE_SUBCATEGORIES = new Set([
+  "sightseeing_cruises",
+  "day_trips",
+  "hop_on_hop_off",
+  "combos",
+  "city_cards",
+  "multi_day_tours",
+]);
+
+const CATEGORY_CE_PREFERRED_ARCHETYPES: ChartArchetypeId[] = [
+  "route_profile",
+  "slot_compare",
+  "duration_stat",
+  "time_split",
+  "optimal_departure",
+  "compare_zones",
+  "stop_frequency",
+];
+
+const CATEGORY_CE_PRICE_ARCHETYPES = new Set<ChartArchetypeId>([
+  "ticket_ladder",
+  "price_curve",
+  "month_calendar",
+  "booking_window",
+  "seasonal_curve",
+]);
+
 export type PlannerEvidenceStatus =
   | "strong"
   | "partial"
@@ -181,6 +208,25 @@ function isArchetypeId(id: unknown): id is ChartArchetypeId {
   );
 }
 
+function looksLikeDynamicPriceQuestion(question: string): boolean {
+  return /\b(price|fare|cost|cheap|cheapest|expensive|value|deal|ticket|tier|pass|book|advance|sold out|sell out)\b/i.test(
+    question,
+  );
+}
+
+function isCategoryLikeSubcategory(subcategoryId: string): boolean {
+  return CATEGORY_CE_SUBCATEGORIES.has(subcategoryId);
+}
+
+function categoryCePriority(archetype: ChartArchetypeId): number {
+  const idx = CATEGORY_CE_PREFERRED_ARCHETYPES.indexOf(archetype);
+  if (idx >= 0) return idx;
+  if (archetype === "history_timeline") return 7;
+  if (archetype === "stat_grid") return 8;
+  if (CATEGORY_CE_PRICE_ARCHETYPES.has(archetype)) return 30;
+  return 20;
+}
+
 function buildEvidenceInventory(
   drdMarkdown: string,
   intel: CeIntelligenceView | null | undefined,
@@ -297,6 +343,7 @@ export async function buildCeVisualizationPlan(
     drdMarkdown: input.drdMarkdown,
     intel: input.intel,
   });
+  const categoryCeMode = isCategoryLikeSubcategory(input.subcategoryId);
   const liveNotes = await gatherPlannerLiveNotes(input);
   const intelFacts = input.intel?.facts ?? [];
   const intelBlock =
@@ -394,8 +441,9 @@ Rules:
 - If a category says "missing", reject charts that need that category unless live search notes explicitly fill the gap.
 - Do not recommend unimplemented archetypes.
 - History/origin/construction/restoration narratives should use history_timeline.
-- Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, fare-window, duration, and best-fit questions over generic crowd charts.
-- For cruises, tours, transport, or date-based tickets, do not recommend ticket_ladder for price comparison when fares vary by date/week. Use month_calendar for date/week fare windows or price_curve for monthly/lead-time price movement. Use ticket_ladder only for stable inclusions across fixed ticket tiers.
+- Category-style experiences (cruises, day trips, HOHO, combos, city cards, multi-day tours) should favor route, landmark coverage, duration, pier/stop, time-of-day, best-for, itinerary, and comparison questions over generic crowd or price charts.
+- For category-style experiences, weak price visuals are worse than no price visual. Do not recommend ticket_ladder, month_calendar, price_curve, booking_window, or seasonal_curve just to compare dynamic fares. Use ticket_ladder only for stable access/inclusion tiers, and use price_curve/month_calendar only when direct dated fare evidence exists.
+- For Thames-style cruise CEs, prefer questions like: "What will I see on the main route?", "Single cruise or hop-on hop-off pass?", "Short loop or destination cruise?", "Which departure time gives the best views?", "Where should I sit for the best view?", and "How is the cruise time actually used?"
 - Use evidence_status "strong" only when multiple sources or a very explicit DRD/source supports the chart data.
 - Use "partial" when a chart is directionally supportable but will need careful verification.
 - Use "weak" or "missing" for rejected items.
@@ -449,9 +497,23 @@ Rules:
   }
 
   const recommended: PlannerVisualization[] = [];
+  const rejected: RejectedVisualization[] = [];
   for (const v of parsed.recommended_visualizations ?? []) {
     if (!v.question || !isArchetypeId(v.archetype)) continue;
     if (!isImplementedArchetype(v.archetype)) continue;
+    if (
+      categoryCeMode &&
+      CATEGORY_CE_PRICE_ARCHETYPES.has(v.archetype) &&
+      looksLikeDynamicPriceQuestion(String(v.question))
+    ) {
+      rejected.push({
+        question: String(v.question).slice(0, 180),
+        archetype: v.archetype,
+        reason:
+          "Skipped by category-CE price guardrail: dynamic fares need direct dated evidence and should not be a default chart.",
+      });
+      continue;
+    }
     const rawScore = v.quality_score;
     const qualityScore = {
       traveler_usefulness: clampInt(rawScore?.traveler_usefulness ?? 70, 0, 100),
@@ -482,11 +544,12 @@ Rules:
         ? v.evidence_refs.map((r) => String(r).slice(0, 160)).slice(0, 8)
         : [],
       quality_score: qualityScore,
-      priority: clampInt(v.priority ?? recommended.length + 1, 1, 99),
+      priority: categoryCeMode
+        ? categoryCePriority(v.archetype) * 10 + clampInt(v.priority ?? 1, 1, 9)
+        : clampInt(v.priority ?? recommended.length + 1, 1, 99),
     });
   }
 
-  const rejected: RejectedVisualization[] = [];
   for (const r of parsed.rejected_visualizations ?? []) {
     if (!r.question) continue;
     rejected.push({
