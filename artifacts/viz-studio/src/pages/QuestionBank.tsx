@@ -13,6 +13,8 @@ import type {
   BankQuestion,
   ChartArchetype,
   ChartArchetypeId,
+  QuestionBankAudit,
+  SubcategoryQuestionBankAudit,
   SubcategoryFamily,
 } from "@workspace/question-bank";
 import { BRAND } from "@/lib/brand";
@@ -30,6 +32,7 @@ interface SubcategoryRow {
   questions: BankQuestion[];
 }
 interface BankPayload {
+  audit: QuestionBankAudit;
   archetypes: Record<ChartArchetypeId, ChartArchetype>;
   standardQuestions: BankQuestion[];
   subcategories: SubcategoryRow[];
@@ -91,6 +94,12 @@ export default function QuestionBank() {
       (s) => (s.family ?? "Other") === activeFamily,
     );
   }, [data, activeFamily]);
+
+  const auditBySubcategory = useMemo(() => {
+    const m = new Map<string, SubcategoryQuestionBankAudit>();
+    for (const row of data?.audit.subcategories ?? []) m.set(row.id, row);
+    return m;
+  }, [data]);
 
   return (
     <div
@@ -183,6 +192,8 @@ export default function QuestionBank() {
 
         {data && (
           <>
+            <AuditPanel audit={data.audit} />
+
             {/* Standards */}
             <section className="mb-12">
               <SectionHeader
@@ -228,6 +239,7 @@ export default function QuestionBank() {
                 <SubcategoryBlock
                   key={sub.id}
                   sub={sub}
+                  audit={auditBySubcategory.get(sub.id)}
                   archetypes={data.archetypes}
                   onPreview={(arch, qText) => {
                     setPreviewArchetype(arch);
@@ -260,6 +272,88 @@ export default function QuestionBank() {
           onClose={() => setSuggestSubcat(null)}
         />
       )}
+    </div>
+  );
+}
+
+function AuditPanel({ audit }: { audit: QuestionBankAudit }) {
+  const healthy = audit.fail_count === 0 && audit.warn_count === 0;
+  return (
+    <section
+      className="mb-10 rounded-2xl border p-5"
+      style={{
+        background: "white",
+        borderColor: healthy ? BRAND.bgMint : BRAND.slate200,
+      }}
+    >
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div
+            className="text-[11px] font-extrabold uppercase tracking-wider"
+            style={{ color: BRAND.purps }}
+          >
+            Coverage audit
+          </div>
+          <h2
+            className="font-extrabold mt-1"
+            style={{ color: BRAND.slate900, fontSize: 22 }}
+          >
+            {audit.pass_count}/{audit.total_subcategories} subcategories pass
+          </h2>
+          <p
+            className="mt-1 max-w-2xl"
+            style={{ color: BRAND.slate700, fontSize: 14 }}
+          >
+            Every major Headout subcategory is checked for standard questions,
+            two implemented signature questions, preferred archetypes, and
+            legacy/unbuilt chart references.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 min-w-[260px]">
+          <AuditStat label="Pass" value={audit.pass_count} tone="pass" />
+          <AuditStat label="Warn" value={audit.warn_count} tone="warn" />
+          <AuditStat label="Fail" value={audit.fail_count} tone="fail" />
+        </div>
+      </div>
+      <div
+        className="mt-4 rounded-xl px-4 py-3 text-sm"
+        style={{
+          background: healthy ? "#ECFDF3" : BRAND.bgShell,
+          color: BRAND.slate700,
+          border: `1px solid ${healthy ? BRAND.bgMint : BRAND.slate200}`,
+        }}
+      >
+        Standards: {audit.standard_questions.count} universal questions ·{" "}
+        {audit.standard_questions.all_implemented
+          ? "all standard archetypes are implemented"
+          : `waiting on ${audit.standard_questions.unimplemented_archetypes.join(", ")}`}
+      </div>
+    </section>
+  );
+}
+
+function AuditStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "pass" | "warn" | "fail";
+}) {
+  const colors = {
+    pass: { bg: "#ECFDF3", fg: BRAND.okayInk },
+    warn: { bg: BRAND.holaSoft, fg: BRAND.hola },
+    fail: { bg: "#FFF1F2", fg: BRAND.candy },
+  }[tone];
+  return (
+    <div className="rounded-xl px-3 py-2 text-center" style={{ background: colors.bg }}>
+      <div className="text-xl font-extrabold" style={{ color: colors.fg }}>
+        {value}
+      </div>
+      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.slate700 }}>
+        {label}
+      </div>
     </div>
   );
 }
@@ -323,11 +417,13 @@ function FamilyChip({
 
 function SubcategoryBlock({
   sub,
+  audit,
   archetypes,
   onPreview,
   onSuggest,
 }: {
   sub: SubcategoryRow;
+  audit?: SubcategoryQuestionBankAudit;
   archetypes: Record<ChartArchetypeId, ChartArchetype>;
   onPreview: (a: ChartArchetypeId, q: string) => void;
   onSuggest: () => void;
@@ -370,6 +466,7 @@ function SubcategoryBlock({
                 Unratified
               </span>
             )}
+            {audit && <AuditStatusPill audit={audit} />}
           </div>
           <p
             className="mt-1 max-w-2xl"
@@ -377,6 +474,18 @@ function SubcategoryBlock({
           >
             {sub.description}
           </p>
+          {audit && (
+            <div
+              className="mt-2 text-xs"
+              style={{ color: BRAND.slate700 }}
+            >
+              {audit.signature_question_count} signature questions ·{" "}
+              {audit.implemented_archetype_count} preferred chart types
+              {audit.missing.length > 0
+                ? ` · Needs ${audit.missing.join(", ")}`
+                : ""}
+            </div>
+          )}
         </div>
         <button
           onClick={onSuggest}
@@ -414,6 +523,28 @@ function SubcategoryBlock({
         </div>
       )}
     </div>
+  );
+}
+
+function AuditStatusPill({ audit }: { audit: SubcategoryQuestionBankAudit }) {
+  const style =
+    audit.status === "pass"
+      ? { background: "#ECFDF3", color: BRAND.okayInk }
+      : audit.status === "warn"
+        ? { background: BRAND.holaSoft, color: BRAND.hola }
+        : { background: "#FFF1F2", color: BRAND.candy };
+  return (
+    <span
+      className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+      style={style}
+      title={
+        audit.missing.length > 0
+          ? audit.missing.join(", ")
+          : "Question bank coverage looks good."
+      }
+    >
+      {audit.status}
+    </span>
   );
 }
 

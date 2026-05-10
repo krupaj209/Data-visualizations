@@ -11,6 +11,7 @@ import {
   saveCeVisualizationPlan,
 } from "../lib/ce-intelligence";
 import { buildCeVisualizationPlan } from "../lib/ce-visualization-planner";
+import { ai } from "@workspace/integrations-gemini-ai";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,26 @@ const planBody = z.object({
   subcategoryDescription: z.string().optional(),
   includeLiveSearch: z.boolean().optional(),
 });
+
+const recheckGapBody = z.object({
+  question: z.string().trim().min(4).max(240),
+  archetype: z.string().trim().max(80).optional(),
+  reason: z.string().trim().max(1000).optional(),
+});
+
+function safeJsonObject(text: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    const fence = text.match(/```(?:json)?\s*([\s\S]+?)```/);
+    if (!fence?.[1]) return null;
+    try {
+      return JSON.parse(fence[1]) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+}
 
 router.get("/ce-intelligence/:ceSlug", async (req, res): Promise<void> => {
   const ceSlug = req.params["ceSlug"];
@@ -156,6 +177,104 @@ router.post(
           err instanceof Error
             ? `Visualization planner failed: ${err.message}`
             : "Visualization planner failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/ce-intelligence/:ceSlug/recheck-gap",
+  async (req, res): Promise<void> => {
+    const ceSlug = req.params["ceSlug"];
+    if (!ceSlug) {
+      res.status(400).json({ error: "ceSlug is required" });
+      return;
+    }
+    const parsed = recheckGapBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, ceSlug));
+    if (!ce) {
+      res.status(404).json({ error: `CE "${ceSlug}" not found.` });
+      return;
+    }
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    const intel = await getCeIntelligence(ce.slug);
+
+    const intelFacts = (intel?.facts ?? [])
+      .slice(0, 80)
+      .map(
+        (f) =>
+          `- [${f.id}] ${f.value} (${f.source}, conf ${f.confidence}${
+            f.source_url ? `, ${f.source_url}` : ""
+          })`,
+      )
+      .join("\n");
+
+    const prompt = `You are repairing an evidence gap for Headout's visualization planner.
+
+CE: ${ce.name} (${ce.city}, ${ce.country})
+Question rejected: ${parsed.data.question}
+Proposed chart type: ${parsed.data.archetype ?? "unknown"}
+Original rejection reason: ${parsed.data.reason ?? "not provided"}
+
+First inspect the DRD excerpt and CE Intelligence facts below. Then use Google Search to check official/operator pages, OTAs (Headout/GetYourGuide/Viator), review/forum sources (TripAdvisor/Reddit), and reputable travel sources for the exact missing evidence.
+
+Return STRICT JSON only:
+{
+  "status": "found" | "partial" | "not_found",
+  "recommended_archetype": "${parsed.data.archetype ?? ""}",
+  "findings": ["source-backed fact, with numbers/names where possible"],
+  "source_refs": ["source domain or URL"],
+  "generation_context": "paste-ready source-backed context for chart generation, or empty string",
+  "reason": "short explanation"
+}
+
+Rules:
+- Do not make the chart source-backed if you only found generic or anecdotal evidence.
+- If you find enough evidence for the chart, status="found".
+- If you find only directional evidence, status="partial" and generation_context must say what remains estimated.
+- If you still cannot find the missing data, status="not_found" and explain what source would be needed.
+- Prefer multiple source types when possible. Do not rely only on the official site when the missing claim is about sentiment, queues, comparative value, or price dynamics.
+
+CE Intelligence facts:
+${intelFacts || "(none)"}
+
+DRD excerpt:
+"""
+${(drd?.markdown ?? "").slice(0, 12000) || "(no DRD uploaded)"}
+"""`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0.25,
+          maxOutputTokens: 4096,
+          tools: [{ googleSearch: {} }],
+        },
+      });
+      const raw = response.text ?? "{}";
+      const json = safeJsonObject(raw);
+      if (!json) throw new Error("Recheck returned invalid JSON");
+      res.json(json);
+    } catch (err) {
+      req.log.error({ err }, "Evidence gap recheck failed");
+      res.status(502).json({
+        error:
+          err instanceof Error
+            ? `Evidence gap recheck failed: ${err.message}`
+            : "Evidence gap recheck failed",
       });
     }
   },

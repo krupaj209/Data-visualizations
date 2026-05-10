@@ -407,7 +407,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
   landmarks: [
     sig({
       question: "How do the named viewing levels compare on wait time?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: { type: "no_data_signal", signal: "wait_time_per_level" },
     }),
     sig({
@@ -531,7 +531,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
   observation_decks: [
     sig({
       question: "How do the named viewing levels compare on wait time?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: { type: "no_data_signal", signal: "wait_time_per_level" },
     }),
     sig({
@@ -610,7 +610,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named stops compare on time spent vs visitor interest?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "route_profile",
       skip_if: { type: "no_data_signal", signal: "time_and_rating_per_stop" },
     }),
   ],
@@ -622,27 +622,31 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How long does a full loop take on each route?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "route_profile",
       skip_if: { type: "no_data_signal", signal: "loop_time_per_route" },
     }),
   ],
   walking_tours: [
-    // CARRIED OVER FROM v2 BANK VERBATIM — v3 rewrite is a follow-up.
     sig({
       question: "Which day of the week is the route quietest?",
       recommended_archetype: "weekly_pattern",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "foot_traffic_by_day" },
     }),
     sig({
       question: "Which months balance good weather with lighter foot traffic?",
       recommended_archetype: "seasonal_curve",
       notes: "Weather is the dominant axis here — populate weather_score.",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "weather_and_footfall_by_month" },
     }),
     sig({
       question: "How do the tour themes compare on length and price?",
-      recommended_archetype: "ticket_ladder",
-      legacy: true,
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "theme_duration_and_price" },
+    }),
+    sig({
+      question: "What route does the tour actually cover?",
+      recommended_archetype: "route_profile",
+      skip_if: { type: "no_data_signal", signal: "ordered_route_stops" },
     }),
   ],
   photography_tours: [
@@ -655,11 +659,16 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         signal: "departure_slots_and_sun_times",
       },
     }),
+    sig({
+      question: "What route and photo stops are actually covered?",
+      recommended_archetype: "route_profile",
+      skip_if: { type: "no_data_signal", signal: "photo_stop_route" },
+    }),
   ],
   multi_day_tours: [
     sig({
       question: "How is time split across the named destinations?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "time_split",
       skip_if: { type: "no_data_signal", signal: "hours_per_destination" },
     }),
     sig({
@@ -676,6 +685,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         type: "no_data_signal",
         signal: "return_buffer_minutes_per_tour",
       },
+    }),
+    sig({
+      question: "How is the shore time split between travel and the site?",
+      recommended_archetype: "time_split",
+      skip_if: { type: "no_data_signal", signal: "shore_time_breakdown" },
     }),
   ],
 
@@ -728,13 +742,25 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       notes:
         "Compare named zones (upper deck / lower deck / window / outdoor bow) on view quality and how competitive boarding is. Skip if the DRD doesn't surface a deck or seating mechanic.",
     }),
-    // HOHO flexibility value.
+    // Dynamic fare calendar — better than a static ticket ladder when fares
+    // shift by date/week.
     sig({
-      question: "Single cruise or hop-on hop-off pass — which is the better value?",
-      recommended_archetype: "ticket_ladder",
+      question: "Which weeks are cheapest for Thames cruise tickets?",
+      recommended_archetype: "month_calendar",
       skip_if: {
         type: "no_data_signal",
-        signal: "tier_comparison_with_value_axis",
+        signal: "date_level_or_week_level_ticket_prices",
+      },
+      notes:
+        "Use for dynamic OTA/operator fares. If the DRD only has static inclusions by product, prefer the sub-product slot_compare instead of a price chart.",
+    }),
+    // HOHO flexibility value.
+    sig({
+      question: "Single cruise or hop-on hop-off pass — which fits the day?",
+      recommended_archetype: "slot_compare",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "single_vs_hoho_usage_context",
       },
     }),
     // Time split — strongest on destination cruises (Greenwich) and dining cruises.
@@ -804,7 +830,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "Floor vs seated — how do the zones compare on price, view, and energy?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "slot_compare",
       skip_if: {
         type: "no_data_signal",
         signal: "price_and_experience_per_zone",
@@ -823,6 +849,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "hourly_heatmap",
       skip_if: { type: "no_data_signal", signal: "occupancy_through_night" },
     }),
+    sig({
+      question: "Which night has the strongest atmosphere?",
+      recommended_archetype: "weekly_pattern",
+      skip_if: { type: "no_data_signal", signal: "night_demand_by_day_of_week" },
+    }),
   ],
   live_sports: [
     sig({
@@ -832,7 +863,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How do the seating zones compare on view and price?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "seat_value_map",
       skip_if: { type: "no_data_signal", signal: "price_and_view_per_zone" },
     }),
   ],
@@ -847,6 +878,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         signal: "conditions_per_named_slot",
       },
     }),
+    sig({
+      question: "How is the safari time split across activities?",
+      recommended_archetype: "time_split",
+      skip_if: { type: "no_data_signal", signal: "safari_activity_time_breakdown" },
+    }),
   ],
   skydiving: [
     sig({
@@ -857,6 +893,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         type: "no_data_signal",
         signal: "monthly_session_reliability",
       },
+    }),
+    sig({
+      question: "How far in advance do jump slots book out?",
+      recommended_archetype: "booking_window",
+      skip_if: { type: "no_data_signal", signal: "booking_lead_time_by_slot" },
     }),
   ],
   hot_air_balloon: [
@@ -888,7 +929,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named runs or areas compare on difficulty and crowd level?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: {
         type: "no_data_signal",
         signal: "difficulty_and_crowd_per_run",
@@ -902,24 +943,27 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       skip_if: { type: "no_data_signal", signal: "track_wait_by_hour" },
       notes: "Same curve format, y-axis = wait minutes.",
     }),
+    sig({
+      question: "How do race formats compare on time and price?",
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "race_format_time_price" },
+    }),
   ],
   outdoor_activities: [
-    // CARRIED OVER FROM v2 BANK VERBATIM — v3 rewrite is a follow-up.
-    // Wrapped with the new kind/skip_if/legacy shape only.
     sig({
       question: "Which months are in the right weather window?",
       recommended_archetype: "seasonal_curve",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "weather_window_by_month" },
     }),
     sig({
       question: "How far in advance do most guests book?",
       recommended_archetype: "booking_window",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "booking_lead_time" },
     }),
     sig({
       question: "How do the difficulty/duration tiers compare?",
-      recommended_archetype: "ticket_ladder",
-      legacy: true,
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "difficulty_duration_tiers" },
     }),
   ],
 
@@ -933,6 +977,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         type: "no_data_signal",
         signal: "visibility_and_light_per_slot",
       },
+    }),
+    sig({
+      question: "How do shared and private flights compare?",
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "flight_type_price_duration" },
     }),
   ],
   cable_car_tours: [
@@ -965,7 +1014,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named dive sites compare on depth, current, and marine life?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: { type: "no_data_signal", signal: "site_difficulty_and_life" },
     }),
   ],
@@ -981,7 +1030,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named breaks compare on wave quality and crowd level?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: { type: "no_data_signal", signal: "wave_and_crowd_per_break" },
     }),
   ],
@@ -991,6 +1040,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         "When is the river running at its best — and when is it too low or too dangerous?",
       recommended_archetype: "conditions_calendar",
       skip_if: { type: "no_data_signal", signal: "river_flow_by_month" },
+    }),
+    sig({
+      question: "How do rafting grades compare on difficulty and duration?",
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "rafting_grade_duration" },
     }),
   ],
 
@@ -1010,7 +1064,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named circuits or zones compare on wildlife density?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "compare_zones",
       skip_if: {
         type: "no_data_signal",
         signal: "wildlife_encounter_per_circuit",
@@ -1021,7 +1075,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do the named trails compare on distance, elevation, and typical duration?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "route_profile",
       skip_if: {
         type: "no_data_signal",
         signal: "distance_elevation_duration_per_trail",
@@ -1045,6 +1099,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "time_split",
       skip_if: { type: "no_data_signal", signal: "time_per_named_stop" },
     }),
+    sig({
+      question: "What route and food stops are actually covered?",
+      recommended_archetype: "route_profile",
+      skip_if: { type: "no_data_signal", signal: "food_stop_route" },
+    }),
   ],
   wineries: [
     sig({
@@ -1056,23 +1115,27 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
         signal: "harvest_window_and_volume_by_month",
       },
     }),
+    sig({
+      question: "How do tasting tiers compare on inclusions and price?",
+      recommended_archetype: "ticket_ladder",
+      skip_if: { type: "no_data_signal", signal: "tasting_tier_inclusions_price" },
+    }),
   ],
   cooking_classes: [
-    // CARRIED OVER FROM v2 BANK VERBATIM — v3 rewrite is a follow-up.
     sig({
       question: "Which day of the week has the most class availability?",
       recommended_archetype: "weekly_pattern",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "class_availability_by_day" },
     }),
     sig({
       question: "How far in advance do guests typically book?",
       recommended_archetype: "booking_window",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "booking_lead_time" },
     }),
     sig({
       question: "How do the class tiers compare on dish count and price?",
       recommended_archetype: "ticket_ladder",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "dish_count_and_price_by_tier" },
     }),
     sig({
       question:
@@ -1080,7 +1143,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "donut_breakdown",
       notes:
         "Only when the DRD references the dietary mix — otherwise skip rather than invent.",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "dietary_mix" },
     }),
   ],
   pub_crawls: [
@@ -1094,23 +1157,22 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
 
   /* ---------------- Wellness ---------------- */
   spa: [
-    // CARRIED OVER FROM v2 BANK VERBATIM — v3 rewrite is a follow-up.
     sig({
       question: "Which day of the week is least crowded at the spa?",
       recommended_archetype: "weekly_pattern",
       notes:
         "Use day_notes for weekly cadence quirks (couples nights, ladies-only days).",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "spa_occupancy_by_day" },
     }),
     sig({
       question: "Which hour of the day is calmest in the wet areas?",
       recommended_archetype: "hourly_heatmap",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "wet_area_occupancy_by_hour" },
     }),
     sig({
       question: "How do the package tiers compare on inclusions and time?",
       recommended_archetype: "ticket_ladder",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "spa_package_inclusions_time" },
     }),
   ],
   baths: [
@@ -1131,25 +1193,24 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
 
   /* ---------------- Specials ---------------- */
   combos: [
-    // CARRIED OVER FROM v2 BANK VERBATIM — v3 rewrite is a follow-up.
     sig({
       question: "How do the bundled attractions compare on standalone price?",
       recommended_archetype: "compare_zones",
       notes:
         "Use 'metric_label': 'Standalone ticket price' and put price ranges into wait_min/wait_max as currency units.",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "standalone_price_per_attraction" },
     }),
     sig({
       question: "How do the combo tiers compare on inclusions and value?",
       recommended_archetype: "ticket_ladder",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "combo_tier_inclusions_value" },
     }),
     sig({
       question: "What share of buyers pick each combo tier?",
       recommended_archetype: "donut_breakdown",
       notes:
         "Only when the DRD reports tier-level sales mix — otherwise drop rather than estimate.",
-      legacy: true,
+      skip_if: { type: "no_data_signal", signal: "combo_tier_sales_mix" },
     }),
   ],
 
@@ -1158,7 +1219,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "How do Practice, Qualifying, and Race day compare on crowd size and atmosphere?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "slot_compare",
       skip_if: {
         type: "no_data_signal",
         signal: "attendance_per_session_day",
@@ -1166,7 +1227,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How do the grandstand zones compare on view and price?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "seat_value_map",
       skip_if: {
         type: "no_data_signal",
         signal: "price_and_view_per_grandstand",
@@ -1189,7 +1250,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Private vs shared — how do they compare on time and price?",
-      recommended_archetype: "zone_wait_compare",
+      recommended_archetype: "slot_compare",
       skip_if: { type: "no_data_signal", signal: "time_and_price_per_type" },
     }),
   ],
@@ -1199,6 +1260,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "booking_window",
       skip_if: { type: "no_data_signal", signal: "price_by_lead_time" },
       notes: "booking_window variant with price y-axis (not % of bookings).",
+    }),
+    sig({
+      question: "Which departure times are fastest or cheapest?",
+      recommended_archetype: "slot_compare",
+      skip_if: { type: "no_data_signal", signal: "departure_time_price_duration" },
     }),
   ],
 };

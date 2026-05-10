@@ -257,7 +257,13 @@ async function gatherPlannerLiveNotes(input: PlannerInput): Promise<string> {
 
 CE: ${input.ce.name} (${input.ce.city}, ${input.ce.country})
 
-Use Google Search to find current, visitor-facing facts that would help decide which data visualizations to create. Prefer official/operator pages, current ticket pages, attraction pages, and recent high-signal review/forum summaries.
+Use Google Search to find current, visitor-facing facts that would help decide which data visualizations to create. Use a balanced source mix:
+- official/operator pages for hours, access rules, routes, and policies
+- Headout/GetYourGuide/Viator/other OTA pages for ticket options, durations, inclusions, live availability, and price dynamics
+- TripAdvisor/Reddit/review/forum sources for sentiment, crowd anecdotes, queue pain points, and traveler anxieties
+- tourism/government/reputable travel sources for seasonality and practical context
+
+Do not rely only on official pages unless the question is strictly operational. When the potential chart is about queues, value, sentiment, price movement, “best for”, or what visitors worry about, include non-official sources too.
 
 Return 8-12 concise bullets. Each bullet must name the fact and the source domain in parentheses. Focus on facts that can become charts: ticket tiers, routes/stops, timings, seasonal patterns, crowds, waits, duration, accessibility, restrictions, history/timeline, and comparison dimensions.
 
@@ -388,7 +394,8 @@ Rules:
 - If a category says "missing", reject charts that need that category unless live search notes explicitly fill the gap.
 - Do not recommend unimplemented archetypes.
 - History/origin/construction/restoration narratives should use history_timeline.
-- Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, ticket, duration, and best-fit questions over generic crowd charts.
+- Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, fare-window, duration, and best-fit questions over generic crowd charts.
+- For cruises, tours, transport, or date-based tickets, do not recommend ticket_ladder for price comparison when fares vary by date/week. Use month_calendar for date/week fare windows or price_curve for monthly/lead-time price movement. Use ticket_ladder only for stable inclusions across fixed ticket tiers.
 - Use evidence_status "strong" only when multiple sources or a very explicit DRD/source supports the chart data.
 - Use "partial" when a chart is directionally supportable but will need careful verification.
 - Use "weak" or "missing" for rejected items.

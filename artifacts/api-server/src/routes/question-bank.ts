@@ -7,6 +7,7 @@ import {
   CHART_ARCHETYPE_IDS,
   STANDARD_QUESTIONS,
   SUBCATEGORY_IDS,
+  auditQuestionBank,
   getSubcategoryBank,
 } from "@workspace/question-bank";
 
@@ -37,10 +38,15 @@ router.get("/question-bank", (_req, res): void => {
     };
   });
   res.json({
+    audit: auditQuestionBank(),
     archetypes: CHART_ARCHETYPES,
     standardQuestions: STANDARD_QUESTIONS,
     subcategories,
   });
+});
+
+router.get("/question-bank/audit", (_req, res): void => {
+  res.json(auditQuestionBank());
 });
 
 const suggestionBody = z.object({

@@ -678,6 +678,8 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
 function inferArchetype(topic: string): ChartArchetypeId | null {
   const t = topic.toLowerCase();
   if (/\bhistory|timeline|origin|origins|built|construction|opened|restoration|restored|medieval|ancient|modern era|turning points?\b/.test(t)) return "history_timeline";
+  if (/\b(price|fare|cost|cheapest|expensive).*\b(week|date|calendar|day)\b|\b(week|date|calendar|day).*\b(price|fare|cost|cheapest|expensive)\b/.test(t)) return "month_calendar";
+  if (/\b(price|fare|cost).*\b(month|season|lead time|advance)\b|\b(month|season|lead time|advance).*\b(price|fare|cost)\b/.test(t)) return "price_curve";
   if (/\bhour|hourly|time of day|when in the day\b/.test(t)) return "hourly_heatmap";
   if (/\bday of (the )?week|weekday|weekend\b/.test(t)) return "weekly_pattern";
   if (/\bseason|month|monthly|year\b/.test(t)) return "seasonal_curve";

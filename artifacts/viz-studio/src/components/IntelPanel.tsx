@@ -25,6 +25,7 @@ import {
   type CeIntelligenceSource,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE_META } from "@/components/charts/meta";
 
 type CreatedPlanChart = {
   chartId: number;
@@ -134,6 +135,12 @@ export function IntelPanel({
   const [isPlanning, setIsPlanning] = useState(false);
   const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
   const [rejectedContext, setRejectedContext] = useState<Record<string, string>>(
+    () => ({}),
+  );
+  const [rejectedArchetype, setRejectedArchetype] = useState<Record<string, string>>(
+    () => ({}),
+  );
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>(
     () => ({}),
   );
   const [showContextUpload, setShowContextUpload] = useState(false);
@@ -283,6 +290,70 @@ export function IntelPanel({
     }
   }
 
+  async function handleSearchMoreForRejected(
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) {
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      const res = await fetch(`/api/ce-intelligence/${slug}/recheck-gap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: item.question,
+          archetype: item.archetype,
+          reason: item.reason,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Evidence recheck failed");
+      const status = String(json?.status ?? "not_found");
+      const context = String(json?.generation_context ?? "").trim();
+      const findings = Array.isArray(json?.findings)
+        ? json.findings.map((f: unknown) => String(f)).filter(Boolean)
+        : [];
+      const sourceRefs = Array.isArray(json?.source_refs)
+        ? json.source_refs.map((f: unknown) => String(f)).filter(Boolean)
+        : [];
+      const repairContext = [
+        context,
+        findings.length ? `Recheck findings:\n${findings.map((f: string) => `- ${f}`).join("\n")}` : "",
+        sourceRefs.length ? `Sources:\n${sourceRefs.map((s: string) => `- ${s}`).join("\n")}` : "",
+        status === "partial"
+          ? "Evidence recheck status: partial. Mark any unsupported fields as estimates."
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      if ((status === "found" || status === "partial") && repairContext) {
+        setRejectedContext((prev) => ({
+          ...prev,
+          [item.question]: repairContext,
+        }));
+        await handleCreateRejected(item, "context", repairContext);
+        return;
+      }
+      setRejectedContext((prev) => ({
+        ...prev,
+        [item.question]:
+          repairContext ||
+          String(json?.reason ?? "No stronger evidence found after recheck."),
+      }));
+      setPlanError(
+        String(
+          json?.reason ??
+            "I rechecked the DRD and live sources, but still could not find enough evidence.",
+        ),
+      );
+    } catch (err) {
+      setPlanError(
+        err instanceof Error ? err.message : "Could not recheck evidence",
+      );
+    } finally {
+      setCreatingQuestion(null);
+    }
+  }
+
   async function handleCreateFromPlan(
     item: VisualizationPlan["recommended_visualizations"][number],
   ) {
@@ -395,23 +466,52 @@ export function IntelPanel({
 
   async function handleCreateRejected(
     item: VisualizationPlan["rejected_visualizations"][number],
+    mode: "context" | "estimate" | "changed_archetype",
+    contextOverride?: string,
   ) {
-    const context = (rejectedContext[item.question] ?? "").trim();
-    if (!context) {
+    const context = (contextOverride ?? rejectedContext[item.question] ?? "").trim();
+    const chosenArchetype =
+      rejectedArchetype[item.question] || item.archetype || undefined;
+    if (mode === "context" && !context) {
       setPlanError("Add the missing context or data before creating this chart.");
+      return;
+    }
+    if (mode === "changed_archetype" && !chosenArchetype) {
+      setPlanError("Choose a chart type before creating this chart.");
       return;
     }
     setCreatingQuestion(item.question);
     setPlanError(null);
     try {
+      const repairContext =
+        mode === "estimate"
+          ? [
+              "Evidence-gap repair: editor chose Create anyway as estimate.",
+              "Use honest, clearly marked estimates only where evidence is missing.",
+              "Do not imply source-backed precision; add estimated fields to provenance.estimates.",
+            ].join("\n")
+          : mode === "changed_archetype"
+            ? [
+                "Evidence-gap repair: editor changed the chart type.",
+                `Original rejected archetype: ${item.archetype || "none"}.`,
+                `Replacement archetype: ${chosenArchetype}.`,
+                context
+                  ? `Editor-added context:\n${context}`
+                  : "No extra context supplied; use only available evidence and mark estimates.",
+              ].join("\n")
+            : context;
+
       const res = await fetch(`/api/ces/${slug}/charts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: item.question,
-          archetype: item.archetype || undefined,
-          pastedData: context,
-          plannerContext: `Originally rejected by planner: ${item.reason}`,
+          archetype: chosenArchetype,
+          pastedData: repairContext,
+          plannerContext: [
+            `Originally rejected by planner: ${item.reason}`,
+            `Repair path: ${mode}`,
+          ].join("\n"),
           origin: "planner_recommendation",
         }),
       });
@@ -490,8 +590,12 @@ export function IntelPanel({
   for (const s of intel?.sources ?? []) sourceMap.set(s.source, s);
 
   const facts: CeIntelligenceFact[] = intel?.facts ?? [];
+  const factsBySource = new Map<string, CeIntelligenceFact[]>();
   const factsByBucket = new Map<string, CeIntelligenceFact[]>();
   for (const f of facts) {
+    const sourceArr = factsBySource.get(f.source) ?? [];
+    sourceArr.push(f);
+    factsBySource.set(f.source, sourceArr);
     const arr = factsByBucket.get(f.bucket) ?? [];
     arr.push(f);
     factsByBucket.set(f.bucket, arr);
@@ -828,39 +932,37 @@ export function IntelPanel({
                   body: item.reason,
                   tone: "warn" as const,
                   createdChart: createdCharts[item.question],
-                  actionLabel: createdCharts[item.question]
-                    ? "Created"
-                    : "Create with context",
-                  actionDisabled:
-                    !!createdCharts[item.question] ||
-                    creatingQuestion !== null ||
-                    !(rejectedContext[item.question] ?? "").trim(),
-                  actionBusy: creatingQuestion === item.question,
-                  onAction: () => handleCreateRejected(item),
                   extra: !createdCharts[item.question] ? (
-                    <textarea
-                      value={rejectedContext[item.question] ?? ""}
-                      onChange={(e) =>
+                    <RejectedRepairTools
+                      item={item}
+                      context={rejectedContext[item.question] ?? ""}
+                      selectedArchetype={
+                        rejectedArchetype[item.question] ||
+                        item.archetype ||
+                        ""
+                      }
+                      isBusy={creatingQuestion === item.question}
+                      disabled={creatingQuestion !== null}
+                      onContextChange={(value) =>
                         setRejectedContext((prev) => ({
                           ...prev,
-                          [item.question]: e.target.value,
+                          [item.question]: value,
                         }))
                       }
-                      placeholder="Have the missing data? Paste source-backed context here..."
-                      rows={3}
-                      style={{
-                        marginTop: 8,
-                        width: "100%",
-                        resize: "vertical",
-                        border: `1px solid ${BRAND.slate200}`,
-                        borderRadius: 9,
-                        padding: 8,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: BRAND.slate950,
-                        outline: "none",
-                        background: BRAND.slate50,
-                      }}
+                      onArchetypeChange={(value) =>
+                        setRejectedArchetype((prev) => ({
+                          ...prev,
+                          [item.question]: value,
+                        }))
+                      }
+                      onAddContext={() => handleCreateRejected(item, "context")}
+                      onSearchMore={() => handleSearchMoreForRejected(item)}
+                      onCreateEstimate={() =>
+                        handleCreateRejected(item, "estimate")
+                      }
+                      onChangeType={() =>
+                        handleCreateRejected(item, "changed_archetype")
+                      }
                     />
                   ) : null,
                 }))}
@@ -885,78 +987,109 @@ export function IntelPanel({
                   error: null,
                 } as CeIntelligenceSource);
               const isRefreshing = refreshingSource === id;
+              const sourceFacts = factsBySource.get(id) ?? [];
+              const expanded = !!expandedSources[id];
               return (
-                <div
-                  key={id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "auto 1fr auto auto",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    background: BRAND.slate50,
-                  }}
-                >
-                  <SourceStatusDot status={s.status} />
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: BRAND.slate950,
-                      }}
-                    >
-                      {SOURCE_LABELS[id] ?? id}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: BRAND.slate500,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={s.error ?? undefined}
-                    >
-                      {s.fact_count} fact{s.fact_count === 1 ? "" : "s"} ·{" "}
-                      {s.last_tried_at
-                        ? `tried ${relativeTime(s.last_tried_at)}`
-                        : "never tried"}
-                      {s.error ? ` · error` : ""}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRefreshOne(id)}
-                    disabled={refreshingSource !== null}
-                    style={iconBtn()}
-                    aria-label={`Refresh ${id}`}
-                  >
-                    {isRefreshing ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <RefreshCw size={12} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSource(id)}
-                    disabled={s.fact_count === 0 || deleteSourceMut.isPending}
+                <div key={id}>
+                  <div
                     style={{
-                      ...iconBtn(),
-                      opacity: s.fact_count === 0 ? 0.4 : 1,
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto auto auto",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: expanded ? "white" : BRAND.slate50,
+                      border: `1px solid ${expanded ? BRAND.slate200 : "transparent"}`,
                     }}
-                    aria-label={`Drop ${id} facts`}
                   >
-                    <Trash2 size={12} />
-                  </button>
+                    <SourceStatusDot status={s.status} />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedSources((prev) => ({
+                          ...prev,
+                          [id]: !prev[id],
+                        }))
+                      }
+                      style={{
+                        minWidth: 0,
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: BRAND.slate950,
+                        }}
+                      >
+                        {SOURCE_LABELS[id] ?? id}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: BRAND.slate500,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={s.error ?? undefined}
+                      >
+                        {s.fact_count} fact{s.fact_count === 1 ? "" : "s"} ·{" "}
+                        {s.last_tried_at
+                          ? `tried ${relativeTime(s.last_tried_at)}`
+                          : "never tried"}
+                        {s.error ? ` · error` : ""}
+                      </div>
+                    </button>
+                    <ChevronDown
+                      size={14}
+                      color={BRAND.slate500}
+                      style={{
+                        transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 140ms ease",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshOne(id)}
+                      disabled={refreshingSource !== null}
+                      style={iconBtn()}
+                      aria-label={`Refresh ${id}`}
+                    >
+                      {isRefreshing ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={12} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSource(id)}
+                      disabled={s.fact_count === 0 || deleteSourceMut.isPending}
+                      style={{
+                        ...iconBtn(),
+                        opacity: s.fact_count === 0 ? 0.4 : 1,
+                      }}
+                      aria-label={`Drop ${id} facts`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {expanded && <SourceFactsList facts={sourceFacts} />}
                 </div>
               );
             })}
           </div>
         </section>
+
+        {facts.length > 0 && <MergedFactsSection facts={facts} />}
 
         {/* Loading / error */}
         {isLoading && (
@@ -1000,51 +1133,7 @@ export function IntelPanel({
                 }}
               >
                 {items.map((f) => (
-                  <li
-                    key={f.id}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      background: "white",
-                      border: `1px solid ${BRAND.slate100}`,
-                    }}
-                  >
-                    <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 600, lineHeight: 1.4 }}>
-                      {f.value}
-                    </div>
-                    <div
-                      className="flex items-center gap-2"
-                      style={{ marginTop: 4, fontSize: 10, fontWeight: 700, color: BRAND.slate500 }}
-                    >
-                      <span
-                        style={{
-                          background: BRAND.bgLilac,
-                          color: BRAND.purps,
-                          padding: "1px 6px",
-                          borderRadius: 999,
-                        }}
-                      >
-                        {SOURCE_LABELS[f.source] ?? f.source}
-                      </span>
-                      <span>conf {f.confidence}</span>
-                      {f.source_url && (
-                        <a
-                          href={f.source_url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          style={{
-                            color: BRAND.slate700,
-                            textDecoration: "none",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                        >
-                          source <ExternalLink size={10} />
-                        </a>
-                      )}
-                    </div>
-                  </li>
+                  <FactListItem key={f.id} fact={f} />
                 ))}
               </ul>
             </section>
@@ -1077,6 +1166,191 @@ function SourceStatusDot({ status }: { status: string }) {
   if (status === "empty")
     return <CircleDot size={14} color={BRAND.slate500} />;
   return <CircleDot size={14} color={BRAND.slate300} />;
+}
+
+function SourceFactsList({ facts }: { facts: CeIntelligenceFact[] }) {
+  if (facts.length === 0) {
+    return (
+      <div
+        style={{
+          marginTop: 4,
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: `1px dashed ${BRAND.slate200}`,
+          color: BRAND.slate500,
+          fontSize: 11,
+          fontWeight: 650,
+          background: "white",
+        }}
+      >
+        No facts captured from this source yet.
+      </div>
+    );
+  }
+  return (
+    <ul
+      style={{
+        listStyle: "none",
+        margin: "4px 0 0 0",
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+      }}
+    >
+      {facts.map((f) => (
+        <FactListItem key={f.id} fact={f} compact />
+      ))}
+    </ul>
+  );
+}
+
+function MergedFactsSection({ facts }: { facts: CeIntelligenceFact[] }) {
+  const groups = groupMergedFacts(facts);
+  if (groups.length === 0) return null;
+  return (
+    <section>
+      <h4 style={sectionLabel()}>Merged facts</h4>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {groups.slice(0, 12).map((group) => (
+          <li
+            key={group.key}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              background: "white",
+              border: `1px solid ${group.sources.length > 1 ? BRAND.bgMint : BRAND.slate100}`,
+            }}
+          >
+            <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 650, lineHeight: 1.4 }}>
+              {group.claim}
+            </div>
+            <div
+              style={{
+                marginTop: 5,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+                fontSize: 10,
+                fontWeight: 800,
+                color: BRAND.slate500,
+              }}
+            >
+              <span
+                style={{
+                  background: group.sources.length > 1 ? BRAND.bgMint : BRAND.slate100,
+                  color: group.sources.length > 1 ? BRAND.okayInk : BRAND.slate700,
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                }}
+              >
+                {group.sources.length} source{group.sources.length === 1 ? "" : "s"}
+              </span>
+              <span>{group.sources.map((s) => SOURCE_LABELS[s] ?? s).join(" · ")}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function FactListItem({
+  fact,
+  compact = false,
+}: {
+  fact: CeIntelligenceFact;
+  compact?: boolean;
+}) {
+  return (
+    <li
+      style={{
+        padding: compact ? "7px 9px" : "8px 10px",
+        borderRadius: 10,
+        background: compact ? BRAND.slate50 : "white",
+        border: `1px solid ${BRAND.slate100}`,
+      }}
+    >
+      <div style={{ fontSize: 12, color: BRAND.slate950, fontWeight: 600, lineHeight: 1.4 }}>
+        {fact.value}
+      </div>
+      <div
+        className="flex items-center gap-2"
+        style={{ marginTop: 4, fontSize: 10, fontWeight: 700, color: BRAND.slate500 }}
+      >
+        <span
+          style={{
+            background: BRAND.bgLilac,
+            color: BRAND.purps,
+            padding: "1px 6px",
+            borderRadius: 999,
+          }}
+        >
+          {SOURCE_LABELS[fact.source] ?? fact.source}
+        </span>
+        <span>conf {fact.confidence}</span>
+        {fact.source_url && (
+          <a
+            href={fact.source_url}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{
+              color: BRAND.slate700,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            source <ExternalLink size={10} />
+          </a>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function groupMergedFacts(facts: CeIntelligenceFact[]): {
+  key: string;
+  claim: string;
+  sources: string[];
+}[] {
+  const groups = new Map<string, CeIntelligenceFact[]>();
+  for (const fact of facts) {
+    const key = normalizeFactKey(fact.value);
+    const arr = groups.get(key) ?? [];
+    arr.push(fact);
+    groups.set(key, arr);
+  }
+  return Array.from(groups.entries())
+    .map(([key, items]) => ({
+      key,
+      claim: items.sort((a, b) => b.confidence - a.confidence)[0]?.value ?? key,
+      sources: Array.from(new Set(items.map((item) => item.source))),
+    }))
+    .sort((a, b) => b.sources.length - a.sources.length || a.claim.localeCompare(b.claim));
+}
+
+function normalizeFactKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\b(the|a|an|and|or|from|to|for|with|typically|usually)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 14)
+    .join(" ");
 }
 
 function EvidenceChip({
@@ -1269,6 +1543,172 @@ function verifyTone(status: CreatedPlanChart["verifyStatus"]): {
   if (status === "issues") return { bg: BRAND.holaSoft, fg: BRAND.hola };
   if (status === "failed") return { bg: BRAND.candySoft, fg: BRAND.candy };
   return { bg: BRAND.bgCool, fg: BRAND.purps };
+}
+
+function RejectedRepairTools({
+  item,
+  context,
+  selectedArchetype,
+  isBusy,
+  disabled,
+  onContextChange,
+  onArchetypeChange,
+  onAddContext,
+  onSearchMore,
+  onCreateEstimate,
+  onChangeType,
+}: {
+  item: VisualizationPlan["rejected_visualizations"][number];
+  context: string;
+  selectedArchetype: string;
+  isBusy: boolean;
+  disabled: boolean;
+  onContextChange: (value: string) => void;
+  onArchetypeChange: (value: string) => void;
+  onAddContext: () => void;
+  onSearchMore: () => void;
+  onCreateEstimate: () => void;
+  onChangeType: () => void;
+}) {
+  const hasContext = context.trim().length > 0;
+  const canAct = !disabled && !isBusy;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <textarea
+        value={context}
+        onChange={(e) => onContextChange(e.target.value)}
+        placeholder="Add source-backed context or exact data to repair this gap..."
+        rows={3}
+        style={{
+          width: "100%",
+          resize: "vertical",
+          border: `1px solid ${BRAND.slate200}`,
+          borderRadius: 9,
+          padding: 8,
+          fontSize: 11,
+          fontWeight: 600,
+          color: BRAND.slate950,
+          outline: "none",
+          background: BRAND.slate50,
+        }}
+      />
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 6,
+        }}
+      >
+        <RepairButton
+          label="Add context"
+          busy={isBusy}
+          disabled={!canAct || !hasContext}
+          onClick={onAddContext}
+        />
+        <RepairButton
+          label="Recheck evidence"
+          busy={isBusy}
+          disabled={!canAct}
+          onClick={onSearchMore}
+          variant="secondary"
+        />
+        <RepairButton
+          label="Create anyway as estimate"
+          busy={isBusy}
+          disabled={!canAct}
+          onClick={onCreateEstimate}
+          variant="secondary"
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gap: 6,
+        }}
+      >
+        <select
+          value={selectedArchetype}
+          onChange={(e) => onArchetypeChange(e.target.value)}
+          style={{
+            minWidth: 0,
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 9,
+            padding: "6px 8px",
+            fontSize: 11,
+            fontWeight: 750,
+            color: BRAND.slate950,
+            background: "white",
+          }}
+          aria-label={`Change chart type for ${item.question}`}
+        >
+          <option value="">Change chart type</option>
+          {Object.entries(CHART_TYPE_META).map(([type, meta]) => (
+            <option key={type} value={type}>
+              {meta.emoji} {type}
+            </option>
+          ))}
+        </select>
+        <RepairButton
+          label="Change type"
+          busy={isBusy}
+          disabled={!canAct || !selectedArchetype}
+          onClick={onChangeType}
+          variant="secondary"
+        />
+      </div>
+    </div>
+  );
+}
+
+function RepairButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+  variant = "primary",
+}: {
+  label: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  variant?: "primary" | "secondary";
+}) {
+  const activeBg = variant === "primary" ? BRAND.purps : "white";
+  const activeFg = variant === "primary" ? "white" : BRAND.purps;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border: `1px solid ${disabled ? BRAND.slate200 : BRAND.purpsSoft}`,
+        borderRadius: 9,
+        padding: "6px 9px",
+        background: disabled ? BRAND.slate100 : activeBg,
+        color: disabled ? BRAND.slate500 : activeFg,
+        fontSize: 11,
+        fontWeight: 850,
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+      }}
+    >
+      {busy ? (
+        <Loader2 size={12} className="animate-spin" />
+      ) : (
+        <Plus size={12} />
+      )}
+      {label}
+    </button>
+  );
 }
 
 function PlanList({
