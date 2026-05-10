@@ -23,6 +23,13 @@ import {
   isEmptyConstraints,
   type RegenConstraints,
 } from "./regen-constraints";
+import {
+  isEvidenceKind,
+  kindFromUrl,
+  partitionDrdByKind,
+  classifyDrdSnippet,
+  type EvidenceKind,
+} from "./evidence-kind";
 
 const MODEL = "gemini-2.5-pro";
 const VERIFIER_MODEL = "gpt-5.4";
@@ -101,21 +108,50 @@ export interface ExistingChartSnapshot {
   };
 }
 
+/**
+ * A DRD snippet citation. Legacy rows store bare strings; new rows from
+ * the Task #63 pipeline store the tagged shape so writers can see WHICH
+ * DRD section a quoted phrase came from. UI renderers must accept both.
+ */
+export type DrdSnippet = string | { text: string; kind?: EvidenceKind };
+
+export interface WebSource {
+  title: string;
+  url: string;
+  /** Evidence kind classified from the URL (or set explicitly by the model). */
+  kind?: EvidenceKind;
+}
+
+export interface EstimateNote {
+  field: string;
+  reasoning: string;
+  /** Always "estimate" for new rows; absent on legacy rows. */
+  kind?: EvidenceKind;
+}
+
 export interface ChartProvenance {
   status: "drd_grounded" | "web_grounded" | "estimated";
-  drd_snippets: string[];
-  web_sources: { title: string; url: string }[];
-  estimates: { field: string; reasoning: string }[];
+  drd_snippets: DrdSnippet[];
+  web_sources: WebSource[];
+  estimates: EstimateNote[];
   verifier_notes: string;
   /** "standard" (S1-S4) or "signature" (subcat-specific). Optional for legacy rows. */
   kind?: BankQuestionKind;
   /** Shared id for questions that travel together (e.g. S1a/S1b → "crowd_timing"). */
   topic_id?: string;
   /**
-   * IDs of CE-intelligence facts referenced when generating this chart.
-   * Resolves back to facts in the `ce_intelligence` table for citations.
+   * CE-intelligence facts referenced when generating this chart. Each entry
+   * is either a bare fact id (legacy shape) or `{ id, kind }` carrying the
+   * EvidenceKind taxonomy tag (Task #63). Resolves back to facts in the
+   * `ce_intelligence` table for citations.
    */
-  intelligence_refs?: string[];
+  intelligence_refs?: (string | IntelRef)[];
+}
+
+/** Tagged CE-intelligence reference (Task #63). */
+export interface IntelRef {
+  id: string;
+  kind: EvidenceKind;
 }
 
 export interface GeneratedChart {
@@ -1002,6 +1038,13 @@ async function groundedJsonCall<T>(args: {
   };
 }
 
+const KIND_GUIDANCE = `Each citation MUST carry an evidence "kind" tag from this taxonomy:
+- "official"    — operator/official ticketing site, government/museum page, transit operator
+- "marketplace" — OTA/reseller (GetYourGuide, Viator, Headout, Klook, Tiqets, Musement)
+- "review"      — review platform / forum / community (TripAdvisor, Reddit, Yelp, Lonely Planet)
+- "inferred"    — DRD analyst inference / extrapolation (e.g. snippet from an "Honest gap" or synthesis section)
+- "estimate"    — generator estimate, no external source (always use this kind for entries in provenance.estimates)`;
+
 export async function generateOneChart(
   input: ResearchPipelineInput,
   question: string,
@@ -1056,12 +1099,14 @@ Chart-spec schema for this archetype (fill EVERY required field exactly):
 ${archetypeBlock}
 
 Grounding rules (very important):
-1. PREFER numbers from the Deep Research Doc below. When you use a fact from the DRD, capture the exact phrase you used in provenance.drd_snippets.
+1. PREFER numbers from the Deep Research Doc below. When you use a fact from the DRD, capture the exact phrase you used in provenance.drd_snippets, tagging each with the section kind it came from.
 2. If the DRD doesn't cover it but a CE Intelligence fact does, use that fact and capture its id in provenance.intelligence_refs.
-3. If neither covers it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources (with a short title).
-4. If none of the above cover it, produce an HONEST estimate a Headout local guide would broadly agree with — and explicitly list which fields you estimated in provenance.estimates with a one-line reasoning.
+3. If neither covers it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources (with a short title) AND tag its kind.
+4. If none of the above cover it, produce an HONEST estimate a Headout local guide would broadly agree with — and explicitly list which fields you estimated in provenance.estimates with a one-line reasoning. Always tag estimate entries with kind:"estimate".
 5. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings or an intelligence fact; "estimated" otherwise.
 6. Do NOT invent specific weather scores, price scores, or visitor-mix percentages — leave optional fields blank rather than fabricate. Required fields can use estimates with reasoning.
+
+${KIND_GUIDANCE}
 
 Output STRICT JSON (no markdown), shape:
 {
@@ -1075,9 +1120,9 @@ Output STRICT JSON (no markdown), shape:
   },
   "provenance": {
     "status": "drd_grounded" | "web_grounded" | "estimated",
-    "drd_snippets": ["..."],
-    "web_sources": [{ "title": "...", "url": "https://..." }],
-    "estimates": [{ "field": "spec.days[3].score", "reasoning": "..." }],
+    "drd_snippets": [{ "text": "...", "kind": "official|marketplace|review|inferred|unknown" }],
+    "web_sources": [{ "title": "...", "url": "https://...", "kind": "official|marketplace|review|inferred|unknown" }],
+    "estimates": [{ "field": "spec.days[3].score", "reasoning": "...", "kind": "estimate" }],
     "intelligence_refs": ["<fact id>", ...],
     "verifier_notes": ""
   }
@@ -1140,6 +1185,8 @@ ${drdBlock}
     provenance: normalizeProvenance(
       result.parsed.provenance,
       result.researchResponse,
+      input.drdMarkdown,
+      new Map(intelSlice.facts.map((f) => [f.id, f.kind ?? "unknown"])),
     ),
   };
 }
@@ -1200,13 +1247,15 @@ Schema B:
 ${hourlyBlock}
 
 Grounding rules (apply to BOTH charts):
-1. PREFER numbers from the Deep Research Doc below. Capture the exact phrase you used in provenance.drd_snippets.
-2. If the DRD doesn't cover it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources.
-3. Otherwise produce an HONEST estimate a Headout local guide would broadly agree with — list which fields you estimated in provenance.estimates.
+1. PREFER numbers from the Deep Research Doc below. Capture the exact phrase you used in provenance.drd_snippets, tagging each with the section kind it came from.
+2. If the DRD doesn't cover it BUT the Live Web Findings below do, use the web finding and capture the source URL/domain in provenance.web_sources AND tag its kind.
+3. Otherwise produce an HONEST estimate a Headout local guide would broadly agree with — list which fields you estimated in provenance.estimates with kind:"estimate".
 4. Set provenance.status to "drd_grounded" if every numeric field came from the DRD; "web_grounded" if at least one came from the live web findings; "estimated" otherwise.
 5. The two charts MUST agree: same opening/closing hours, same weekly pattern (the quietest day in A is the quietest row in B).
 
-Output STRICT JSON (no markdown), shape:
+${KIND_GUIDANCE}
+
+Output STRICT JSON (no markdown). Each provenance entry shape: drd_snippets:[{text,kind}], web_sources:[{title,url,kind}], estimates:[{field,reasoning,kind:"estimate"}].
 {
   "weekly": {
     "chart": { "slug": "kebab-case", "question": "...", "title": "...", "subtitle": "...", "insight": "...", "spec": { ...weekly_pattern spec... } },
@@ -1304,6 +1353,7 @@ ${drdBlock}
       provenance: normalizeProvenance(
         parsed.weekly.provenance,
         result.researchResponse,
+        input.drdMarkdown,
       ),
     },
     hourly: {
@@ -1311,6 +1361,7 @@ ${drdBlock}
       provenance: normalizeProvenance(
         parsed.hourly.provenance,
         result.researchResponse,
+        input.drdMarkdown,
       ),
     },
   };
@@ -1319,17 +1370,84 @@ ${drdBlock}
 function normalizeProvenance(
   raw: ChartProvenance | undefined,
   geminiResponse: unknown,
+  drdMarkdown?: string,
+  intelKindByFactId?: Map<string, EvidenceKind>,
 ): ChartProvenance {
+  // Tag DRD snippets: accept author-provided objects (with kind) AND legacy
+  // bare strings; classify untagged snippets via the DRD section partition.
+  const partitioned = drdMarkdown ? partitionDrdByKind(drdMarkdown) : null;
+  const drd_snippets: DrdSnippet[] = Array.isArray(raw?.drd_snippets)
+    ? (raw!.drd_snippets as unknown[]).flatMap((entry) => {
+        if (typeof entry === "string") {
+          if (!entry.trim()) return [];
+          const kind = partitioned ? classifyDrdSnippet(entry, partitioned) : "unknown";
+          return [{ text: entry, kind } as DrdSnippet];
+        }
+        if (entry && typeof entry === "object") {
+          const obj = entry as { text?: unknown; kind?: unknown };
+          const text = typeof obj.text === "string" ? obj.text : "";
+          if (!text.trim()) return [];
+          let kind: EvidenceKind = isEvidenceKind(obj.kind) ? obj.kind : "unknown";
+          if (kind === "unknown" && partitioned) {
+            kind = classifyDrdSnippet(text, partitioned);
+          }
+          return [{ text, kind }];
+        }
+        return [];
+      })
+    : [];
+
+  // Tag web sources: trust the model's `kind` if it picked a valid one;
+  // otherwise classify from the URL.
+  const web_sources: WebSource[] = Array.isArray(raw?.web_sources)
+    ? (raw!.web_sources as unknown[]).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const obj = entry as { title?: unknown; url?: unknown; kind?: unknown };
+        const url = typeof obj.url === "string" ? obj.url : "";
+        if (!url) return [];
+        const title = typeof obj.title === "string" ? obj.title : url;
+        const kind: EvidenceKind = isEvidenceKind(obj.kind) ? obj.kind : kindFromUrl(url);
+        return [{ title, url, kind }];
+      })
+    : [];
+
+  // Estimates always carry kind:"estimate" — that's the entire taxonomy
+  // distinction these entries exist to mark.
+  const estimates: EstimateNote[] = Array.isArray(raw?.estimates)
+    ? (raw!.estimates as unknown[]).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const obj = entry as { field?: unknown; reasoning?: unknown };
+        const field = typeof obj.field === "string" ? obj.field : "";
+        const reasoning = typeof obj.reasoning === "string" ? obj.reasoning : "";
+        if (!field && !reasoning) return [];
+        return [{ field, reasoning, kind: "estimate" as EvidenceKind }];
+      })
+    : [];
+
   const out: ChartProvenance = {
     status: raw?.status ?? "estimated",
-    drd_snippets: Array.isArray(raw?.drd_snippets) ? raw!.drd_snippets : [],
-    web_sources: Array.isArray(raw?.web_sources) ? raw!.web_sources : [],
-    estimates: Array.isArray(raw?.estimates) ? raw!.estimates : [],
+    drd_snippets,
+    web_sources,
+    estimates,
     verifier_notes: typeof raw?.verifier_notes === "string" ? raw!.verifier_notes : "",
     ...(Array.isArray(raw?.intelligence_refs)
       ? {
-          intelligence_refs: (raw!.intelligence_refs as unknown[]).filter(
-            (x): x is string => typeof x === "string",
+          intelligence_refs: (raw!.intelligence_refs as unknown[]).flatMap(
+            (entry): (string | IntelRef)[] => {
+              if (typeof entry === "string") {
+                const k = intelKindByFactId?.get(entry);
+                return k ? [{ id: entry, kind: k }] : [{ id: entry, kind: "unknown" }];
+              }
+              if (entry && typeof entry === "object") {
+                const obj = entry as { id?: unknown; kind?: unknown };
+                if (typeof obj.id !== "string" || !obj.id) return [];
+                const fromMap = intelKindByFactId?.get(obj.id);
+                const kind: EvidenceKind = fromMap
+                  ?? (isEvidenceKind(obj.kind) ? obj.kind : "unknown");
+                return [{ id: obj.id, kind }];
+              }
+              return [];
+            },
           ),
         }
       : {}),
@@ -1340,7 +1458,7 @@ function normalizeProvenance(
   const grounded = extractGroundingSources(geminiResponse);
   for (const g of grounded) {
     if (!out.web_sources.find((s) => s.url === g.url)) {
-      out.web_sources.push(g);
+      out.web_sources.push({ ...g, kind: kindFromUrl(g.url) });
     }
   }
   if (out.web_sources.length > 0 && out.status === "estimated") {
@@ -1554,6 +1672,10 @@ Author's provenance claims:
 ${JSON.stringify(provenance)}
 
 Re-read the DRD below. Look for any data points in the spec that CONTRADICT the DRD or that are claimed as "drd_grounded" but are not actually supported. Be strict but pragmatic — small rounding is fine, factual contradictions are not.
+
+Also sanity-check the provenance evidence-kind tags. Each citation in drd_snippets/web_sources/estimates carries a kind from this taxonomy:
+- "official" (operator/government), "marketplace" (OTA), "review" (review/forum), "inferred" (DRD analyst inference), "estimate" (generator estimate), "unknown" (unclassified).
+Flag any citation whose kind looks wrong (e.g. a TripAdvisor URL tagged "official", or a DRD "Honest Gap" snippet tagged "official" instead of "inferred").
 
 Return JSON ONLY:
 {

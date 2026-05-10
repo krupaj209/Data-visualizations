@@ -761,15 +761,101 @@ export type ChartSpec =
   | HistoryTimelineSpec
   | SlotCompareSpec;
 
+/**
+ * Evidence-kind taxonomy (Task #63). Mirrors `EvidenceKind` on the server
+ * — kept as a string union here so the viz-studio package doesn't need to
+ * depend on api-server internals. Legacy provenance rows have no kind
+ * tags; renderers must treat missing/unrecognised kinds as "unknown".
+ */
+export type EvidenceKind =
+  | "official"
+  | "marketplace"
+  | "review"
+  | "inferred"
+  | "estimate"
+  | "unknown";
+
 /** Subset of the chart provenance object the renderers may surface to users. */
 export interface ChartProvenanceLite {
   status?: "drd_grounded" | "web_grounded" | "estimated" | string;
-  drd_snippets?: string[];
-  web_sources?: { title?: string; url?: string }[];
-  estimates?: { field?: string; reasoning?: string }[];
+  /**
+   * Legacy rows store bare strings; new rows from the Task #63 pipeline
+   * store the tagged shape. Renderers must accept both.
+   */
+  drd_snippets?: (string | { text?: string; kind?: string })[];
+  web_sources?: { title?: string; url?: string; kind?: string }[];
+  estimates?: { field?: string; reasoning?: string; kind?: string }[];
   verifier_notes?: string;
-  intelligence_refs?: string[];
+  /**
+   * Either bare fact ids (legacy) or tagged refs `{ id, kind }` (Task #63).
+   * Both shapes coexist in the wild — counts/UI must accept either.
+   */
+  intelligence_refs?: (string | { id: string; kind?: string })[];
 }
+
+const EVIDENCE_KIND_VALUES: readonly EvidenceKind[] = [
+  "official",
+  "marketplace",
+  "review",
+  "inferred",
+  "estimate",
+  "unknown",
+];
+
+function asKind(v: unknown): EvidenceKind {
+  return typeof v === "string" && (EVIDENCE_KIND_VALUES as readonly string[]).includes(v)
+    ? (v as EvidenceKind)
+    : "unknown";
+}
+
+/**
+ * Aggregate provenance citations into per-kind counts so writer/embed UIs
+ * can render a compact rollup chip group without re-walking the structure
+ * in every component. Counts ALL citations across web sources, DRD
+ * snippets, and explicit estimates. Legacy untagged citations bucket into
+ * "unknown".
+ */
+export function evidenceKindCounts(
+  provenance: ChartProvenanceLite | null | undefined,
+): Record<EvidenceKind, number> {
+  const counts: Record<EvidenceKind, number> = {
+    official: 0,
+    marketplace: 0,
+    review: 0,
+    inferred: 0,
+    estimate: 0,
+    unknown: 0,
+  };
+  if (!provenance) return counts;
+  for (const s of provenance.web_sources ?? []) {
+    counts[asKind(s.kind)] += 1;
+  }
+  for (const d of provenance.drd_snippets ?? []) {
+    if (typeof d === "string") counts.unknown += 1;
+    else counts[asKind(d.kind)] += 1;
+  }
+  for (const e of provenance.estimates ?? []) {
+    counts[asKind(e.kind ?? "estimate")] += 1;
+  }
+  for (const r of provenance.intelligence_refs ?? []) {
+    if (typeof r === "string") counts.unknown += 1;
+    else counts[asKind(r.kind)] += 1;
+  }
+  return counts;
+}
+
+/** Display metadata for each evidence kind — label + chip colours. */
+export const EVIDENCE_KIND_META: Record<
+  EvidenceKind,
+  { label: string; bg: string; fg: string }
+> = {
+  official:    { label: "Official",    bg: "#E6F4EA", fg: "#0E8F4E" },
+  marketplace: { label: "Marketplace", bg: "#EFE5FF", fg: "#5B21B6" },
+  review:      { label: "Review",      bg: "#FFE9F2", fg: "#A8235C" },
+  inferred:    { label: "Inferred",    bg: "#FFF4DD", fg: "#A65A00" },
+  estimate:    { label: "Estimate",    bg: "#F2F2F4", fg: "#54545C" },
+  unknown:     { label: "Unknown",     bg: "#F2F2F4", fg: "#54545C" },
+};
 
 export interface ChartHeader {
   title: string;

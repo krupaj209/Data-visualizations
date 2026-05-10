@@ -2,6 +2,7 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import { db, ceIntelligenceTable, type CeIntelligence } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { kindFromIntelSource, type EvidenceKind } from "./evidence-kind";
 
 /* -------------------------------------------------------------------------- */
 /* Types — buckets, facts, sources                                            */
@@ -96,12 +97,20 @@ export interface IntelFact {
   /** ISO timestamp when this fact was fetched. */
   fetched_at: string;
   /**
-   * What KIND of evidence this fact represents. Optional — older rows
-   * predate this field and still load cleanly. New rows are tagged by
-   * the source-specific extraction prompt and validated against the
-   * source's allowed evidence-type set.
+   * What KIND of evidence this fact represents (granular, Task #61).
+   * Optional — older rows predate this field and still load cleanly.
+   * New rows are tagged by the source-specific extraction prompt and
+   * validated against the source's allowed evidence-type set.
    */
   evidence_type?: EvidenceTypeId;
+  /**
+   * Higher-level evidence-kind taxonomy (Task #63). Defaulted from the
+   * adapter source via `kindFromIntelSource` so the citation popover and
+   * writer review screen can colour-code each fact without re-deriving.
+   * Complements `evidence_type`: `kind` groups by trust tier, while
+   * `evidence_type` describes the granular content category.
+   */
+  kind?: EvidenceKind;
 }
 
 export interface IntelSourceStatus {
@@ -728,6 +737,7 @@ export async function refreshCeIntelligence(
         confidence: f.confidence,
         fetched_at: now,
         ...(f.evidence_type ? { evidence_type: f.evidence_type } : {}),
+        kind: kindFromIntelSource(id),
       }));
       facts.push(...newFacts);
       sources[id] = {
@@ -1034,7 +1044,7 @@ export function formatIntelFactsForPrompt(facts: IntelFact[]): string {
   return facts
     .map(
       (f) =>
-        `- [${f.id}] (${f.source}, conf ${f.confidence}) ${f.value}` +
+        `- [${f.id}] (${f.source}, kind:${f.kind ?? kindFromIntelSource(f.source)}, conf ${f.confidence}) ${f.value}` +
         (f.source_url ? ` — ${f.source_url}` : ""),
     )
     .join("\n");

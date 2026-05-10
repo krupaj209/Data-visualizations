@@ -114,7 +114,11 @@ export function buildChartFactRows(
   const webSources = (provenance?.web_sources ?? []).filter(
     (s) => s?.title || s?.url,
   );
-  const intelRefs = new Set(provenance?.intelligence_refs ?? []);
+  const intelRefs = new Set(
+    (provenance?.intelligence_refs ?? []).map((r) =>
+      typeof r === "string" ? r : r?.id,
+    ),
+  );
   // Only consider intel facts that this chart actually cited.
   const citedIntel = (options.intelFacts ?? []).filter((f) =>
     intelRefs.has(f.id),
@@ -123,7 +127,7 @@ export function buildChartFactRows(
   const allDrd: ChartFactBackingSource[] = drdSnippets.map((snippet) => ({
     kind: "drd",
     label: "Deep research doc",
-    detail: snippet,
+    detail: typeof snippet === "string" ? snippet : (snippet?.text ?? ""),
     scope: "chart",
   }));
   const allWeb: ChartFactBackingSource[] = webSources.map((source) => ({

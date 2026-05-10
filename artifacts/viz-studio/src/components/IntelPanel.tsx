@@ -2236,9 +2236,17 @@ export function ChartCitations({
   refs,
 }: {
   ceSlug: string;
-  refs: string[];
+  /**
+   * Either bare fact ids (legacy) or tagged refs `{ id, kind }` from the
+   * Task #63 evidence-kind taxonomy. Both shapes are accepted here so this
+   * component is backward-compatible with rows generated before #63.
+   */
+  refs: (string | { id: string; kind?: string })[];
 }) {
   const [open, setOpen] = useState(false);
+  const refIds = refs
+    .map((r) => (typeof r === "string" ? r : r?.id))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
   // Lazy-load only when opened so we don't pile API calls onto the CE page.
   const { data } = useGetCeIntelligence(ceSlug, {
     query: {
@@ -2248,9 +2256,9 @@ export function ChartCitations({
   });
   const intel = (data ?? null) as CeIntelligence | null;
   const cited =
-    intel?.facts.filter((f) => refs.includes(f.id)) ?? [];
+    intel?.facts.filter((f) => refIds.includes(f.id)) ?? [];
 
-  if (refs.length === 0) return null;
+  if (refIds.length === 0) return null;
 
   return (
     <div style={{ position: "relative", display: "inline-block" }}>

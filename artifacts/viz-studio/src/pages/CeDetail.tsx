@@ -54,8 +54,11 @@ import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { FeedbackButton } from "@/components/FeedbackButton";
 import {
+  EVIDENCE_KIND_META,
+  evidenceKindCounts,
   type ChartProvenanceLite,
   type ChartSpec,
+  type EvidenceKind,
 } from "@/lib/chart-spec";
 import {
   buildChartFactRows,
@@ -851,19 +854,23 @@ function ChartRow({
           </button>
 
           {Array.isArray(
-            (chart.provenance as { intelligence_refs?: string[] } | null)
+            (chart.provenance as ChartProvenanceLite | null)
               ?.intelligence_refs,
           ) &&
-            ((chart.provenance as { intelligence_refs?: string[] })
+            ((chart.provenance as ChartProvenanceLite)
               .intelligence_refs?.length ?? 0) > 0 && (
               <ChartCitations
                 ceSlug={ceSlug}
                 refs={
-                  (chart.provenance as { intelligence_refs?: string[] })
+                  (chart.provenance as ChartProvenanceLite)
                     .intelligence_refs ?? []
                 }
               />
             )}
+
+          <EvidenceKindRollup
+            provenance={chart.provenance as ChartProvenanceLite | null}
+          />
 
           <EmbedActions chartId={chart.id} />
           <button
@@ -1922,11 +1929,41 @@ function ProvenanceDisclosure({
       <div className="mt-3 flex flex-col gap-3">
         {drdSnippets.length > 0 && (
           <ProvenanceSection title="Facts we know">
-            {drdSnippets.slice(0, 3).map((snippet, index) => (
-              <p key={`${snippet}-${index}`} style={provenanceTextStyle}>
-                {snippet}
-              </p>
-            ))}
+            {drdSnippets.slice(0, 3).map((snippet, index) => {
+              const text =
+                typeof snippet === "string" ? snippet : (snippet?.text ?? "");
+              const kindRaw =
+                typeof snippet === "string" ? undefined : snippet?.kind;
+              const kind = (
+                kindRaw && kindRaw in EVIDENCE_KIND_META
+                  ? (kindRaw as EvidenceKind)
+                  : "unknown"
+              );
+              const meta = EVIDENCE_KIND_META[kind];
+              return (
+                <p key={`${text}-${index}`} style={provenanceTextStyle}>
+                  {kindRaw && (
+                    <span
+                      style={{
+                        background: meta.bg,
+                        color: meta.fg,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        marginRight: 6,
+                        verticalAlign: "middle",
+                      }}
+                    >
+                      {meta.label}
+                    </span>
+                  )}
+                  {text}
+                </p>
+              );
+            })}
           </ProvenanceSection>
         )}
 
@@ -2014,6 +2051,75 @@ function ProvenanceSection({
         {title}
       </div>
       {children}
+    </div>
+  );
+}
+
+const EVIDENCE_KIND_ORDER: readonly EvidenceKind[] = [
+  "official",
+  "marketplace",
+  "review",
+  "inferred",
+  "estimate",
+  "unknown",
+];
+
+/**
+ * Per-kind rollup chip group rendered next to the verify/publish actions in
+ * the writer review screen (Task #63). Shows a chip per EvidenceKind with a
+ * count, plus a small amber dot when the chart is "thin" — only generator
+ * estimates and/or review-tier sources, with no official, marketplace, or
+ * inferred-from-DRD evidence backing it.
+ */
+function EvidenceKindRollup({
+  provenance,
+}: {
+  provenance: ChartProvenanceLite | null;
+}) {
+  const counts = evidenceKindCounts(provenance);
+  const total = EVIDENCE_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
+  if (total === 0) return null;
+  const present = EVIDENCE_KIND_ORDER.filter((k) => counts[k] > 0);
+  const trustworthy = counts.official + counts.marketplace + counts.inferred;
+  const thin = trustworthy === 0 && (counts.review > 0 || counts.estimate > 0);
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 flex-wrap"
+      title="Evidence-kind rollup across DRD snippets, web sources, and estimates"
+    >
+      {thin && (
+        <span
+          aria-label="Thin sourcing — only review or estimate evidence"
+          title="Thin sourcing — only review or estimate evidence"
+          style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: "#E0A300",
+          }}
+        />
+      )}
+      {present.map((k) => {
+        const meta = EVIDENCE_KIND_META[k];
+        return (
+          <span
+            key={k}
+            style={{
+              background: meta.bg,
+              color: meta.fg,
+              padding: "3px 8px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {meta.label} {counts[k]}
+          </span>
+        );
+      })}
     </div>
   );
 }
