@@ -1,0 +1,25 @@
+#83 - Rebase remote commit a660128
+What & Why
+The local branch codex-history-timeline-archetype has diverged from its GitHub remote: local is 14 commits ahead, remote has 1 commit (a660128 — "Improve category CE regeneration quality" by krupaj209, May 10) that local does not have. The Replit publish pane shows MERGE_CONFLICT until this is resolved. Goal: integrate a660128 into local history and push so origin and local agree.
+
+Done looks like
+git status reports the local branch and subrepl-0d2a61ml/codex-history-timeline-archetype are in sync (no "have diverged" message)
+The work in a660128 is preserved (its planner / pipeline improvements survive)
+Our 14 local commits are preserved (Task #80 timing-floor work, history-timeline, chart preview fix, screenshot, etc.)
+pnpm run typecheck passes after the rebase
+The remote branch has been updated so the publish pane no longer shows MERGE_CONFLICT
+Out of scope
+Any new feature work
+Touching the main branch
+Force-pushing without first preserving the local 14 commits
+Steps
+Fetch + inspect — git fetch subrepl-0d2a61ml codex-history-timeline-archetype, then read the full diff of a660128 so the conflict resolution preserves both intents.
+Rebase local on top of remote — git rebase subrepl-0d2a61ml/codex-history-timeline-archetype. Expect conflicts in artifacts/api-server/src/lib/research-pipeline.ts (heavy local changes from Task #80) and possibly ce-visualization-planner.ts and routes/charts.ts.
+Resolve conflicts thoughtfully — keep BOTH the remote's category-CE regeneration quality improvements AND the local Task #80 timing-floor logic. They are complementary, not competing. When the same function is touched, merge the changes rather than picking one side.
+Verify — run pnpm run typecheck and pnpm --filter @workspace/scripts run test-cruise-timing-floor to confirm Task #80 behavior still holds.
+Push — git push subrepl-0d2a61ml codex-history-timeline-archetype --force-with-lease so remote matches the rebased local. Use --force-with-lease (not -f) so the push is rejected if anyone added new commits to the remote in the meantime.
+Relevant files
+artifacts/api-server/src/lib/research-pipeline.ts
+artifacts/api-server/src/lib/ce-visualization-planner.ts
+artifacts/api-server/src/routes/charts.ts
+scripts/src/test-cruise-timing-floor.mts
