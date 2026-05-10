@@ -113,10 +113,13 @@ export const RegenerateCeParams = zod.object({
   slug: zod.coerce.string(),
 });
 
-export const regenerateCeBodyFeedbackMax = 4000;
-
 export const RegenerateCeBody = zod.object({
-  feedback: zod.string().max(regenerateCeBodyFeedbackMax).optional(),
+  feedback: zod
+    .string()
+    .optional()
+    .describe(
+      "Optional free-text writer feedback. Parsed by the api-server\ninto structured constraints (banned archetypes \/ topics \/\nphrases, must-include topics) and merged with whatever was\npersisted from prior regen runs on the same CE.\n",
+    ),
 });
 
 export const RegenerateCeResponse = zod.object({
@@ -163,6 +166,42 @@ export const RegenerateCeResponse = zod.object({
       updatedAt: zod.string(),
     }),
   ),
+  publishedChartsKept: zod
+    .number()
+    .optional()
+    .describe(
+      "Count of `published` charts preserved across the run (only\n`draft` rows are deleted by the research pipeline).\n",
+    ),
+  droppedQuestions: zod
+    .array(
+      zod.object({
+        question: zod.string(),
+        reason: zod.string(),
+      }),
+    )
+    .optional(),
+  proposedHeroQuestions: zod
+    .array(zod.record(zod.string(), zod.unknown()))
+    .optional(),
+  regenSummary: zod
+    .object({
+      honoredFeedback: zod.array(zod.string()),
+      suppressedArchetypes: zod.array(zod.string()),
+      retiredTopics: zod.array(zod.string()),
+      priorDeckOverlap: zod
+        .number()
+        .describe("How many selected questions overlap the prior deck."),
+      priorDeckSize: zod.number().describe("Total prior charts considered."),
+      storedConstraints: zod
+        .record(zod.string(), zod.unknown())
+        .describe(
+          'Merged constraint set (parsed feedback ∪ prior persisted\nconstraints) re-persisted on the CE row this run. Surfaced so\nthe UI can show the writer what\'s \"sticky\" for next regen.\n',
+        ),
+    })
+    .optional()
+    .describe(
+      "Surfaced by \/ces\/{slug}\/regenerate so the writer can confirm the\nrun honored their feedback. Plain-English bullets first, then the\nstructured signals so the UI can render either.\n",
+    ),
 });
 
 /**

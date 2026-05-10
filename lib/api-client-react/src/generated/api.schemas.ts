@@ -166,6 +166,65 @@ export interface CeWithCharts {
   charts: Chart[];
 }
 
+export interface RegenerateCeInput {
+  /** Optional free-text writer feedback. Parsed by the api-server
+into structured constraints (banned archetypes / topics /
+phrases, must-include topics) and merged with whatever was
+persisted from prior regen runs on the same CE.
+ */
+  feedback?: string;
+}
+
+/**
+ * Merged constraint set (parsed feedback ∪ prior persisted
+constraints) re-persisted on the CE row this run. Surfaced so
+the UI can show the writer what's "sticky" for next regen.
+
+ */
+export type RegenSummaryStoredConstraints = { [key: string]: unknown };
+
+/**
+ * Surfaced by /ces/{slug}/regenerate so the writer can confirm the
+run honored their feedback. Plain-English bullets first, then the
+structured signals so the UI can render either.
+
+ */
+export interface RegenSummary {
+  honoredFeedback: string[];
+  suppressedArchetypes: string[];
+  retiredTopics: string[];
+  /** How many selected questions overlap the prior deck. */
+  priorDeckOverlap: number;
+  /** Total prior charts considered. */
+  priorDeckSize: number;
+  /** Merged constraint set (parsed feedback ∪ prior persisted
+constraints) re-persisted on the CE row this run. Surfaced so
+the UI can show the writer what's "sticky" for next regen.
+ */
+  storedConstraints: RegenSummaryStoredConstraints;
+}
+
+export type RegenerateCeResultDroppedQuestionsItem = {
+  question: string;
+  reason: string;
+};
+
+export type RegenerateCeResultProposedHeroQuestionsItem = {
+  [key: string]: unknown;
+};
+
+export interface RegenerateCeResult {
+  ce: Ce;
+  charts: Chart[];
+  /** Count of `published` charts preserved across the run (only
+`draft` rows are deleted by the research pipeline).
+ */
+  publishedChartsKept?: number;
+  droppedQuestions?: RegenerateCeResultDroppedQuestionsItem[];
+  proposedHeroQuestions?: RegenerateCeResultProposedHeroQuestionsItem[];
+  regenSummary?: RegenSummary;
+}
+
 export type DrdSourcesItem = { [key: string]: unknown };
 
 export interface Drd {

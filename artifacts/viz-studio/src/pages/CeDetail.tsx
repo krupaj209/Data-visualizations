@@ -255,12 +255,20 @@ function CeDetailInner({
     archetype?: string;
   } | null>(null);
   const [showRegenFeedback, setShowRegenFeedback] = useState(false);
+  const [regenSummary, setRegenSummary] = useState<
+    import("@workspace/api-client-react").RegenSummary | null
+  >(null);
 
   async function regenerateWithFeedback(feedback: string) {
-    await regenMut.mutateAsync({ slug, data: { feedback } });
+    const result = await regenMut.mutateAsync({ slug, data: { feedback } });
     qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    setRegenSummary(result.regenSummary ?? null);
+  }
+
+  function closeRegenDialog() {
     setShowRegenFeedback(false);
+    setRegenSummary(null);
   }
 
   async function handlePublishAll() {
@@ -500,8 +508,9 @@ function CeDetailInner({
           title="Regenerate chart set"
           description="Tell the AI what should improve. The current chart set will be replaced with a fresh version guided by this feedback."
           isPending={regenMut.isPending}
-          onCancel={() => setShowRegenFeedback(false)}
+          onCancel={closeRegenDialog}
           onSubmit={regenerateWithFeedback}
+          summary={regenSummary}
         />
       )}
 
@@ -2035,16 +2044,19 @@ function RegenerateFeedbackDialog({
   isPending,
   onCancel,
   onSubmit,
+  summary,
 }: {
   title: string;
   description: string;
   isPending: boolean;
   onCancel: () => void;
   onSubmit: (feedback: string) => Promise<void>;
+  summary?: import("@workspace/api-client-react").RegenSummary | null;
 }) {
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState<string | null>(null);
   const trimmed = feedback.trim();
+  const showSummary = !!summary;
 
   async function handleSubmit() {
     if (trimmed.length < 8) {
@@ -2112,39 +2124,45 @@ function RegenerateFeedbackDialog({
           </button>
         </div>
 
-        <label className="mt-4 flex flex-col gap-2">
-          <span
-            style={{
-              color: BRAND.slate700,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            What should improve?
-          </span>
-          <textarea
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-            placeholder="Example: Make this more source-backed, avoid crowd estimates, include history timeline, remove generic ticket charts..."
-            rows={5}
-            autoFocus
-            style={{
-              width: "100%",
-              resize: "vertical",
-              minHeight: 120,
-              border: `1px solid ${BRAND.slate200}`,
-              borderRadius: 14,
-              padding: 12,
-              color: BRAND.slate950,
-              fontSize: 13,
-              fontWeight: 600,
-              lineHeight: 1.5,
-              outlineColor: BRAND.purps,
-            }}
-          />
-        </label>
+        {!showSummary && (
+          <label className="mt-4 flex flex-col gap-2">
+            <span
+              style={{
+                color: BRAND.slate700,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              What should improve?
+            </span>
+            <textarea
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              placeholder="Example: Make this more source-backed, avoid crowd estimates, include history timeline, remove generic ticket charts..."
+              rows={5}
+              autoFocus
+              style={{
+                width: "100%",
+                resize: "vertical",
+                minHeight: 120,
+                border: `1px solid ${BRAND.slate200}`,
+                borderRadius: 14,
+                padding: 12,
+                color: BRAND.slate950,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1.5,
+                outlineColor: BRAND.purps,
+              }}
+            />
+          </label>
+        )}
+
+        {showSummary && summary && (
+          <RegenSummaryPanel summary={summary} />
+        )}
 
         {error && (
           <p
@@ -2160,41 +2178,190 @@ function RegenerateFeedbackDialog({
         )}
 
         <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            style={ghostBtn(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending}
-            style={{
-              background: BRAND.purps,
-              color: "white",
-              border: "none",
-              padding: "9px 14px",
-              borderRadius: 10,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: isPending ? "wait" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
-            Regenerate
-          </button>
+          {!showSummary && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isPending}
+              style={ghostBtn(false)}
+            >
+              Cancel
+            </button>
+          )}
+          {showSummary ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isPending}
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: isPending ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Regenerate
+            </button>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RegenSummaryPanel({
+  summary,
+}: {
+  summary: import("@workspace/api-client-react").RegenSummary;
+}) {
+  const honored = summary.honoredFeedback ?? [];
+  const suppressed = summary.suppressedArchetypes ?? [];
+  const retired = summary.retiredTopics ?? [];
+  const overlap = summary.priorDeckOverlap ?? 0;
+  const priorSize = summary.priorDeckSize ?? 0;
+  const fresh = Math.max(0, priorSize - overlap);
+
+  const sectionTitle: React.CSSProperties = {
+    color: BRAND.slate700,
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  };
+  const chip = (label: string, tone: "purps" | "candy" | "slate"): React.CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "3px 8px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    marginRight: 6,
+    marginBottom: 6,
+    background:
+      tone === "purps"
+        ? BRAND.purpsSoft
+        : tone === "candy"
+          ? BRAND.candySoft
+          : BRAND.slate100,
+    color:
+      tone === "purps"
+        ? BRAND.purps
+        : tone === "candy"
+          ? BRAND.candy
+          : BRAND.slate950,
+  });
+
+  return (
+    <div
+      className="mt-4 rounded-2xl"
+      style={{
+        background: BRAND.slate50,
+        border: `1px solid ${BRAND.slate200}`,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          color: BRAND.slate950,
+          fontSize: 13,
+          fontWeight: 800,
+          marginBottom: 10,
+        }}
+      >
+        Regeneration applied
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={sectionTitle}>Deck change</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.slate700 }}>
+          {fresh} new · {overlap} kept (out of {priorSize} prior)
+        </div>
+      </div>
+
+      {honored.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={sectionTitle}>Honored feedback</div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 16,
+              color: BRAND.slate950,
+              fontSize: 12,
+              fontWeight: 600,
+              lineHeight: 1.5,
+            }}
+          >
+            {honored.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {suppressed.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={sectionTitle}>Suppressed archetypes</div>
+          <div>
+            {suppressed.map((a) => (
+              <span key={a} style={chip(a, "candy")}>
+                {a}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {retired.length > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={sectionTitle}>Retired topics</div>
+          <div>
+            {retired.map((t) => (
+              <span key={t} style={chip(t, "slate")}>
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {honored.length === 0 &&
+        suppressed.length === 0 &&
+        retired.length === 0 && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.slate700 }}>
+            Feedback was applied without specific archetype or topic
+            suppressions.
+          </div>
+        )}
     </div>
   );
 }

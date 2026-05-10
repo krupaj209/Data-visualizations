@@ -138,14 +138,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegenerateFeedbackInput"
+              $ref: "#/components/schemas/RegenerateCeInput"
       responses:
         "200":
           description: Regenerated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CeWithCharts"
+                $ref: "#/components/schemas/RegenerateCeResult"
         "404":
           description: Not found
           content:
@@ -1180,6 +1180,90 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Chart"
+      required:
+        - ce
+        - charts
+    RegenerateCeInput:
+      type: object
+      properties:
+        feedback:
+          type: string
+          description: |
+            Optional free-text writer feedback. Parsed by the api-server
+            into structured constraints (banned archetypes / topics /
+            phrases, must-include topics) and merged with whatever was
+            persisted from prior regen runs on the same CE.
+      required: []
+    RegenSummary:
+      type: object
+      description: |
+        Surfaced by /ces/{slug}/regenerate so the writer can confirm the
+        run honored their feedback. Plain-English bullets first, then the
+        structured signals so the UI can render either.
+      properties:
+        honoredFeedback:
+          type: array
+          items:
+            type: string
+        suppressedArchetypes:
+          type: array
+          items:
+            type: string
+        retiredTopics:
+          type: array
+          items:
+            type: string
+        priorDeckOverlap:
+          type: integer
+          description: How many selected questions overlap the prior deck.
+        priorDeckSize:
+          type: integer
+          description: Total prior charts considered.
+        storedConstraints:
+          type: object
+          additionalProperties: true
+          description: |
+            Merged constraint set (parsed feedback ∪ prior persisted
+            constraints) re-persisted on the CE row this run. Surfaced so
+            the UI can show the writer what's "sticky" for next regen.
+      required:
+        - honoredFeedback
+        - suppressedArchetypes
+        - retiredTopics
+        - priorDeckOverlap
+        - priorDeckSize
+        - storedConstraints
+    RegenerateCeResult:
+      type: object
+      properties:
+        ce:
+          $ref: "#/components/schemas/Ce"
+        charts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chart"
+        publishedChartsKept:
+          type: integer
+          description: |
+            Count of `published` charts preserved across the run (only
+            `draft` rows are deleted by the research pipeline).
+        droppedQuestions:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              reason:
+                type: string
+            required: [question, reason]
+        proposedHeroQuestions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        regenSummary:
+          $ref: "#/components/schemas/RegenSummary"
       required:
         - ce
         - charts

@@ -41,6 +41,8 @@ import type {
   PublishAllDraftsInput,
   PublishAllDraftsResult,
   QuestionTroubleScore,
+  RegenerateCeInput,
+  RegenerateCeResult,
   RegenerateFeedbackInput,
   ResearchGenerateInput,
   ResearchGenerateResult,
@@ -453,14 +455,14 @@ export const getRegenerateCeUrl = (slug: string) => {
 
 export const regenerateCe = async (
   slug: string,
-  regenerateFeedbackInput?: RegenerateFeedbackInput,
+  regenerateCeInput?: RegenerateCeInput,
   options?: RequestInit,
-): Promise<CeWithCharts> => {
-  return customFetch<CeWithCharts>(getRegenerateCeUrl(slug), {
+): Promise<RegenerateCeResult> => {
+  return customFetch<RegenerateCeResult>(getRegenerateCeUrl(slug), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(regenerateFeedbackInput),
+    body: JSON.stringify(regenerateCeInput),
   });
 };
 
@@ -471,14 +473,14 @@ export const getRegenerateCeMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data: BodyType<RegenerateFeedbackInput> },
+    { slug: string; data: BodyType<RegenerateCeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data: BodyType<RegenerateFeedbackInput> },
+  { slug: string; data: BodyType<RegenerateCeInput> },
   TContext
 > => {
   const mutationKey = ["regenerateCe"];
@@ -492,7 +494,7 @@ export const getRegenerateCeMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof regenerateCe>>,
-    { slug: string; data: BodyType<RegenerateFeedbackInput> }
+    { slug: string; data: BodyType<RegenerateCeInput> }
   > = (props) => {
     const { slug, data } = props ?? {};
 
@@ -505,7 +507,7 @@ export const getRegenerateCeMutationOptions = <
 export type RegenerateCeMutationResult = NonNullable<
   Awaited<ReturnType<typeof regenerateCe>>
 >;
-export type RegenerateCeMutationBody = BodyType<RegenerateFeedbackInput>;
+export type RegenerateCeMutationBody = BodyType<RegenerateCeInput>;
 export type RegenerateCeMutationError = ErrorType<ApiError>;
 
 /**
@@ -518,14 +520,14 @@ export const useRegenerateCe = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data: BodyType<RegenerateFeedbackInput> },
+    { slug: string; data: BodyType<RegenerateCeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data: BodyType<RegenerateFeedbackInput> },
+  { slug: string; data: BodyType<RegenerateCeInput> },
   TContext
 > => {
   return useMutation(getRegenerateCeMutationOptions(options));

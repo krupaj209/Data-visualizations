@@ -18,6 +18,11 @@ import {
   formatIntelFactsForPrompt,
   type CeIntelligenceView,
 } from "./ce-intelligence";
+import {
+  emptyRegenConstraints,
+  isEmptyConstraints,
+  type RegenConstraints,
+} from "./regen-constraints";
 
 const MODEL = "gemini-2.5-pro";
 const VERIFIER_MODEL = "gpt-5.4";
@@ -45,16 +50,55 @@ export interface ResearchPipelineInput {
    */
   regenerationFeedback?: string;
   /** Current deck snapshot so regenerate can intentionally diversify. */
-  existingCharts?: {
-    question: string;
-    chartType: string;
-    status?: string | null;
-  }[];
+  existingCharts?: ExistingChartSnapshot[];
   /**
    * Optional pre-loaded CE intelligence view. The orchestrator loads this
    * once and slices per archetype on each `generateOneChart` call.
    */
   intel?: CeIntelligenceView | null;
+  /**
+   * Sticky writer-feedback constraints (parsed + merged). When supplied
+   * the selector hard-enforces banned archetypes/topics/phrases and biases
+   * toward must-include topics. Empty constraints are a no-op.
+   */
+  regenConstraints?: RegenConstraints;
+  /**
+   * Topic_ids whose chronically-weak prior charts (low rating / repeated
+   * issue feedback) should be retired this run. Selector drops any
+   * candidate carrying one of these topic ids and records the reason.
+   */
+  retireTopics?: string[];
+  /** Same as `retireTopics` but for whole archetypes (rare — used for "wrong_data" repeats). */
+  retireArchetypes?: ChartArchetypeId[];
+}
+
+/**
+ * Enriched per-chart snapshot fed to the selector. Lets the prompt and
+ * the deterministic post-LLM step reason about what shipped before, what
+ * the writer edited, and where reviewers complained.
+ */
+export interface ExistingChartSnapshot {
+  question: string;
+  chartType: string;
+  status?: string | null;
+  /** Archetype id pulled from `chart_type` (mirrored verbatim today). */
+  archetype?: ChartArchetypeId;
+  /** From `provenance.topic_id` if present — used to detect topic-overlap. */
+  topicId?: string;
+  /** First sentence of the chart's `insight` field — gives the LLM context. */
+  insight?: string;
+  /** Compact spec digest (first 320 chars of JSON.stringify) — keeps prompt bounded. */
+  specDigest?: string;
+  /** Aggregated open-feedback signal for this chart. */
+  feedback?: {
+    rating?: number | null;
+    /** Most-severe issue category seen on open feedback. */
+    issue?: string | null;
+    /** Number of edits the writer made to this chart since generation. */
+    editCount?: number;
+    /** Concatenated open-feedback notes (first ~240 chars) for the LLM. */
+    note?: string;
+  };
 }
 
 export interface ChartProvenance {
@@ -93,6 +137,26 @@ export interface ResearchPipelineResult {
   dropped_questions: { question: string; reason: string }[];
   /** Hero questions the LLM proposed in addition to the curated bank. */
   proposed_hero_questions: BankQuestion[];
+  /**
+   * What this run honored from writer feedback / retire signals — surfaced
+   * back to the UI so the writer can confirm we caught the right intent.
+   * Always present on a regen call; an empty `honoredFeedback` array means
+   * no parsed constraints were active.
+   */
+  regen_summary: RegenSummary;
+}
+
+export interface RegenSummary {
+  /** Plain-English bullets of what was applied (one per parsed signal). */
+  honoredFeedback: string[];
+  /** Archetype ids that were hard-blocked from selection this run. */
+  suppressedArchetypes: ChartArchetypeId[];
+  /** Topics whose chronically-weak prior charts were retired. */
+  retiredTopics: string[];
+  /** Number of selected questions that overlap the prior deck. */
+  priorDeckOverlap: number;
+  /** Total prior charts considered (= existingCharts.length). */
+  priorDeckSize: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -126,6 +190,11 @@ interface QuestionSelection {
    */
   is_category_ce?: boolean;
   sub_products?: SubProduct[];
+  /**
+   * Telemetry from the deterministic constraint-enforcement and
+   * diversification passes. Folded into RegenSummary by runResearchPipeline.
+   */
+  regen_summary?: RegenSummary;
 }
 
 async function selectQuestions(
@@ -147,6 +216,76 @@ async function selectQuestions(
   const signatures = bank.questions;
   const regenerationFeedback = input.regenerationFeedback?.trim() ?? "";
   const existingCharts = input.existingCharts ?? [];
+  const constraints = input.regenConstraints ?? emptyRegenConstraints();
+  const retireTopics = (input.retireTopics ?? []).map((s) => s.toLowerCase());
+  const retireArchetypes = input.retireArchetypes ?? [];
+
+  // Render the prior-deck snapshot with feedback signals folded in so the
+  // LLM can see WHY a chart was weak, not just that it existed.
+  function renderExisting(c: ExistingChartSnapshot): string {
+    const tags: string[] = [];
+    if (c.feedback?.rating != null) tags.push(`rating=${c.feedback.rating}`);
+    if (c.feedback?.issue) tags.push(`issue=${c.feedback.issue}`);
+    if (c.feedback?.editCount && c.feedback.editCount > 0)
+      tags.push(`edits=${c.feedback.editCount}`);
+    if (c.topicId) tags.push(`topic=${c.topicId}`);
+    const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
+    const noteStr = c.feedback?.note ? `\n    note: ${c.feedback.note}` : "";
+    const insightStr = c.insight ? `\n    insight: ${c.insight}` : "";
+    return `- [${c.status ?? "unknown"}] ${c.archetype ?? c.chartType}: ${c.question}${tagStr}${insightStr}${noteStr}`;
+  }
+  const existingBlock =
+    existingCharts.length > 0
+      ? `Existing deck to improve/diversify from:\n${existingCharts.map(renderExisting).join("\n")}`
+      : "";
+
+  // Constraint block — only emitted when at least one signal is set so
+  // the prompt stays tight on first-time generations.
+  const constraintLines: string[] = [];
+  if (constraints.bannedArchetypes.length > 0) {
+    constraintLines.push(
+      `- BANNED ARCHETYPES (writer asked to drop): ${constraints.bannedArchetypes.join(", ")}. Do NOT pick any of these. If a standard question's recommended_archetype is on this list, record it in \`dropped\` with reason \`writer_feedback: archetype banned\`.`,
+    );
+  }
+  if (constraints.bannedTopics.length > 0) {
+    constraintLines.push(
+      `- BANNED TOPICS: ${constraints.bannedTopics.join(", ")}. Do NOT pick any question whose topic_id matches one of these.`,
+    );
+  }
+  if (constraints.bannedQuestionPhrases.length > 0) {
+    constraintLines.push(
+      `- BANNED PHRASES: ${constraints.bannedQuestionPhrases.map((p) => `"${p}"`).join(", ")}. Do NOT pick any question whose text contains one of these substrings.`,
+    );
+  }
+  if (constraints.mustIncludeTopics.length > 0) {
+    constraintLines.push(
+      `- LEAN INTO these topics: ${constraints.mustIncludeTopics.join(", ")}. If the DRD has supporting evidence, prefer questions / propose heroes that cover them.`,
+    );
+  }
+  if (constraints.toneNotes.length > 0) {
+    constraintLines.push(
+      `- WRITER NOTES (verbatim, latest first): ${constraints.toneNotes.slice().reverse().slice(0, 3).map((n) => `"${truncate(n, 220)}"`).join(" | ")}`,
+    );
+  }
+  if (retireTopics.length > 0) {
+    constraintLines.push(
+      `- RETIRE these topics this run (chronically weak in prior runs): ${retireTopics.join(", ")}. Drop any candidate carrying one of these topic_ids with reason \`retire_signal: <topic>\`.`,
+    );
+  }
+  if (retireArchetypes.length > 0) {
+    constraintLines.push(
+      `- RETIRE these archetypes this run: ${retireArchetypes.join(", ")}.`,
+    );
+  }
+  if (constraints.diversifyRequested && existingCharts.length > 0) {
+    constraintLines.push(
+      `- DIVERSIFY: at least HALF of selected questions must be NEW (i.e. not present in the existing deck above). Repeating an exact prior question text is allowed only when no alternative exists in the bank or proposed_hero.`,
+    );
+  }
+  const constraintBlock =
+    constraintLines.length > 0
+      ? `STICKY WRITER CONSTRAINTS — these override default selection. Honor them all:\n${constraintLines.join("\n")}\n`
+      : "";
 
   const prompt = `You are designing a Headout listing-page visualization deck.
 
@@ -180,7 +319,9 @@ ${writerTopics.length > 0 ? `Writer-supplied hero topics that MUST be turned int
 
 ${regenerationFeedback ? `Writer regeneration feedback to address:\n${regenerationFeedback}` : ""}
 
-${existingCharts.length > 0 ? `Existing deck to improve/diversify from:\n${existingCharts.map((c) => `- [${c.status ?? "unknown"}] ${c.chartType}: ${c.question}`).join("\n")}` : ""}
+${constraintBlock}
+
+${existingBlock}
 
 After filtering, propose 0-2 ADDITIONAL hero questions tailored to THIS specific CE (e.g. a famous named room, a signature ride, a sunset slot) — anchored in the DRD, not invented. These go in proposed_hero[]. Each must carry kind:"signature".
 
@@ -504,6 +645,242 @@ ${truncate(input.drdMarkdown, 16000)}
     );
   }
 
+  /* ---------- (6) Hard-enforce sticky writer constraints + retire signals -- */
+  // The prompt asks the LLM to honor these, but we re-apply deterministically
+  // so a missed instruction doesn't ship a banned chart. Each filtered
+  // selection is moved into `dropped` with a reason prefix the UI can
+  // surface back to the writer.
+  const summary: RegenSummary = {
+    honoredFeedback: [],
+    suppressedArchetypes: [],
+    retiredTopics: [],
+    priorDeckOverlap: 0,
+    priorDeckSize: existingCharts.length,
+  };
+
+  if (
+    !isEmptyConstraints(constraints) ||
+    retireTopics.length > 0 ||
+    retireArchetypes.length > 0
+  ) {
+    const banArch = new Set<string>(constraints.bannedArchetypes);
+    const banTopic = new Set<string>(constraints.bannedTopics);
+    const banPhrase = constraints.bannedQuestionPhrases;
+    const retireTopicSet = new Set<string>(retireTopics);
+    const retireArchSet = new Set<string>(retireArchetypes);
+
+    const kept: SelectedQuestion[] = [];
+    for (const s of parsed.selected) {
+      const qLower = s.question.toLowerCase();
+      const topicLower = (s.topic_id ?? "").toLowerCase();
+
+      let dropReason: string | null = null;
+      if (banArch.has(s.archetype)) {
+        dropReason = `writer_feedback: archetype "${s.archetype}" was banned`;
+        if (!summary.suppressedArchetypes.includes(s.archetype)) {
+          summary.suppressedArchetypes.push(s.archetype);
+        }
+      } else if (topicLower && banTopic.has(topicLower)) {
+        dropReason = `writer_feedback: topic "${topicLower}" was banned`;
+      } else {
+        const matchedPhrase = banPhrase.find((p) => qLower.includes(p));
+        if (matchedPhrase) {
+          dropReason = `writer_feedback: question contains banned phrase "${matchedPhrase}"`;
+        } else if (topicLower && retireTopicSet.has(topicLower)) {
+          dropReason = `retire_signal: topic "${topicLower}" retired this run`;
+          if (!summary.retiredTopics.includes(topicLower)) {
+            summary.retiredTopics.push(topicLower);
+          }
+        } else if (retireArchSet.has(s.archetype)) {
+          dropReason = `retire_signal: archetype "${s.archetype}" retired this run`;
+          if (!summary.suppressedArchetypes.includes(s.archetype)) {
+            summary.suppressedArchetypes.push(s.archetype);
+          }
+        }
+      }
+
+      if (dropReason) {
+        parsed.dropped.push({ question: s.question, reason: dropReason });
+      } else {
+        kept.push(s);
+      }
+    }
+    parsed.selected = kept;
+
+    // Backfill anything the bans removed using bank candidates that
+    // satisfy the constraints. Cap at TOTAL_MAX so we don't blow the budget.
+    if (parsed.selected.length < TOTAL_MIN) {
+      const droppedSet = new Set(parsed.dropped.map((d) => d.question));
+      const selectedSet = new Set(parsed.selected.map((s) => s.question));
+      const candidates: { question: string; archetype: ChartArchetypeId; kind: BankQuestionKind; topic_id?: string }[] = [
+        ...bank.questions.map((q) => ({
+          question: q.question,
+          archetype: q.recommended_archetype,
+          kind: q.kind,
+          ...(q.topic_id ? { topic_id: q.topic_id } : {}),
+        })),
+        ...parsed.proposed_hero.map((p) => ({
+          question: p.question,
+          archetype: p.recommended_archetype,
+          kind: p.kind,
+        })),
+      ];
+      for (const c of candidates) {
+        if (parsed.selected.length >= TOTAL_MAX) break;
+        if (selectedSet.has(c.question) || droppedSet.has(c.question)) continue;
+        if (!archetypeIds.includes(c.archetype)) continue;
+        if (!isImplementedArchetype(c.archetype)) continue;
+        if (banArch.has(c.archetype)) continue;
+        if (retireArchSet.has(c.archetype)) continue;
+        const cTopic = (c.topic_id ?? "").toLowerCase();
+        if (cTopic && (banTopic.has(cTopic) || retireTopicSet.has(cTopic))) continue;
+        const cQ = c.question.toLowerCase();
+        if (banPhrase.some((p) => cQ.includes(p))) continue;
+        parsed.selected.push({
+          question: c.question,
+          archetype: c.archetype,
+          rationale:
+            "auto-backfilled after writer-constraint enforcement removed prior pick",
+          kind: c.kind,
+          ...(c.topic_id ? { topic_id: c.topic_id } : {}),
+        });
+        selectedSet.add(c.question);
+      }
+    }
+  }
+
+  /* ---------- (7) Diversification: half the picks must be NEW vs prior ---- */
+  if (
+    constraints.diversifyRequested &&
+    existingCharts.length > 0 &&
+    parsed.selected.length > 0
+  ) {
+    const priorQs = new Set(
+      existingCharts.map((c) => c.question.trim().toLowerCase()),
+    );
+    const priorTopics = new Set(
+      existingCharts
+        .map((c) => (c.topicId ?? "").toLowerCase())
+        .filter((t) => t.length > 0),
+    );
+
+    const isOverlap = (s: SelectedQuestion): boolean => {
+      const qLower = s.question.trim().toLowerCase();
+      if (priorQs.has(qLower)) return true;
+      const topicLower = (s.topic_id ?? "").toLowerCase();
+      if (topicLower && priorTopics.has(topicLower)) return true;
+      return false;
+    };
+
+    let overlapCount = parsed.selected.filter(isOverlap).length;
+    const targetMaxOverlap = Math.floor(parsed.selected.length / 2);
+
+    if (overlapCount > targetMaxOverlap) {
+      const droppedSet = new Set(parsed.dropped.map((d) => d.question));
+      const selectedSet = new Set(parsed.selected.map((s) => s.question));
+      const candidates: { question: string; archetype: ChartArchetypeId; kind: BankQuestionKind; topic_id?: string }[] = [
+        ...parsed.proposed_hero.map((p) => ({
+          question: p.question,
+          archetype: p.recommended_archetype,
+          kind: p.kind,
+        })),
+        ...bank.questions.map((q) => ({
+          question: q.question,
+          archetype: q.recommended_archetype,
+          kind: q.kind,
+          ...(q.topic_id ? { topic_id: q.topic_id } : {}),
+        })),
+      ];
+
+      const constraintOk = (c: { question: string; archetype: ChartArchetypeId; topic_id?: string }): boolean => {
+        if (!archetypeIds.includes(c.archetype)) return false;
+        if (!isImplementedArchetype(c.archetype)) return false;
+        if (constraints.bannedArchetypes.includes(c.archetype)) return false;
+        if (retireArchetypes.includes(c.archetype)) return false;
+        const t = (c.topic_id ?? "").toLowerCase();
+        if (t && (constraints.bannedTopics.includes(t) || retireTopics.includes(t))) return false;
+        const q = c.question.toLowerCase();
+        if (constraints.bannedQuestionPhrases.some((p) => q.includes(p))) return false;
+        return true;
+      };
+
+      for (let i = 0; i < parsed.selected.length && overlapCount > targetMaxOverlap; i++) {
+        const s = parsed.selected[i]!;
+        if (!isOverlap(s)) continue;
+        if (s.kind === "standard" && s.topic_id === "crowd_timing") continue; // never split S1 pair
+        const swap = candidates.find(
+          (c) =>
+            !selectedSet.has(c.question) &&
+            !droppedSet.has(c.question) &&
+            !priorQs.has(c.question.trim().toLowerCase()) &&
+            !((c.topic_id ?? "").toLowerCase() && priorTopics.has((c.topic_id ?? "").toLowerCase())) &&
+            constraintOk(c),
+        );
+        if (!swap) break;
+        parsed.dropped.push({
+          question: s.question,
+          reason: `regen_diversify: replaced repeat of prior deck (overlap ${overlapCount}/${parsed.selected.length})`,
+        });
+        parsed.selected[i] = {
+          question: swap.question,
+          archetype: swap.archetype,
+          rationale: "auto-swapped to diversify against prior deck",
+          kind: swap.kind,
+          ...(swap.topic_id ? { topic_id: swap.topic_id } : {}),
+        };
+        selectedSet.delete(s.question);
+        selectedSet.add(swap.question);
+        overlapCount--;
+      }
+    }
+
+    summary.priorDeckOverlap = parsed.selected.filter(isOverlap).length;
+  } else {
+    summary.priorDeckOverlap = 0;
+  }
+
+  // Build honoredFeedback bullets (deterministic — based on what was
+  // actually applied, not what was requested).
+  if (constraints.bannedArchetypes.length > 0) {
+    summary.honoredFeedback.push(
+      `Suppressed archetypes: ${constraints.bannedArchetypes.join(", ")}`,
+    );
+  }
+  if (constraints.bannedTopics.length > 0) {
+    summary.honoredFeedback.push(
+      `Suppressed topics: ${constraints.bannedTopics.join(", ")}`,
+    );
+  }
+  if (constraints.bannedQuestionPhrases.length > 0) {
+    summary.honoredFeedback.push(
+      `Suppressed question phrases: ${constraints.bannedQuestionPhrases.map((p) => `"${p}"`).join(", ")}`,
+    );
+  }
+  if (constraints.mustIncludeTopics.length > 0) {
+    summary.honoredFeedback.push(
+      `Asked to lean into: ${constraints.mustIncludeTopics.join(", ")}`,
+    );
+  }
+  if (retireTopics.length > 0) {
+    summary.honoredFeedback.push(
+      `Retired chronically-weak topics: ${retireTopics.join(", ")}`,
+    );
+  }
+  if (retireArchetypes.length > 0) {
+    summary.honoredFeedback.push(
+      `Retired chronically-weak archetypes: ${retireArchetypes.join(", ")}`,
+    );
+  }
+  if (
+    constraints.diversifyRequested &&
+    existingCharts.length > 0
+  ) {
+    summary.honoredFeedback.push(
+      `Diversified against prior deck (${summary.priorDeckOverlap}/${parsed.selected.length} repeats remaining)`,
+    );
+  }
+
+  parsed.regen_summary = summary;
   return parsed;
 }
 
@@ -1421,6 +1798,13 @@ export async function runResearchPipeline(
     charts,
     dropped_questions: selection.dropped,
     proposed_hero_questions: selection.proposed_hero,
+    regen_summary: selection.regen_summary ?? {
+      honoredFeedback: [],
+      suppressedArchetypes: [],
+      retiredTopics: [],
+      priorDeckOverlap: 0,
+      priorDeckSize: input.existingCharts?.length ?? 0,
+    },
   };
 }
 
