@@ -18,6 +18,14 @@ import {
   formatEvidenceInventoryForPrompt,
   type EvidenceInventory,
 } from "./ce-evidence-inventory";
+import {
+  buildEditorialBlock,
+  EDITORIAL_QUESTIONS,
+  emptyJudgements,
+  type EditorialBlock,
+  type EditorialJudgements,
+  type EditorialVerdict,
+} from "./editorial-verdict";
 import { logger } from "./logger";
 
 const MODEL = "gemini-2.5-pro";
@@ -68,14 +76,36 @@ export interface PlannerVisualization {
       | "not_worth_charting"
       | "good_but_duplicate";
     rationale: string;
+    editorial: EditorialJudgements;
+    editorial_verdict: EditorialVerdict;
   };
   priority: number;
+  /**
+   * Set to true when this idea was originally rejected and a targeted
+   * recheck (POST /ce-intelligence/:slug/recheck-gap) found enough
+   * evidence to flip its editorial verdict to ship/hold. Used by the
+   * UI to render a "Found by recheck" badge.
+   */
+  promoted_from_rejected?: boolean;
+  /** Findings the recheck pipeline produced (when promoted). */
+  recheck_findings?: string[];
+  /** Aggregate status from the recheck buckets (when promoted). */
+  recheck_status?: "found" | "partial" | "not_found";
 }
 
 export interface RejectedVisualization {
   question: string;
   archetype?: ChartArchetypeId;
   reason: string;
+  editorial?: EditorialJudgements;
+  editorial_verdict?: EditorialVerdict;
+  /**
+   * Findings appended by the recheck pipeline when verdict came back as
+   * `cut` (the idea stays rejected but is annotated with the new evidence
+   * + verdict so the UI doesn't have to re-fetch a separate state slice).
+   */
+  recheck_findings?: string[];
+  recheck_status?: "found" | "partial" | "not_found";
 }
 
 export interface CeVisualizationPlan {
@@ -289,6 +319,93 @@ Today is ${new Date().toISOString().slice(0, 10)}.`;
   }
 }
 
+/**
+ * Score a single (already-rejected) idea against the same five editorial
+ * criteria, given the merged evidence collected by a targeted recheck.
+ *
+ * Used by the gap-recheck endpoint after it fans out 1–3 Google searches
+ * for the missing-evidence buckets. Returns a deterministic editorial
+ * block so the UI can promote/keep/cut the card with the same rules the
+ * planner uses.
+ */
+export async function scoreEditorialForIdea(args: {
+  ce: { name: string; city: string; country: string };
+  question: string;
+  archetype?: string;
+  rejectionReason: string;
+  drdMarkdown: string;
+  intelFactsBlock: string;
+  recheckFindings: string[];
+  sourceRefs: string[];
+}): Promise<EditorialBlock> {
+  const findingsBlock = args.recheckFindings.length
+    ? args.recheckFindings.map((f) => `- ${f}`).join("\n")
+    : "(no new findings from recheck)";
+  const sourcesBlock = args.sourceRefs.length
+    ? args.sourceRefs.map((s) => `- ${s}`).join("\n")
+    : "(no new sources)";
+
+  const prompt = `You are re-scoring a single visualization idea for Headout's planner after a targeted evidence recheck.
+
+CE: ${args.ce.name} (${args.ce.city}, ${args.ce.country})
+Question: ${args.question}
+Proposed chart type: ${args.archetype ?? "unknown"}
+Original rejection reason: ${args.rejectionReason}
+
+Targeted recheck findings:
+${findingsBlock}
+
+Recheck source refs:
+${sourcesBlock}
+
+CE Intelligence facts:
+${args.intelFactsBlock || "(none)"}
+
+DRD excerpt:
+"""
+${truncate(args.drdMarkdown, 8000) || "(no DRD)"}
+"""
+
+Score this idea using the five editorial criteria. Each verdict must be "yes", "weak", or "no" plus a one-line rationale (<= 180 chars):
+  1. useful — ${EDITORIAL_QUESTIONS.useful}
+  2. ce_specific — ${EDITORIAL_QUESTIONS.ce_specific}
+  3. better_than_existing — ${EDITORIAL_QUESTIONS.better_than_existing}
+  4. conversion_driven — ${EDITORIAL_QUESTIONS.conversion_driven}
+  5. visually_strong — ${EDITORIAL_QUESTIONS.visually_strong}
+
+Return STRICT JSON only, shape:
+{
+  "useful": { "verdict": "yes|weak|no", "rationale": "..." },
+  "ce_specific": { "verdict": "yes|weak|no", "rationale": "..." },
+  "better_than_existing": { "verdict": "yes|weak|no", "rationale": "..." },
+  "conversion_driven": { "verdict": "yes|weak|no", "rationale": "..." },
+  "visually_strong": { "verdict": "yes|weak|no", "rationale": "..." }
+}
+
+Do not include any other keys. Do not include the overall verdict — the server derives it.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+      },
+    });
+    const raw = response.text ?? "{}";
+    const parsed = safeJson<unknown>(raw);
+    return buildEditorialBlock(parsed);
+  } catch (err) {
+    logger.warn(
+      { err, question: args.question },
+      "Editorial re-scoring after recheck failed; falling back to weak judgements",
+    );
+    return buildEditorialBlock(emptyJudgements());
+  }
+}
+
 export async function buildCeVisualizationPlan(
   input: PlannerInput,
 ): Promise<CeVisualizationPlan> {
@@ -336,6 +453,15 @@ Deep Research Doc:
 ${truncate(input.drdMarkdown, 14000)}
 """
 
+EDITORIAL CRITERIA — judge every recommended *and* rejected idea against these five plain-English questions. Each must return { "verdict": "yes" | "weak" | "no", "rationale": "<= one short sentence" }. Definitions:
+  1. useful — ${EDITORIAL_QUESTIONS.useful} → yes if it answers a real pre-booking question; no if it's curiosity-only or duplicates info already on the listing page.
+  2. ce_specific — ${EDITORIAL_QUESTIONS.ce_specific} → yes only if the chart would change if the CE were swapped for another in the same subcategory; no for generic subcategory boilerplate.
+  3. better_than_existing — ${EDITORIAL_QUESTIONS.better_than_existing} → yes if it adds something not already covered; no if another recommended idea in THIS plan covers the same angle (judge against the other recommended ideas you are returning).
+  4. conversion_driven — ${EDITORIAL_QUESTIONS.conversion_driven} → yes if it nudges booking, reduces a known anxiety, or sets clear expectations; no if it's purely informational with no booking impact.
+  5. visually_strong — ${EDITORIAL_QUESTIONS.visually_strong} → yes if the chosen archetype renders cleanly with the available evidence; no if the chart will look thin (e.g. a 3-row donut, a 2-point timeline).
+
+Do NOT compute the overall ship/hold/cut yourself — the server derives it deterministically from these five judgements.
+
 Return STRICT JSON only, shape:
 {
   "summary": "2-sentence internal summary of the visualization opportunity",
@@ -368,7 +494,14 @@ Return STRICT JSON only, shape:
         "verifier_risk": 0-100,
         "overall": 0-100,
         "label": "recommended|needs_evidence|not_worth_charting|good_but_duplicate",
-        "rationale": "short reason for the score"
+        "rationale": "short reason for the score",
+        "editorial": {
+          "useful": { "verdict": "yes|weak|no", "rationale": "..." },
+          "ce_specific": { "verdict": "yes|weak|no", "rationale": "..." },
+          "better_than_existing": { "verdict": "yes|weak|no", "rationale": "..." },
+          "conversion_driven": { "verdict": "yes|weak|no", "rationale": "..." },
+          "visually_strong": { "verdict": "yes|weak|no", "rationale": "..." }
+        }
       },
       "priority": 1
     }
@@ -377,7 +510,14 @@ Return STRICT JSON only, shape:
     {
       "question": "question we should NOT chart yet",
       "archetype": "<implemented archetype id, if applicable>",
-      "reason": "specific missing/weak evidence reason"
+      "reason": "specific missing/weak evidence reason",
+      "editorial": {
+        "useful": { "verdict": "yes|weak|no", "rationale": "..." },
+        "ce_specific": { "verdict": "yes|weak|no", "rationale": "..." },
+        "better_than_existing": { "verdict": "yes|weak|no", "rationale": "..." },
+        "conversion_driven": { "verdict": "yes|weak|no", "rationale": "..." },
+        "visually_strong": { "verdict": "yes|weak|no", "rationale": "..." }
+      }
     }
   ],
   "live_search_notes": [
@@ -452,8 +592,13 @@ Rules:
   for (const v of parsed.recommended_visualizations ?? []) {
     if (!v.question || !isArchetypeId(v.archetype)) continue;
     if (!isImplementedArchetype(v.archetype)) continue;
-    const rawScore = v.quality_score;
-    const qualityScore = {
+    const rawScore = v.quality_score as
+      | (Partial<PlannerVisualization["quality_score"]> & {
+          editorial?: unknown;
+        })
+      | undefined;
+    const editorial = buildEditorialBlock(rawScore?.editorial);
+    const qualityScore: PlannerVisualization["quality_score"] = {
       traveler_usefulness: clampInt(rawScore?.traveler_usefulness ?? 70, 0, 100),
       evidence_strength: clampInt(rawScore?.evidence_strength ?? 60, 0, 100),
       uniqueness: clampInt(rawScore?.uniqueness ?? 70, 0, 100),
@@ -470,6 +615,8 @@ Rules:
           ? rawScore.label
           : "recommended",
       rationale: String(rawScore?.rationale ?? "").slice(0, 180),
+      editorial: editorial.judgements,
+      editorial_verdict: editorial.editorial_verdict,
     };
     recommended.push({
       question: String(v.question).slice(0, 180),
@@ -489,10 +636,15 @@ Rules:
   const rejected: RejectedVisualization[] = [];
   for (const r of parsed.rejected_visualizations ?? []) {
     if (!r.question) continue;
+    const editorial = buildEditorialBlock(
+      (r as { editorial?: unknown }).editorial,
+    );
     rejected.push({
       question: String(r.question).slice(0, 180),
       ...(isArchetypeId(r.archetype) ? { archetype: r.archetype } : {}),
       reason: String(r.reason ?? "Evidence is not strong enough.").slice(0, 260),
+      editorial: editorial.judgements,
+      editorial_verdict: editorial.editorial_verdict,
     });
   }
 
@@ -501,10 +653,17 @@ Rules:
       continue;
     }
     if (rejected.some((r) => r.question === q.question)) continue;
+    // Backfilled rejection from a chart-unable traveler question — the model
+    // didn't return an editorial block for it, so synthesise a "weak" one
+    // and let the deterministic rule classify it as hold/cut.
+    const fallbackJudgements = emptyJudgements();
+    const editorial = buildEditorialBlock(fallbackJudgements);
     rejected.push({
       question: q.question,
       archetype: q.recommended_archetype,
       reason: q.evidence_reason || "Evidence is not strong enough.",
+      editorial: editorial.judgements,
+      editorial_verdict: editorial.editorial_verdict,
     });
   }
 

@@ -43,6 +43,26 @@ Backend pipeline that adapts a subcategory question bank to a specific CE using 
 - **Endpoints** — `GET/POST/DELETE /api/drds[/:ceSlug]`, `GET /api/research/subcategories`, `POST /api/research/generate`. The Florence cluster CEs are guarded by `lib/locked-ces.ts` (shared by `/ces` and `/research/generate`) — pipeline returns 409 for them so curated decks can never be wiped. Unknown subcategory ids are accepted and bootstrapped as `unratified` (cross-cutting questions only).
 - **Web search at runtime** — uses Gemini's built-in `googleSearch` tool because the workspace `web-search` skill is agent-only (not server-callable from the running api-server).
 
+### Editorial verdict + targeted recheck (Task #66)
+
+Each planner idea (recommended *and* rejected) carries a five-judgement editorial block (`useful`, `ce_specific`, `better_than_existing`, `conversion_driven`, `visually_strong`, each `{verdict: yes|weak|no, rationale}`). The deterministic ship/hold/cut rule lives in `artifacts/api-server/src/lib/editorial-verdict.ts` (also home to the missing-evidence query derivation):
+
+- `cut` if `useful` or `ce_specific` is `no` (regardless of other yes votes)
+- `ship` if ≥4 `yes` AND zero `no`
+- `hold` otherwise
+
+The verdict is **always computed server-side** from the five judgements — the model never picks ship/hold/cut directly.
+
+`POST /api/ce-intelligence/:slug/recheck-gap` is now a multi-query pipeline rather than a single Gemini shot:
+1. Derive 1–3 missing-evidence buckets deterministically from the rejection reason + the archetype's `data_shape` (regex patterns in `editorial-verdict.ts`).
+2. Fan out one Gemini-with-`googleSearch` call per bucket; failures isolated.
+3. Merge findings + source_refs (deduped) and aggregate the per-bucket `found / partial / not_found` statuses.
+4. Re-score the idea editorially (`scoreEditorialForIdea`) — same five judgements, deterministic verdict.
+
+Response shape extends the legacy contract with `editorial`, `editorial_verdict`, and a `buckets[]` array showing which queries fired. The IntelPanel UI promotes recheck-promoted rejected cards (verdict `ship`/`hold`) into the Recommended list with a "Found by recheck" badge instead of immediately auto-creating a chart; `cut` keeps them rejected. The 7 numeric quality axes now hide behind a "Why this score" disclosure under each card; the editorial chip strip + verdict pill are the primary surface.
+
+Unit coverage for the deterministic rule and the missing-evidence derivation lives in `scripts/src/test-editorial-verdict.mjs` (run via `pnpm --filter @workspace/scripts run test-editorial-verdict`). The script intentionally re-implements both helpers in plain JS — there's no TS-aware test runner wired up yet, so keep the mirror in sync with the TS source.
+
 ### Curated / locked CEs
 
 `lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`). The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.

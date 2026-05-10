@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "smoke-chart-spec": "tsx ./src/smoke-chart-spec.mts",
+    "test-editorial-verdict": "tsx ./src/test-editorial-verdict.mts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

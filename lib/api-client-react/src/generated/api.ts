@@ -41,6 +41,8 @@ import type {
   PublishAllDraftsInput,
   PublishAllDraftsResult,
   QuestionTroubleScore,
+  RecheckGapRequest,
+  RecheckGapResponse,
   RegenerateCeInput,
   RegenerateCeResult,
   RegenerateFeedbackInput,
@@ -1126,6 +1128,97 @@ export const useRefreshCeIntelligence = <
   TContext
 > => {
   return useMutation(getRefreshCeIntelligenceMutationOptions(options));
+};
+
+/**
+ * Derives 1–3 missing-evidence buckets from the rejection reason and archetype data shape, fans out one Gemini+googleSearch call per bucket, merges findings, and re-scores the idea editorially. The deterministic ship/hold/cut verdict drives whether the rejected idea is promoted into the saved plan's recommended list.
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const getRecheckCeIntelligenceGapUrl = (ceSlug: string) => {
+  return `/api/ce-intelligence/${ceSlug}/recheck-gap`;
+};
+
+export const recheckCeIntelligenceGap = async (
+  ceSlug: string,
+  recheckGapRequest: RecheckGapRequest,
+  options?: RequestInit,
+): Promise<RecheckGapResponse> => {
+  return customFetch<RecheckGapResponse>(
+    getRecheckCeIntelligenceGapUrl(ceSlug),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(recheckGapRequest),
+    },
+  );
+};
+
+export const getRecheckCeIntelligenceGapMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    TError,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+  TError,
+  { ceSlug: string; data: BodyType<RecheckGapRequest> },
+  TContext
+> => {
+  const mutationKey = ["recheckCeIntelligenceGap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> }
+  > = (props) => {
+    const { ceSlug, data } = props ?? {};
+
+    return recheckCeIntelligenceGap(ceSlug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecheckCeIntelligenceGapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>
+>;
+export type RecheckCeIntelligenceGapMutationBody = BodyType<RecheckGapRequest>;
+export type RecheckCeIntelligenceGapMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const useRecheckCeIntelligenceGap = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    TError,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+  TError,
+  { ceSlug: string; data: BodyType<RecheckGapRequest> },
+  TContext
+> => {
+  return useMutation(getRecheckCeIntelligenceGapMutationOptions(options));
 };
 
 /**

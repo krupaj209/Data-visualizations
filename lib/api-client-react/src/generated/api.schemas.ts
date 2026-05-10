@@ -370,6 +370,77 @@ export interface CeIntelligence {
   updatedAt: string;
 }
 
+export type EditorialJudgementVerdict =
+  (typeof EditorialJudgementVerdict)[keyof typeof EditorialJudgementVerdict];
+
+export const EditorialJudgementVerdict = {
+  yes: "yes",
+  weak: "weak",
+  no: "no",
+} as const;
+
+export interface EditorialJudgement {
+  verdict: EditorialJudgementVerdict;
+  rationale: string;
+}
+
+export interface EditorialJudgements {
+  useful: EditorialJudgement;
+  ce_specific: EditorialJudgement;
+  better_than_existing: EditorialJudgement;
+  conversion_driven: EditorialJudgement;
+  visually_strong: EditorialJudgement;
+}
+
+export type EditorialVerdict =
+  (typeof EditorialVerdict)[keyof typeof EditorialVerdict];
+
+export const EditorialVerdict = {
+  ship: "ship",
+  hold: "hold",
+  cut: "cut",
+} as const;
+
+export interface RecheckGapRequest {
+  question: string;
+  archetype?: string;
+  reason?: string;
+}
+
+export interface RecheckGapBucket {
+  bucket: string;
+  query: string;
+  description: string;
+}
+
+export type RecheckGapResponseStatus =
+  (typeof RecheckGapResponseStatus)[keyof typeof RecheckGapResponseStatus];
+
+export const RecheckGapResponseStatus = {
+  found: "found",
+  partial: "partial",
+  not_found: "not_found",
+} as const;
+
+/**
+ * The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present.
+ */
+export type RecheckGapResponsePlan = { [key: string]: unknown } | null;
+
+export interface RecheckGapResponse {
+  status: RecheckGapResponseStatus;
+  recommended_archetype?: string;
+  findings: string[];
+  source_refs: string[];
+  generation_context: string;
+  reason: string;
+  buckets: RecheckGapBucket[];
+  editorial?: EditorialJudgements | null;
+  editorial_verdict?: EditorialVerdict | null;
+  /** The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present. */
+  plan?: RecheckGapResponsePlan;
+}
+
 export interface CeIntelligenceRefreshInput {
   sources?: string[];
   name?: string;

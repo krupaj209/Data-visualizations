@@ -374,6 +374,72 @@ export const RefreshCeIntelligenceResponse = zod.object({
 });
 
 /**
+ * Derives 1–3 missing-evidence buckets from the rejection reason and archetype data shape, fans out one Gemini+googleSearch call per bucket, merges findings, and re-scores the idea editorially. The deterministic ship/hold/cut verdict drives whether the rejected idea is promoted into the saved plan's recommended list.
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const RecheckCeIntelligenceGapParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+export const RecheckCeIntelligenceGapBody = zod.object({
+  question: zod.string(),
+  archetype: zod.string().optional(),
+  reason: zod.string().optional(),
+});
+
+export const RecheckCeIntelligenceGapResponse = zod.object({
+  status: zod.enum(["found", "partial", "not_found"]),
+  recommended_archetype: zod.string().optional(),
+  findings: zod.array(zod.string()),
+  source_refs: zod.array(zod.string()),
+  generation_context: zod.string(),
+  reason: zod.string(),
+  buckets: zod.array(
+    zod.object({
+      bucket: zod.string(),
+      query: zod.string(),
+      description: zod.string(),
+    }),
+  ),
+  editorial: zod
+    .union([
+      zod.object({
+        useful: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        ce_specific: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        better_than_existing: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        conversion_driven: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        visually_strong: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  editorial_verdict: zod
+    .union([zod.enum(["ship", "hold", "cut"]), zod.null()])
+    .optional(),
+  plan: zod
+    .union([zod.record(zod.string(), zod.unknown()), zod.null()])
+    .optional()
+    .describe(
+      "The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present.",
+    ),
+});
+
+/**
  * @summary Drop all facts attributed to a single source
  */
 export const DeleteCeIntelligenceSourceParams = zod.object({

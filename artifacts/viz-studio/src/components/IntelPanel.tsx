@@ -33,6 +33,49 @@ type CreatedPlanChart = {
   verifyLabel: string;
 };
 
+type EditorialJudgementKey =
+  | "useful"
+  | "ce_specific"
+  | "better_than_existing"
+  | "conversion_driven"
+  | "visually_strong";
+
+type EditorialVerdictValue = "yes" | "weak" | "no";
+
+type EditorialVerdict = "ship" | "hold" | "cut";
+
+type EditorialJudgement = {
+  verdict: EditorialVerdictValue;
+  rationale: string;
+};
+
+type EditorialJudgements = Record<EditorialJudgementKey, EditorialJudgement>;
+
+const EDITORIAL_KEYS: readonly EditorialJudgementKey[] = [
+  "useful",
+  "ce_specific",
+  "better_than_existing",
+  "conversion_driven",
+  "visually_strong",
+] as const;
+
+const EDITORIAL_LABELS: Record<EditorialJudgementKey, string> = {
+  useful: "Useful",
+  ce_specific: "CE-specific",
+  better_than_existing: "Better than deck",
+  conversion_driven: "Conversion",
+  visually_strong: "Visually strong",
+};
+
+const EDITORIAL_QUESTIONS: Record<EditorialJudgementKey, string> = {
+  useful: "Genuinely useful to a traveler about to book?",
+  ce_specific: "Specific to this CE (not a generic subcategory chart)?",
+  better_than_existing: "Better than what's already in the deck for this CE?",
+  conversion_driven:
+    "Conversion- or helpfulness-driven (nudges booking, reduces anxiety, sets expectations)?",
+  visually_strong: "Visually strong in the chosen archetype?",
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   official_site: "Official site",
   tripadvisor: "TripAdvisor",
@@ -126,13 +169,20 @@ interface VisualizationPlan {
       overall?: number;
       label?: string;
       rationale?: string;
+      editorial?: EditorialJudgements;
+      editorial_verdict?: EditorialVerdict;
     };
     priority: number;
+    promoted_from_rejected?: boolean;
+    recheck_findings?: string[];
+    recheck_status?: "found" | "partial" | "not_found";
   }[];
   rejected_visualizations: {
     question: string;
     archetype?: string;
     reason: string;
+    editorial?: EditorialJudgements;
+    editorial_verdict?: EditorialVerdict;
   }[];
   traveler_questions: {
     question: string;
@@ -337,7 +387,12 @@ export function IntelPanel({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Evidence recheck failed");
-      const status = String(json?.status ?? "not_found");
+      const status: "found" | "partial" | "not_found" =
+        json?.status === "found"
+          ? "found"
+          : json?.status === "partial"
+            ? "partial"
+            : "not_found";
       const context = String(json?.generation_context ?? "").trim();
       const findings = Array.isArray(json?.findings)
         ? json.findings.map((f: unknown) => String(f)).filter(Boolean)
@@ -345,34 +400,68 @@ export function IntelPanel({
       const sourceRefs = Array.isArray(json?.source_refs)
         ? json.source_refs.map((f: unknown) => String(f)).filter(Boolean)
         : [];
+      const editorial = (json?.editorial ?? undefined) as
+        | EditorialJudgements
+        | undefined;
+      const verdict = (json?.editorial_verdict ?? undefined) as
+        | EditorialVerdict
+        | undefined;
       const repairContext = [
         context,
-        findings.length ? `Recheck findings:\n${findings.map((f: string) => `- ${f}`).join("\n")}` : "",
-        sourceRefs.length ? `Sources:\n${sourceRefs.map((s: string) => `- ${s}`).join("\n")}` : "",
+        findings.length
+          ? `Recheck findings:\n${findings.map((f: string) => `- ${f}`).join("\n")}`
+          : "",
+        sourceRefs.length
+          ? `Sources:\n${sourceRefs.map((s: string) => `- ${s}`).join("\n")}`
+          : "",
         status === "partial"
           ? "Evidence recheck status: partial. Mark any unsupported fields as estimates."
           : "",
       ]
         .filter(Boolean)
         .join("\n\n");
-      if ((status === "found" || status === "partial") && repairContext) {
+
+      // Always seed the textarea with whatever we recovered, so the writer
+      // can still drop into Add-context / Create-anyway flows manually.
+      if (repairContext) {
         setRejectedContext((prev) => ({
           ...prev,
           [item.question]: repairContext,
         }));
-        await handleCreateRejected(item, "context", repairContext);
+      }
+
+      // The server has already mutated the saved plan — promotion or
+      // in-place rejected update — and returned the new plan. Adopt it
+      // locally and refresh the persisted intel query so a remount or a
+      // different writer sees the same state. The local `plan` state is
+      // what the panel actually renders.
+      const updatedPlan = json?.plan as VisualizationPlan | null | undefined;
+      if (updatedPlan) {
+        setPlan(updatedPlan);
+        qc.invalidateQueries({
+          queryKey: getGetCeIntelligenceQueryKey(slug),
+        });
+      }
+
+      if (verdict === "ship" || verdict === "hold") {
+        // Plan mutation done server-side; nothing else to do — the
+        // promoted card now lives in recommended_visualizations with
+        // promoted_from_rejected: true.
         return;
       }
-      setRejectedContext((prev) => ({
-        ...prev,
-        [item.question]:
-          repairContext ||
-          String(json?.reason ?? "No stronger evidence found after recheck."),
-      }));
+
+      // Cut, or no editorial returned: the rejected entry was updated
+      // in place server-side; surface the verdict reason in the banner
+      // so the writer notices, but keep the repair textarea seeded.
+      // Mark unused vars (status/editorial) to satisfy the linter.
+      void status;
+      void editorial;
       setPlanError(
         String(
           json?.reason ??
-            "I rechecked the DRD and live sources, but still could not find enough evidence.",
+            (verdict === "cut"
+              ? "Editorial verdict came back as Cut after recheck."
+              : "I rechecked the DRD and live sources, but still could not find enough evidence."),
         ),
       );
     } catch (err) {
@@ -941,13 +1030,18 @@ export function IntelPanel({
                       ...(item.evidence_refs ?? []),
                     ],
                     qualityScore: item.quality_score,
+                    editorial: item.quality_score?.editorial,
+                    editorialVerdict: item.quality_score?.editorial_verdict,
+                    // Cards promoted into Recommended by the recheck
+                    // pipeline carry `promoted_from_rejected: true` on
+                    // the persisted plan — surface that to writers.
+                    promotedBadge: item.promoted_from_rejected
+                      ? "Found by recheck"
+                      : undefined,
                     createdChart: created,
-                    actionLabel: created
-                      ? "Created"
-                      : "Create chart",
+                    actionLabel: created ? "Created" : "Create chart",
                     actionDisabled:
-                      !!created ||
-                      creatingQuestion !== null,
+                      !!created || creatingQuestion !== null,
                     actionBusy: creatingQuestion === item.question,
                     onAction: () => handleCreateFromPlan(item),
                   };
@@ -955,12 +1049,16 @@ export function IntelPanel({
               />
               <PlanList
                 title={`Rejected (${plan.rejected_visualizations.length})`}
-                items={plan.rejected_visualizations.slice(0, 4).map((item) => ({
+                items={plan.rejected_visualizations
+                  .slice(0, 4)
+                  .map((item) => ({
                   key: item.question,
                   title: item.question,
                   meta: item.archetype ?? "no chart",
                   body: item.reason,
                   tone: "warn" as const,
+                  editorial: item.editorial,
+                  editorialVerdict: item.editorial_verdict,
                   createdChart: createdCharts[item.question],
                   extra: !createdCharts[item.question] ? (
                     <RejectedRepairTools
@@ -1790,6 +1888,9 @@ function PlanList({
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
     qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
+    editorial?: EditorialJudgements;
+    editorialVerdict?: EditorialVerdict;
+    promotedBadge?: string;
     extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
@@ -1859,6 +1960,9 @@ function PlanListItem({
     sourceRefs?: string[];
     createdChart?: CreatedPlanChart;
     qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
+    editorial?: EditorialJudgements;
+    editorialVerdict?: EditorialVerdict;
+    promotedBadge?: string;
     extra?: ReactNode;
     actionLabel?: string;
     actionDisabled?: boolean;
@@ -1868,6 +1972,7 @@ function PlanListItem({
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const [showWhyScore, setShowWhyScore] = useState(false);
   const toneBg = item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft;
   const toneFg = item.tone === "good" ? BRAND.okayInk : BRAND.hola;
   return (
@@ -1948,8 +2053,30 @@ function PlanListItem({
                 {item.createdChart.verifyLabel}
               </span>
             )}
+            {item.editorialVerdict && (
+              <EditorialVerdictPill
+                verdict={item.editorialVerdict}
+                compact
+              />
+            )}
             {item.qualityScore && (
               <QualityScorePill score={item.qualityScore} compact />
+            )}
+            {item.promotedBadge && (
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: "2px 7px",
+                  background: BRAND.purpsSoft,
+                  color: BRAND.purps,
+                  fontSize: 9,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {item.promotedBadge}
+              </span>
             )}
           </div>
         </div>
@@ -1996,8 +2123,46 @@ function PlanListItem({
               Confidence {item.confidence}
             </div>
           )}
+          {item.editorial && (
+            <EditorialVerdictStrip judgements={item.editorial} />
+          )}
           {item.qualityScore && (
-            <QualityScoreBlock score={item.qualityScore} />
+            <div style={{ marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => setShowWhyScore((v) => !v)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  color: BRAND.slate500,
+                  fontSize: 10,
+                  fontWeight: 850,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                aria-expanded={showWhyScore}
+              >
+                {showWhyScore ? "Hide score breakdown" : "Why this score"}
+                <ChevronDown
+                  size={11}
+                  color={BRAND.slate500}
+                  style={{
+                    transform: showWhyScore
+                      ? "rotate(180deg)"
+                      : "rotate(0deg)",
+                    transition: "transform 140ms ease",
+                  }}
+                />
+              </button>
+              {showWhyScore && (
+                <QualityScoreBlock score={item.qualityScore} />
+              )}
+            </div>
           )}
           {item.sourceRefs && item.sourceRefs.length > 0 && (
             <div
@@ -2070,6 +2235,97 @@ function PlanListItem({
         </div>
       )}
     </li>
+  );
+}
+
+function verdictTone(
+  v: EditorialVerdict | undefined,
+): { bg: string; fg: string; label: string } {
+  if (v === "ship") return { bg: BRAND.bgMint, fg: BRAND.okayInk, label: "Ship" };
+  if (v === "cut") return { bg: BRAND.candySoft, fg: BRAND.candy, label: "Cut" };
+  return { bg: BRAND.holaSoft, fg: BRAND.hola, label: "Hold" };
+}
+
+function judgementTone(
+  v: EditorialVerdictValue,
+): { bg: string; fg: string; symbol: string } {
+  if (v === "yes") return { bg: BRAND.bgMint, fg: BRAND.okayInk, symbol: "✓" };
+  if (v === "no") return { bg: BRAND.candySoft, fg: BRAND.candy, symbol: "✗" };
+  return { bg: BRAND.slate100, fg: BRAND.slate700, symbol: "~" };
+}
+
+function EditorialVerdictPill({
+  verdict,
+  compact = false,
+}: {
+  verdict: EditorialVerdict | undefined;
+  compact?: boolean;
+}) {
+  if (!verdict) return null;
+  const tone = verdictTone(verdict);
+  return (
+    <span
+      style={{
+        borderRadius: 999,
+        padding: compact ? "2px 7px" : "3px 9px",
+        background: tone.bg,
+        color: tone.fg,
+        fontSize: compact ? 9 : 10,
+        fontWeight: 900,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
+function EditorialVerdictStrip({
+  judgements,
+}: {
+  judgements: EditorialJudgements | undefined;
+}) {
+  if (!judgements) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 5,
+        flexWrap: "wrap",
+        marginTop: 6,
+      }}
+    >
+      {EDITORIAL_KEYS.map((key) => {
+        const j = judgements[key];
+        if (!j) return null;
+        const tone = judgementTone(j.verdict);
+        const tooltip = `${EDITORIAL_QUESTIONS[key]}\n→ ${j.verdict.toUpperCase()}${
+          j.rationale ? `\n${j.rationale}` : ""
+        }`;
+        return (
+          <span
+            key={key}
+            title={tooltip}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              borderRadius: 999,
+              padding: "2px 7px",
+              background: tone.bg,
+              color: tone.fg,
+              fontSize: 10,
+              fontWeight: 800,
+              cursor: "help",
+            }}
+          >
+            <span style={{ fontWeight: 900 }}>{tone.symbol}</span>
+            {EDITORIAL_LABELS[key]}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
