@@ -71,7 +71,12 @@ export function ChartCard({
                 color: BRAND.slate500,
                 fontSize: "clamp(10px, 1.05cqi, 12px)",
                 fontWeight: 600,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
+              title={context}
             >
               {context}
             </span>
