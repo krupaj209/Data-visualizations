@@ -528,8 +528,8 @@ function CeDetailInner({
         style={{
           display: "grid",
           gridTemplateColumns:
-            showIdeation || showIntel ? "minmax(0, 1fr) 400px" : "1fr",
-          gap: 28,
+            showIdeation || showIntel ? "minmax(0, 1fr) 360px" : "1fr",
+          gap: 24,
         }}
       >
         <div>
@@ -590,6 +590,7 @@ function CeDetailInner({
                 ceSlug={slug}
                 ceName={ce.name}
                 autoEdit={editId === chart.id}
+                sidePanelOpen={showIdeation || showIntel}
               />
             ))}
             {visibleCharts.length === 0 && (
@@ -674,11 +675,13 @@ function ChartRow({
   ceSlug,
   ceName,
   autoEdit,
+  sidePanelOpen = false,
 }: {
   chart: Chart;
   ceSlug: string;
   ceName: string;
   autoEdit?: boolean;
+  sidePanelOpen?: boolean;
 }) {
   const [mode, setMode] = useState<"view" | "edit">(autoEdit ? "edit" : "view");
   const [verification, setVerification] = useState<ChartVerification | null>(
@@ -920,7 +923,13 @@ function ChartRow({
         />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start">
+      <div
+        className={
+          sidePanelOpen
+            ? "grid gap-4 items-start"
+            : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start"
+        }
+      >
         <div
           className="rounded-3xl overflow-hidden"
           style={{ background: BRAND.slate100 }}
