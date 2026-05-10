@@ -3,18 +3,30 @@ import type { ChartArchetype, ChartArchetypeId } from "./types";
 /**
  * Read-only registry of every chart archetype Viz Studio knows about.
  *
- * Today's nine archetypes mirror `artifacts/api-server/src/lib/chart-spec.ts`
- * and are flagged `implemented: true`. The remaining v3 archetypes are
- * RESERVED here so the question bank can reference them — their Zod schemas
- * and React renderers land in the five sibling chart-family tasks. The
- * pipeline never asks Gemini to produce an `implemented: false` archetype;
- * it records `viz_not_yet_built` in provenance instead.
+ * Each entry mirrors `artifacts/api-server/src/lib/chart-spec.ts` and is
+ * flagged `implemented` per its current rollout status. The pipeline
+ * never asks Gemini to produce an `implemented: false` archetype; it
+ * records `viz_not_yet_built` in provenance instead.
  *
- * To promote a reserved archetype:
- *   1. Add its schema to `chartSpecSchema` (api-server).
- *   2. Add its renderer + ChartRenderer case (viz-studio).
- *   3. Replace the stub prompt in `chart-archetype-prompts.ts`.
- *   4. Flip `implemented` to `true` here.
+ * Promotion / deprecation pattern (Task #67 onwards):
+ *   - To PROMOTE a reserved archetype:
+ *     1. Add its schema to `chartSpecSchema` (api-server) with full
+ *        superRefine validation matching the prompt's hard rules.
+ *     2. Add its renderer + ChartRenderer case (viz-studio), compact-aware.
+ *     3. Replace the stub prompt in `chart-archetype-prompts.ts` with a
+ *        prompt that includes a SOURCING paragraph.
+ *     4. Update this entry's `answers` and `data_shape` to match the
+ *        promoted shape, and flip `implemented` to `true`.
+ *   - To SUPERSEDE a legacy archetype with a richer replacement:
+ *     1. KEEP its Zod schema and React renderer (existing curated CEs
+ *        and historical charts MUST keep rendering).
+ *     2. Replace its prompt entry with a single-line STUB so Gemini
+ *        will not be asked to produce new specs of that type.
+ *     3. Flip `implemented` to `false` here so the question-bank /
+ *        planner stop suggesting it; the bank entry's `answers` /
+ *        `data_shape` remains the source of truth for legacy charts.
+ *     4. Add a comment above the bank entry pointing to the replacement
+ *        archetype id(s).
  */
 export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   /* ---------------- implemented today ---------------- */
@@ -171,7 +183,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   },
   ticket_ladder: {
     id: "ticket_ladder",
-    label: "Ticket ladder",
+    label: "Ticket ladder (legacy)",
     answers:
       "How do the ticket tiers compare on price, inclusions, and wait savings?",
     data_shape: [
@@ -186,7 +198,9 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "combos",
     ],
     interactive: false,
-    implemented: true,
+    // Task #67: superseded by ticket_access_matrix. Schema + renderer kept
+    // for legacy/curated charts; orchestrator no longer requests this type.
+    implemented: false,
   },
 
   /* ---------------- reserved for sibling tasks ---------------- */
@@ -203,7 +217,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   },
   duration_stat: {
     id: "duration_stat",
-    label: "Duration stat",
+    label: "Duration stat (legacy)",
     answers: "How long should I plan to spend here?",
     data_shape: [
       "Median duration + range",
@@ -218,7 +232,9 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "baths",
     ],
     interactive: false,
-    implemented: true,
+    // Task #67: superseded by duration_budget. Schema + renderer kept for
+    // legacy charts; orchestrator no longer requests this type.
+    implemented: false,
   },
   ride_wait_curve: {
     id: "ride_wait_curve",
@@ -391,7 +407,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   },
   conditions_calendar: {
     id: "conditions_calendar",
-    label: "Conditions calendar",
+    label: "Conditions calendar (legacy)",
     answers: "When are the conditions (snow, swell, visibility) actually good?",
     data_shape: [
       "12 months with a conditions index + status (poor / fair / optimal / expert)",
@@ -408,7 +424,9 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "hiking_trails",
     ],
     interactive: true,
-    implemented: true,
+    // Task #67: superseded by season_weather_fit. Schema + renderer kept;
+    // orchestrator no longer requests this type.
+    implemented: false,
   },
   golden_hour_match: {
     id: "golden_hour_match",
@@ -489,7 +507,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   },
   route_profile: {
     id: "route_profile",
-    label: "Route profile",
+    label: "Route profile (legacy)",
     answers: "What does this route cover, in what order, and who is it best for?",
     data_shape: [
       "3-12 ordered stops, piers, landmarks, or segments for one named route",
@@ -501,6 +519,144 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
       "walking_tours",
       "day_trips",
       "hiking_trails",
+    ],
+    interactive: false,
+    // Task #67: superseded by landmark_coverage and itinerary_flow. Schema +
+    // renderer kept; orchestrator no longer requests this type.
+    implemented: false,
+  },
+
+  /* ---------------- Task #67 v3 promoted archetypes ---------------- */
+  ticket_access_matrix: {
+    id: "ticket_access_matrix",
+    label: "Ticket access matrix",
+    answers:
+      "Which ticket tier actually unlocks the rooms / areas / perks I want, and which require a paid add-on or have limited access?",
+    data_shape: [
+      "2-5 priced tiers + 3-8 access features (named rooms, perks, inclusions)",
+      "Per-feature × per-tier cell: included | excluded | extra (with optional extra_price/label) | limited (with optional label)",
+      "At most one tier may be marked recommended",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "observation_decks",
+      "theme_parks",
+      "religious_sites",
+      "wineries",
+      "cooking_classes",
+      "spa",
+      "baths",
+      "combos",
+      "dinner_cruises",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  duration_budget: {
+    id: "duration_budget",
+    label: "Duration budget",
+    answers:
+      "How should I budget my time at this CE, and which block do I drop on a tight schedule vs extend on a deep-dive day?",
+    data_shape: [
+      "Total visit duration",
+      "3-6 named blocks whose minutes sum within 5% of total",
+      "Per-block accent (purps/candy/hola/okay/slate) and optional badge: skip_if_tight | extend_if_deep_dive (at most one of each across all blocks; never both on the same block)",
+    ],
+    typical_subcategories: [
+      "museums",
+      "landmarks",
+      "theme_parks",
+      "immersive_experiences",
+      "baths",
+      "spa",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  landmark_coverage: {
+    id: "landmark_coverage",
+    label: "Landmark coverage",
+    answers:
+      "Across 2-4 operator routes, which landmarks does each route actually cover (stop / short walk / view-only / not on route)?",
+    data_shape: [
+      "2-4 named routes (each with optional accent and at-most-one recommended)",
+      "3-12 landmarks, each with importance kind (icon/highlight/standard) and one coverage state per route in route order",
+      "Coverage state per cell: covered | near | view_only | none",
+      "Optional best-for tags and callout",
+    ],
+    typical_subcategories: [
+      "hop_on_hop_off",
+      "photography_tours",
+      "sightseeing_cruises",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  itinerary_flow: {
+    id: "itinerary_flow",
+    label: "Itinerary flow",
+    answers:
+      "What's the rhythm of the itinerary — how long at each stop and how long in transit between them?",
+    data_shape: [
+      "Mode (walk / bus / boat / mixed / day_trip) and optional total_duration_min",
+      "3-12 ordered stops with kind = start / stop / highlight / end (first must be start, last must be end)",
+      "Optional per-stop dwell_min",
+      "transits[] with EXACTLY stops.length - 1 entries — minutes per gap, optional mode and note",
+    ],
+    typical_subcategories: [
+      "walking_tours",
+      "day_trips",
+      "food_tours",
+      "port_of_call_tours",
+      "guided_tours",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  best_for_matrix: {
+    id: "best_for_matrix",
+    label: "Best-for matrix",
+    answers:
+      "Across 3-5 audience-fit facets (pace, headline payoff, photography, kid-friendliness, etc.), which audience scores highest on each?",
+    data_shape: [
+      "3-5 facets (each with optional top_audience_index override)",
+      "3-6 audiences, each with accent and one score 0-100 per facet (in facet order)",
+      "Renderer auto-marks the top-scoring audience per facet (or honours top_audience_index)",
+      "Distinct from slot_compare (ranks 2-3 SLOTS with shared dimensions); this ranks 3-6 AUDIENCES on 3-5 FACETS",
+    ],
+    typical_subcategories: [
+      "guided_tours",
+      "city_cards",
+      "combos",
+      "cooking_classes",
+      "helicopter_tours",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  season_weather_fit: {
+    id: "season_weather_fit",
+    label: "Season & weather fit",
+    answers:
+      "Which months are in the right window for this activity, and *why* — temperature, rainfall, daylight, operator availability, or crowd?",
+    data_shape: [
+      "Activity label + 3-5 named dimensions (e.g. temperature, rainfall, operator availability)",
+      "12 months × dimensions matrix where each cell carries score 0-100 AND status (closed/poor/fair/good/optimal)",
+      "Optional per-month overall_status and temp_label; best/worst month lists",
+      "Distinct from seasonal_curve (single continuous curve of one metric across the year); this is a 2D dimension × month heatmap",
+    ],
+    typical_subcategories: [
+      "outdoor_activities",
+      "skiing",
+      "scuba_diving",
+      "surfing",
+      "rafting",
+      "cable_car_tours",
+      "wineries",
+      "hiking_trails",
+      "walking_tours",
+      "hop_on_hop_off",
     ],
     interactive: false,
     implemented: true,

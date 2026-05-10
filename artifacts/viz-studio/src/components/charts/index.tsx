@@ -39,6 +39,12 @@ import { DailyProgrammeChart } from "./DailyProgrammeChart";
 import { TimeSplitChart } from "./TimeSplitChart";
 import { HistoryTimelineChart } from "./HistoryTimelineChart";
 import { SlotCompareChart } from "./SlotCompareChart";
+import { TicketAccessMatrixChart } from "./TicketAccessMatrixChart";
+import { DurationBudgetChart } from "./DurationBudgetChart";
+import { LandmarkCoverageChart } from "./LandmarkCoverageChart";
+import { ItineraryFlowChart } from "./ItineraryFlowChart";
+import { BestForMatrixChart } from "./BestForMatrixChart";
+import { SeasonWeatherFitChart } from "./SeasonWeatherFitChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -268,6 +274,42 @@ export function ChartRenderer({
     case "slot_compare":
       return (
         <SlotCompareChart spec={spec} context={context} compact={compact} />
+      );
+    case "ticket_access_matrix":
+      return (
+        <TicketAccessMatrixChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "duration_budget":
+      return (
+        <DurationBudgetChart spec={spec} context={context} compact={compact} />
+      );
+    case "landmark_coverage":
+      return (
+        <LandmarkCoverageChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
+      );
+    case "itinerary_flow":
+      return (
+        <ItineraryFlowChart spec={spec} context={context} compact={compact} />
+      );
+    case "best_for_matrix":
+      return (
+        <BestForMatrixChart spec={spec} context={context} compact={compact} />
+      );
+    case "season_weather_fit":
+      return (
+        <SeasonWeatherFitChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
       );
     default: {
       const exhaustive: never = spec;

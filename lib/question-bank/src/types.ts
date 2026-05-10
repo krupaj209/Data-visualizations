@@ -42,7 +42,14 @@ export type ChartArchetypeId =
   | "optimal_departure"
   | "price_curve"
   | "stop_frequency"
-  | "route_profile";
+  | "route_profile"
+  // Task #67 v3 promoted archetypes
+  | "ticket_access_matrix"
+  | "duration_budget"
+  | "landmark_coverage"
+  | "itinerary_flow"
+  | "best_for_matrix"
+  | "season_weather_fit";
 
 export interface ChartArchetype {
   id: ChartArchetypeId;

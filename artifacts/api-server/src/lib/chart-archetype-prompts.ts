@@ -61,10 +61,10 @@ metric_label and per-zone status are REQUIRED. wait_min ≤ wait_max.`,
 Optional fields (weather_score, price_score, calendar_notes, metric_insights) only when DRD or live sources support them.
 SOURCING: The 12 monthly crowd scores MUST be grounded in a real seasonality signal — DRD section on monthly visitation, tourism-board arrivals data, ONS / city tourism dashboards, or operator-published occupancy. If grounding is thin, anchor on observable inputs (school holidays, average temperature, daylight hours, peak-tourist months for the city) using round 10-step buckets, drop weather_score / price_score / metric_insights entirely (don't invent supporting metrics), and list every month in provenance.estimates. If even the city-level seasonality can't be grounded for this subcategory, DROP the chart rather than fabricate one.`,
 
-  ticket_ladder: `{ "type": "ticket_ladder",
-  "currency": "EUR",
-  "tiers": [ { "name": "...", "price": <int>, "includes": ["..."], "recommended": <bool>, "share"?: <0-100 int>, "wait_savings_min"?: <int> }, ... 2-5 items ] }
-Exactly one tier must have recommended:true.`,
+  ticket_ladder: STUB("ticket_ladder"),
+  // ^ STUB (Task #67): superseded by ticket_access_matrix. Schema + renderer
+  //   stay so existing curated charts keep rendering, but the orchestrator
+  //   no longer asks Gemini for new ticket_ladder specs.
 
   /* ---------------- implemented today ---------------- */
   queue_compare: `{ "type": "queue_compare",
@@ -73,12 +73,9 @@ Exactly one tier must have recommended:true.`,
   "lanes": [ { "name": "<lane name>", "wait_label": "<e.g. ~10 min>", "tone": "<candy|purps|okay|slate>", "dots": <int 0-40, comparable across lanes>, "dashed"?: <bool, true for closed/skip-only lanes>, "who"?: "<who uses this lane, ≤160 chars>", "wait_peak"?: "...", "wait_off_peak"?: "...", "how"?: "..." }, ... 2-5 items ] }
 Use 'tone' to encode speed: candy = longest, slate/okay = fastest. 'dots' should scale linearly with wait time so lanes are visually comparable. Reserve 'dashed':true for lanes that are conditional (closed, members-only).`,
 
-  duration_stat: `{ "type": "duration_stat",
-  "headline": "<one-line summary of the typical visit length, ≤160 chars>",
-  "scale_min": [ { "label": "<e.g. 30m>", "minutes": <int 0-600> }, ... 2-8 items, monotonically increasing ],
-  "profiles": [ { "name": "<visitor type, e.g. Rusher>", "icon": "<stopwatch|head|column|lyre|bust|bench>", "range_min": <int 0-600>, "range_max": <int 0-600>, "note"?: "...", "highlight"?: <bool> }, ... 2-6 items ],
-  "tip"?: "<one-line guidance, ≤160 chars>" }
-range_min ≤ range_max in minutes. Pick scale_min so the largest profile range fits comfortably. Mark exactly one profile with highlight:true (the recommended/median one).`,
+  duration_stat: STUB("duration_stat"),
+  // ^ STUB (Task #67): superseded by duration_budget. Schema + renderer
+  //   retained for legacy/curated charts; orchestrator no longer requests it.
 
   ride_wait_curve: `{ "type": "ride_wait_curve",
   "subject": "<the ONE ride this curve is about, e.g. Tron Lightcycle Run>",
@@ -168,15 +165,12 @@ SOURCING: Every probability number MUST come from a real source you actually gro
 months[] is ALWAYS 12 entries jan..dec. pct_ran is the % of scheduled departures that actually flew/sailed. Only include cancellation_reasons when the DRD or live sources actually break it down — never fabricate.
 SOURCING: pct_ran MUST come from a sourced operator/regulator stat (FAA part 91 logs, ATO bulletins, operator reliability page, news reporting, etc.) — not a guess. Each cancellation_reasons entry MUST be defensible from a real reference. Cite every source you used in the response so it lands in groundingMetadata.`,
 
-  conditions_calendar: `{ "type": "conditions_calendar",
-  "metric": "<snow_depth_cm|visibility_m|swell_m|river_flow_index|harvest_intensity|temperature_c>",
-  "unit_label": "cm" | "m" | "°C" | "idx",
-  "metric_label": "Average snow depth at mid-mountain",
-  "months": [ { "month": "<jan..dec>", "value": <number>, "status": "<closed|poor|fair|good|optimal|expert>", "note"?: "...", "icons"?: ["🐢"] }, ... 12 items ],
-  "reference_bands"?: [ { "label": "Optimal 30-60cm", "min": 30, "max": 60, "tone": "<poor|fair|good|optimal|expert>" }, ... up to 5 ],
-  "best_months": ["Feb", "Mar"], "worst_months": ["Jul"] }
-months[] is ALWAYS 12 in jan..dec order. status uses the operator's framing — e.g. ski resorts use closed/poor/fair/good/optimal; dive sites use poor/fair/good/optimal/expert. value uses whatever unit_label says.
-SOURCING: Every monthly value MUST be grounded in a real measurement source (resort historical snow report, NOAA buoy records, USGS river gauge, DAN dive log, vineyard harvest notes). Use googleSearch to pull current data and cite every source. reference_bands should reflect industry-standard thresholds (e.g. "Beginner-friendly 20-40cm") that you can also point to a source for.`,
+  conditions_calendar: STUB("conditions_calendar"),
+  // ^ STUB (Task #67): superseded by season_weather_fit. Schema + renderer
+  //   retained for historical/curated charts; orchestrator no longer asks
+  //   Gemini for new conditions_calendar specs (the prompt previously here
+  //   demanded operator-grade snow/swell/visibility data which proved too
+  //   thin to ground for most CEs — use season_weather_fit instead).
   golden_hour_match: `{ "type": "golden_hour_match",
   "location_label": "Santorini caldera",
   "slots": [ { "label": "Sunrise" }, { "label": "Midday" }, { "label": "Sunset" }, ... 1-6 named departure slots ],
@@ -222,14 +216,73 @@ SOURCING: base_value and every monthly index MUST come from a real, citable pric
   "route_label"?: "Big Bus London — Red Route",
   "stops": [ { "name": "Trafalgar Square", "peak_headway_min": <int — minutes between buses at peak>, "offpeak_headway_min": <int — minutes off-peak>, "note"?: "Adds Westminster shuttle" }, ... 4-20 items ] }
 Order is the bus route order (first stop first). peak_headway_min ≤ offpeak_headway_min in almost every realistic case. Real example: Big Bus London Red Route — Trafalgar Square 8/15 min, St Paul's 10/18, Tower of London 12/22, Marble Arch 8/15, etc.`,
-  route_profile: `{ "type": "route_profile",
-  "route_label": "<route/product name>",
-  "mode": "cruise" | "bus" | "walk" | "day_trip" | "transfer" | "other",
-  "distance_km"?: <number>,
-  "total_duration_min"?: <integer>,
-  "headline_metric"?: "<e.g. 8 landmarks / 2 piers / 90 min>",
-  "stops": [ { "name": "<stop/landmark/pier>", "kind": "start"|"landmark"|"transfer"|"stop"|"end", "duration_from_start_min"?: <integer>, "landmark_count"?: <integer>, "note"?: "<why it matters>", "highlight"?: true }, ... 3-12 items ],
-  "best_for"?: ["first-timers", "families", "photographers"],
-  "callout"?: "<one-sentence route choice takeaway>" }
-Use for route, pier, stop, landmark coverage, itinerary shape, and "which route/product covers what?" questions. Stops must be in travel order. Use duration_from_start_min only when the DRD/search supports timings; otherwise omit rather than invent. For cruises, stops can be piers and visible landmarks; landmark_count is cumulative or segment-level, but be clear in notes.`,
+  route_profile: STUB("route_profile"),
+  // ^ STUB (Task #67): superseded by landmark_coverage (HOHO / photography
+  //   tours / sightseeing cruises) and itinerary_flow (walking tours /
+  //   day trips / food tours / port-of-call). Schema + renderer retained for
+  //   any historical curated route_profile rows; orchestrator no longer
+  //   requests new ones.
+
+  /* ---------------- Task #67 v3 promoted archetypes ---------------- */
+
+  ticket_access_matrix: `{ "type": "ticket_access_matrix",
+  "currency": "EUR",
+  "tiers": [ { "name": "Basic", "price": <number>, "accent"?: "<purps|candy|hola|okay|slate>", "recommended"?: <bool>, "note"?: "..." }, ... 2-5 items, AT MOST one recommended:true ],
+  "features": [ { "label": "Sistine Chapel access", "cells": [<one cell per tier, in tier order>], "note"?: "..." }, ... 3-8 items ],
+  "insight"?: "<one-line takeaway, ≤200 chars>" }
+Each cell is one of:
+  { "state": "included" }                                  — fully unlocked
+  { "state": "excluded" }                                  — not on this tier
+  { "state": "extra", "extra_price"?: <number>, "label"?: "..." }   — paid add-on (e.g. "+€5", "buy on arrival")
+  { "state": "limited", "label"?: "Off-peak only" }       — partial / time-bound / quota-capped access
+features[].cells MUST have exactly one entry per tier (in tier order). Pick features the visitor cares about (named room/area access, skip-the-line, audio guide, group size cap, refundability) — NOT generic ticket plumbing. Reserve "extra" for genuinely paid add-ons (give extra_price when you can ground it) and "limited" for real restrictions ("guided slot only", "weekday only").
+SOURCING: tier prices, per-cell states, and any extra_price MUST come from the operator's official ticket page or a current OTA snapshot grounded with googleSearch. If you can't ground a tier's price + at least its top-3 cells live, drop the tier rather than estimate. Cite every operator/OTA URL so it lands in groundingMetadata.`,
+
+  duration_budget: `{ "type": "duration_budget",
+  "total_min": <int 15-2880>, "total_label"?: "Half-day visit",
+  "blocks": [ { "label": "...", "minutes": <int 1-2880>, "accent": "<purps|candy|hola|okay|slate>", "badge"?: "<skip_if_tight|extend_if_deep_dive>", "note"?: "..." }, ... 3-6 items, minutes MUST sum to within 5% of total_min ],
+  "tip"?: "<one-line guidance, ≤200 chars>" }
+Use for "how should I budget my time at this CE" questions. Each block names a sub-experience or activity bucket (e.g. for the Uffizi: "Botticelli rooms" 35m, "Caravaggio + Titian" 25m, "East corridor sculpture" 20m, "Ground-floor exhibition" 15m). Reserve "candy" for the headline highlight block; use "slate" for transit/queue overhead.
+Mark AT MOST one block badge:"skip_if_tight" (the first thing to drop on a half-day) and AT MOST one badge:"extend_if_deep_dive" (the room/wing power-users always over-allocate to). Never put both badges on the same block. Skip the badge field entirely on the other blocks.
+The total_min is what most visitors actually spend, not the operator's recommended max.
+SOURCING: total_min and per-block minutes should come from the DRD (typical-visit narrative, suggested itineraries) or first-party operator guidance. The grounding bar is softer than booking_window / hourly_heatmap — visitor-pacing is inherently a guide-school estimate — but each block's minutes MUST still be defensible from a DRD snippet, an operator "plan your visit" page, or a recurring review theme. Tag any block whose minutes you estimated in provenance.estimates with the block label. Do NOT fabricate room-by-room timings the DRD doesn't support; collapse to fewer, broader blocks instead.`,
+
+  landmark_coverage: `{ "type": "landmark_coverage",
+  "route_label"?: "<short product family label, e.g. Big Bus loops>",
+  "routes": [ { "name": "Red Loop", "accent"?: "<purps|candy|hola|okay|slate>", "recommended"?: <bool>, "note"?: "..." }, ... 2-4 items, AT MOST one recommended:true ],
+  "landmarks": [ { "name": "Tower of London", "kind": "<icon|highlight|standard>", "coverage": [<one entry per route, in route order>], "note"?: "..." }, ... 3-12 items ],
+  "best_for"?: ["first-timers", "families"], (up to 4 short tags)
+  "callout"?: "<one-sentence route takeaway, ≤200 chars>" }
+Each coverage entry is one of:
+  "covered"   — the route stops at the landmark (or its dedicated pier)
+  "near"      — the route stops within a 5-10 min walk
+  "view_only" — the route passes by / the landmark is visible from board, no stop
+  "none"      — not on this route
+Use for HOHO loops, sightseeing cruise routes, photography tours where 2-4 operator routes need a side-by-side coverage comparison. landmarks[].kind:"icon" is reserved for one or two universally-recognised draws (Eiffel Tower / Tower of London / Colosseum), "highlight" for next-tier named landmarks, "standard" for the rest.
+SOURCING: route names, landmark coverage, and stop list MUST come from each operator's published route map / brochure (grounded via googleSearch) or the DRD. If you can't ground at least 2 routes with 5+ landmarks each, drop the chart.`,
+
+  itinerary_flow: `{ "type": "itinerary_flow",
+  "mode": "<walk|bus|boat|mixed|day_trip>",
+  "total_duration_min"?: <int 15-2880>,
+  "stops": [ { "name": "...", "kind": "<start|stop|highlight|end>", "dwell_min"?: <int 0-720>, "note"?: "..." }, ... 3-12 items, in itinerary order; FIRST stop MUST be kind:"start" and LAST MUST be kind:"end" ],
+  "transits": [ { "minutes": <int 0-360>, "mode"?: "<walk|bus|boat|mixed|transfer>", "note"?: "..." }, ... EXACTLY stops.length - 1 items — one per gap between consecutive stops, in order ],
+  "callout"?: "<one-sentence itinerary takeaway, ≤200 chars>" }
+Use for walking tours, food tours, day trips, port-of-call shore tours where the *rhythm* matters — alternating dwell vs transit. transits[i].minutes is the time between stops[i] and stops[i+1]. Reserve kind:"highlight" for the 1-2 stops the operator markets as centrepieces (lunch tasting, named viewpoint, headline ruin). dwell_min is per-stop time; only fill it when the DRD/operator itinerary states it (otherwise omit). transits[].minutes MUST always be present (use the operator's stated walking/driving time, or a defensible 5-10 min walk between adjacent old-town stops).
+SOURCING: stops, order, dwell minutes, and transit minutes MUST come from the operator's own published itinerary or the DRD. Don't synthesise a generic walking-tour route from city knowledge. If the itinerary isn't grounded for this specific tour, drop the chart.`,
+
+  best_for_matrix: `{ "type": "best_for_matrix",
+  "facets": [ { "name": "Pace", "note"?: "...", "top_audience_index"?: <int — optional override; otherwise the renderer auto-marks the highest-scoring audience> }, ... 3-5 items ],
+  "audiences": [ { "label": "First-timers", "accent": "<purps|candy|hola|okay|slate>", "scores": [<one int 0-100 per facet, in facet order>], "note"?: "..." }, ... 3-6 items ],
+  "insight"?: "<one-line pick rationale, ≤200 chars>" }
+Use for audience-fit comparisons across multiple traveller dimensions where slot_compare doesn't fit (slot_compare ranks 2-3 SLOTS — this ranks 3-6 AUDIENCES against 3-5 FACETS). Each audiences[].scores MUST have exactly one int per facet (0 = not for this audience, 100 = ideal). Pick facets the DRD actually surfaces (Pace, Headline payoff, Photography, Kid friendliness, Half-day fit, Walking demand); don't fabricate generic axes. Pick audiences with real differentiation — at least one facet should have a clear top audience.
+SOURCING: scores are inherently editorial judgements; the grounding bar is softer than booking_window / hourly_heatmap. Each score should be defensible from DRD evidence (visitor types the operator markets to, review themes, family/accessibility notes, named facilities) or a grounded operator/OTA description — but you do NOT need a precise external number per cell. When you estimate a score with no direct citation, list it in provenance.estimates with the spec.audiences[i].scores[j] field path and a one-line reasoning. Do NOT invent audience archetypes the DRD doesn't surface; collapse to fewer rows instead.`,
+
+  season_weather_fit: `{ "type": "season_weather_fit",
+  "activity_label": "<short noun phrase, e.g. Outdoor walking tours>",
+  "dimensions": [ { "name": "Temperature", "note"?: "..." }, { "name": "Rainfall" }, { "name": "Operator availability" }, ... 3-5 items ],
+  "months": [ { "month": "<jan..dec>", "cells": [{ "score": <int 0-100>, "status": "<closed|poor|fair|good|optimal>" }, ... one per dimension in dimension order], "overall_status"?: "<closed|poor|fair|good|optimal>", "temp_label"?: "<e.g. 22°C>", "note"?: "..." }, ... 12 items, jan..dec each appearing exactly once ],
+  "best_months": ["May", "Sep"], "worst_months": ["Jan"], (up to 6 each, short month labels)
+  "helper"?: "<one-line guidance, ≤200 chars>" }
+Use for "when is this CE in the right weather window" — outdoor activities, hop-on-hop-off, walking tours, hiking, cable cars, wineries (harvest), water sports. Each cell pairs a 0-100 score with a discrete status so the heatmap shows *why* a month is poor (closed lifts vs heavy rain). Pick 3-5 dimensions that genuinely vary by month for THIS activity (e.g. for skiing: Snow depth, Lift availability, Visibility; for wineries: Harvest activity, Crowd, Daytime temp). status:"closed" reserved for months where the operator/window is shut. overall_status is an optional roll-up; the renderer falls back to the worst-status cell if absent.
+SOURCING: scores should be defensible from grounded sources — NOAA / city tourism board climate normals, operator seasonal calendars, OpenWeatherMap monthly averages, news articles on shoulder-season conditions. Use round inputs (average high temp, rainfall days, daylight hours) rather than precise instrument data; tag every dimension you estimated in provenance.estimates with the cell's path. If you can't ground city-level seasonality for this activity, drop the chart.`,
 };

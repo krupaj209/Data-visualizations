@@ -40,4 +40,10 @@ export const CHART_TYPE_META: Record<
   time_split: { label: "Time split", emoji: "⏳" },
   history_timeline: { label: "History timeline", emoji: "🏛" },
   slot_compare: { label: "Slot compare", emoji: "🌅" },
+  ticket_access_matrix: { label: "Ticket access matrix", emoji: "🎫" },
+  duration_budget: { label: "Duration budget", emoji: "⏱" },
+  landmark_coverage: { label: "Landmark coverage", emoji: "🗺" },
+  itinerary_flow: { label: "Itinerary flow", emoji: "🚶" },
+  best_for_matrix: { label: "Best-for matrix", emoji: "🎯" },
+  season_weather_fit: { label: "Season & weather fit", emoji: "🌤" },
 };

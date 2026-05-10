@@ -41,7 +41,7 @@ const ERA_TONES: Record<
   },
   reuse: {
     bg: BRAND.slate100,
-    fg: BRAND.slate800,
+    fg: BRAND.slate900,
     line: BRAND.slate500,
     label: "Reuse",
   },

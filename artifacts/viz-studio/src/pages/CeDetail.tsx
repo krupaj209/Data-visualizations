@@ -101,6 +101,12 @@ const CHART_FRAME: Record<
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
   route_profile: { aspectRatio: "16 / 8", minHeight: 340, maxHeight: 500 },
+  ticket_access_matrix: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 460 },
+  duration_budget: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  landmark_coverage: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 480 },
+  itinerary_flow: { aspectRatio: "16 / 9", minHeight: 340, maxHeight: 500 },
+  best_for_matrix: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
+  season_weather_fit: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,
