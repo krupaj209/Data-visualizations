@@ -87,7 +87,7 @@ const CHART_FRAME: Record<
   seat_value_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
-  route_profile: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 380 },
+  route_profile: { aspectRatio: "16 / 8", minHeight: 340, maxHeight: 500 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,
@@ -105,7 +105,7 @@ const CHART_FRAME: Record<
   },
   price_curve: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
   queue_compare: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
-  duration_stat: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  duration_stat: { aspectRatio: "16 / 9", minHeight: 380, maxHeight: 540 },
   ride_wait_curve: { aspectRatio: "12 / 5", minHeight: 300, maxHeight: 400 },
   activity_window: { aspectRatio: "12 / 5", minHeight: 300, maxHeight: 400 },
   opening_hour_rank: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 380 },

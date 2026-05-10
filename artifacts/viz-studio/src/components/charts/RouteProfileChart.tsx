@@ -21,6 +21,7 @@ function formatDuration(min?: number): string | null {
 
 export function RouteProfileChart({ spec, context, compact = false }: Props) {
   const stops = spec.stops;
+  const manyStops = stops.length > 6;
   const hasTiming = stops.some((s) => s.duration_from_start_min !== undefined);
   const maxMin =
     spec.total_duration_min ??
@@ -64,7 +65,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
             className="relative"
             style={{
               minHeight: 0,
-              padding: compact ? "8px 4px 18px" : "14px 8px 30px",
+              padding: compact ? "8px 4px 18px" : "34px 8px 44px",
             }}
           >
             <div
@@ -112,7 +113,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                     top: "50%",
                     transform: "translate(-50%, -50%)",
                     textAlign: "center",
-                    width: compact ? 54 : 82,
+                    width: compact ? 54 : manyStops ? 78 : 92,
                   }}
                 >
                   <motion.div
@@ -131,10 +132,15 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                   />
                   <div
                     style={{
-                      marginTop: compact ? 5 : 7,
+                      position: compact ? "static" : "absolute",
+                      left: compact ? undefined : "50%",
+                      transform: compact ? undefined : "translateX(-50%)",
+                      top: compact ? undefined : i % 2 === 0 ? 26 : -42,
+                      width: compact ? undefined : manyStops ? 86 : 106,
+                      marginTop: compact ? 5 : 0,
                       fontSize: compact
                         ? "clamp(8px, 1cqi, 10px)"
-                        : "clamp(9px, 1.05cqi, 11px)",
+                        : "clamp(8px, 0.95cqi, 10px)",
                       fontWeight: 800,
                       lineHeight: 1.1,
                       color: isHighlight ? BRAND.slate950 : BRAND.slate700,
@@ -149,7 +155,10 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                   {!compact && stop.duration_from_start_min !== undefined && (
                     <div
                       style={{
-                        marginTop: 3,
+                        position: "absolute",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        top: i % 2 === 0 ? 50 : -18,
                         fontSize: 10,
                         fontWeight: 800,
                         color: BRAND.slate500,
@@ -167,13 +176,13 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
                 gap: 8,
               }}
             >
               {stops
                 .filter((s) => s.note || s.landmark_count !== undefined || s.highlight)
-                .slice(0, 3)
+                .slice(0, 4)
                 .map((s) => (
                   <div
                     key={s.name}
@@ -186,7 +195,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                   >
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: 850,
                         color: BRAND.slate950,
                         whiteSpace: "nowrap",
@@ -199,7 +208,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: 650,
                         color: BRAND.slate700,
                         lineHeight: 1.25,

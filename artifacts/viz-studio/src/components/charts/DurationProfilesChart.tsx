@@ -39,6 +39,7 @@ export function DurationProfilesChart({
 }: Props) {
   const { headline, scale_min, profiles, tip } = spec;
   const maxScale = Math.max(...scale_min.map((s) => s.minutes), 1);
+  const dense = profiles.length >= 4;
 
   return (
     <ChartCard
@@ -48,7 +49,7 @@ export function DurationProfilesChart({
     >
       <div className="flex-1 flex flex-col min-h-0">
         {!compact && (
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3" style={{ marginBottom: dense ? 10 : 14 }}>
             <span
               className="flex items-center justify-center shrink-0"
               style={{
@@ -82,6 +83,7 @@ export function DurationProfilesChart({
             gap: "clamp(6px, 0.9cqi, 12px)",
             flex: 1,
             minHeight: 0,
+            justifyContent: dense ? "space-between" : "center",
           }}
         >
           {profiles.map((p, i) => {
@@ -101,6 +103,7 @@ export function DurationProfilesChart({
                 labelColor={labelColor}
                 widthPct={widthPct}
                 isHi={isHi}
+                dense={dense}
               />
             );
           })}
@@ -110,9 +113,9 @@ export function DurationProfilesChart({
           <div
             className="grid"
             style={{
-              gridTemplateColumns: "44px minmax(0, 110px) 1fr",
-              columnGap: 12,
-              marginTop: 8,
+              gridTemplateColumns: "40px minmax(118px, 150px) minmax(0, 1fr)",
+              columnGap: 10,
+              marginTop: dense ? 6 : 10,
               flexShrink: 0,
             }}
           >
@@ -171,7 +174,7 @@ export function DurationProfilesChart({
         {!compact && tip && (
           <div
             className="flex items-center gap-2"
-            style={{ marginTop: 16, flexShrink: 0 }}
+            style={{ marginTop: dense ? 10 : 16, flexShrink: 0 }}
           >
             <span
               className="flex items-center justify-center shrink-0"
@@ -205,6 +208,7 @@ function ProfileRow({
   labelColor,
   widthPct,
   isHi,
+  dense,
 }: {
   index: number;
   profile: DurationProfilesSpec["profiles"][number];
@@ -212,22 +216,24 @@ function ProfileRow({
   labelColor: string;
   widthPct: number;
   isHi: boolean;
+  dense?: boolean;
 }) {
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "44px minmax(0, 110px) 1fr",
-        columnGap: 12,
+        gridTemplateColumns: "40px minmax(118px, 150px) minmax(0, 1fr)",
+        columnGap: 10,
         alignItems: "center",
+        minHeight: dense ? 46 : 54,
       }}
     >
       <div className="flex items-center justify-center">
         <div
           className="flex items-center justify-center"
           style={{
-            width: 36,
-            height: 36,
+            width: dense ? 32 : 36,
+            height: dense ? 32 : 36,
             borderRadius: "50%",
             background: isHi ? BRAND.purps : BRAND.purpsSoft,
             color: isHi ? "white" : BRAND.purps,
@@ -250,7 +256,7 @@ function ProfileRow({
           style={{
             color: isHi ? BRAND.purps : BRAND.slate900,
             fontWeight: 800,
-            fontSize: "clamp(11px, 1.3cqi, 14px)",
+            fontSize: "clamp(10px, 1.15cqi, 13px)",
             lineHeight: 1.15,
           }}
         >
@@ -262,8 +268,12 @@ function ProfileRow({
               color: BRAND.slate700,
               fontSize: "clamp(9px, 1cqi, 11px)",
               fontWeight: 600,
-              lineHeight: 1.2,
+              lineHeight: 1.15,
               marginTop: 2,
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: dense ? 2 : 3,
+              WebkitBoxOrient: "vertical",
             }}
           >
             {profile.note}
@@ -273,7 +283,7 @@ function ProfileRow({
 
       <div
         className="relative"
-        style={{ height: "clamp(28px, 3.4cqi, 40px)" }}
+        style={{ height: dense ? 32 : "clamp(30px, 3.4cqi, 40px)" }}
       >
         <motion.div
           initial={{ width: 0 }}
@@ -283,17 +293,19 @@ function ProfileRow({
             delay: 0.15 + index * 0.08,
             ease: [0.22, 1, 0.36, 1],
           }}
-          className="h-full flex items-center justify-end pr-3"
+          className="h-full flex items-center justify-end"
           style={{
             background: fill,
             borderRadius: 8,
+            paddingRight: 10,
+            minWidth: 86,
           }}
         >
           <span
             style={{
               color: labelColor,
               fontWeight: 800,
-              fontSize: "clamp(11px, 1.3cqi, 14px)",
+              fontSize: "clamp(10px, 1.15cqi, 13px)",
               whiteSpace: "nowrap",
             }}
           >
