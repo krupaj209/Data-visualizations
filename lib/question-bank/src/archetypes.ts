@@ -472,7 +472,7 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     label: "Price curve",
     answers: "How does price change by departure date or booking lead time?",
     data_shape: ["12-26 points × price index", "Best/worst windows annotated"],
-    typical_subcategories: ["multi_day_tours", "train_tickets"],
+    typical_subcategories: ["sightseeing_cruises", "multi_day_tours", "train_tickets"],
     interactive: true,
     implemented: true,
   },

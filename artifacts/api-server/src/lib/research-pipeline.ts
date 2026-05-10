@@ -40,6 +40,17 @@ export interface ResearchPipelineInput {
    */
   writerTopics?: string[];
   /**
+   * Writer feedback from a deck-level regeneration request. Used to steer
+   * question selection away from stale/generic repeats.
+   */
+  regenerationFeedback?: string;
+  /** Current deck snapshot so regenerate can intentionally diversify. */
+  existingCharts?: {
+    question: string;
+    chartType: string;
+    status?: string | null;
+  }[];
+  /**
    * Optional pre-loaded CE intelligence view. The orchestrator loads this
    * once and slices per archetype on each `generateOneChart` call.
    */
@@ -134,6 +145,8 @@ async function selectQuestions(
 
   const standards = STANDARD_QUESTIONS;
   const signatures = bank.questions;
+  const regenerationFeedback = input.regenerationFeedback?.trim() ?? "";
+  const existingCharts = input.existingCharts ?? [];
 
   const prompt = `You are designing a Headout listing-page visualization deck.
 
@@ -152,7 +165,11 @@ ${JSON.stringify(standards, null, 2)}
 
 DRD-CONFIDENCE RULE (apply to BOTH standards and signatures): If the DRD itself rates the relevant topic as Low confidence, calls it out as an "Honest Gap", flags it as anecdotal/operator-marketing, or simply doesn't carry the evidence behind it, SKIP that question. Record it in \`dropped\` with a reason that begins \`drd_low_confidence: \` followed by a one-line explanation citing the DRD section. This is preferred over generating a chart that the verifier will then have to challenge.
 
-CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS YOUR PICKS toward comparison archetypes — \`slot_compare\`, \`compare_zones\`, \`ticket_ladder\`, \`time_split\` — and away from single-curve generics like \`booking_window\` or \`seasonal_curve\` UNLESS the DRD has direct numeric backing for them. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. If \`is_category_ce\` is false (single-product CE), pick normally.
+CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS YOUR PICKS toward comparison and route archetypes — \`slot_compare\`, \`compare_zones\`, \`route_profile\`, \`time_split\`, \`month_calendar\`, \`price_curve\` — and away from single-curve generics like \`booking_window\` or \`seasonal_curve\` UNLESS the DRD has direct numeric backing for them. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. If \`is_category_ce\` is false (single-product CE), pick normally.
+
+REGENERATION QUALITY RULE: If writer feedback says the deck is generic, too similar, poor, or asks for an Accademia-level result, do NOT repeat the existing deck. Prefer CE-specific questions anchored in named routes, piers, sub-products, departure slots, fare windows, seating/deck choices, itinerary split, or landmark coverage. Avoid exact-repeat questions and avoid generic crowd/weather charts unless the DRD has direct, specific evidence.
+
+DYNAMIC PRICE RULE: For cruises, tours, transport, or date-based tickets, do NOT use \`ticket_ladder\` for price comparison when fares vary by date/week. Use \`month_calendar\` for date/week fare windows or \`price_curve\` for monthly/lead-time price movement. Use \`ticket_ladder\` only when the question is about stable inclusions across fixed ticket tiers.
 
 Signature questions for this subcategory:
 ${signatures.length > 0 ? JSON.stringify(signatures, null, 2) : "(none — bootstrap signatures via proposed_hero[])"}
@@ -160,6 +177,10 @@ ${signatures.length > 0 ? JSON.stringify(signatures, null, 2) : "(none — boots
 Available chart archetypes (you may only use these ids; do NOT invent new ones): ${archetypeIds.join(", ")}
 
 ${writerTopics.length > 0 ? `Writer-supplied hero topics that MUST be turned into selected questions: ${writerTopics.join("; ")}` : ""}
+
+${regenerationFeedback ? `Writer regeneration feedback to address:\n${regenerationFeedback}` : ""}
+
+${existingCharts.length > 0 ? `Existing deck to improve/diversify from:\n${existingCharts.map((c) => `- [${c.status ?? "unknown"}] ${c.chartType}: ${c.question}`).join("\n")}` : ""}
 
 After filtering, propose 0-2 ADDITIONAL hero questions tailored to THIS specific CE (e.g. a famous named room, a signature ride, a sunset slot) — anchored in the DRD, not invented. These go in proposed_hero[]. Each must carry kind:"signature".
 
@@ -298,6 +319,14 @@ ${truncate(input.drdMarkdown, 16000)}
     if (selectedQuestions.has(std.question)) continue;
     if (droppedQuestions.has(std.question)) continue;
     if (!isImplementedArchetype(std.recommended_archetype)) continue;
+    if (parsed.is_category_ce) {
+      parsed.dropped.push({
+        question: std.question,
+        reason:
+          "category_ce_specificity: not auto-restored; category experiences need direct evidence for generic standard charts",
+      });
+      continue;
+    }
     parsed.selected.push({
       question: std.question,
       archetype: std.recommended_archetype,
@@ -353,8 +382,8 @@ ${truncate(input.drdMarkdown, 16000)}
   let signatureSelections = parsed.selected.filter(
     (s) => s.kind !== "standard",
   );
-  const SIGNATURE_MIN = 1;
-  const SIGNATURE_MAX = 3;
+  const SIGNATURE_MIN = parsed.is_category_ce ? 3 : 1;
+  const SIGNATURE_MAX = parsed.is_category_ce ? 5 : 3;
   if (signatureSelections.length > SIGNATURE_MAX) {
     const kept = signatureSelections.slice(0, SIGNATURE_MAX);
     const dropped = signatureSelections.slice(SIGNATURE_MAX);

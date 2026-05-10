@@ -742,13 +742,25 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       notes:
         "Compare named zones (upper deck / lower deck / window / outdoor bow) on view quality and how competitive boarding is. Skip if the DRD doesn't surface a deck or seating mechanic.",
     }),
-    // HOHO flexibility value.
+    // Dynamic fare calendar — better than a static ticket ladder when fares
+    // shift by date/week.
     sig({
-      question: "Single cruise or hop-on hop-off pass — which is the better value?",
-      recommended_archetype: "ticket_ladder",
+      question: "Which weeks are cheapest for Thames cruise tickets?",
+      recommended_archetype: "month_calendar",
       skip_if: {
         type: "no_data_signal",
-        signal: "tier_comparison_with_value_axis",
+        signal: "date_level_or_week_level_ticket_prices",
+      },
+      notes:
+        "Use for dynamic OTA/operator fares. If the DRD only has static inclusions by product, prefer the sub-product slot_compare instead of a price chart.",
+    }),
+    // HOHO flexibility value.
+    sig({
+      question: "Single cruise or hop-on hop-off pass — which fits the day?",
+      recommended_archetype: "slot_compare",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "single_vs_hoho_usage_context",
       },
     }),
     // Time split — strongest on destination cruises (Greenwich) and dining cruises.

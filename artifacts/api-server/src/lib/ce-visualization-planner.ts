@@ -388,7 +388,8 @@ Rules:
 - If a category says "missing", reject charts that need that category unless live search notes explicitly fill the gap.
 - Do not recommend unimplemented archetypes.
 - History/origin/construction/restoration narratives should use history_timeline.
-- Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, ticket, duration, and best-fit questions over generic crowd charts.
+- Category-style experiences (cruises, day trips, HOHO, combos) should favor comparison, route, fare-window, duration, and best-fit questions over generic crowd charts.
+- For cruises, tours, transport, or date-based tickets, do not recommend ticket_ladder for price comparison when fares vary by date/week. Use month_calendar for date/week fare windows or price_curve for monthly/lead-time price movement. Use ticket_ladder only for stable inclusions across fixed ticket tiers.
 - Use evidence_status "strong" only when multiple sources or a very explicit DRD/source supports the chart data.
 - Use "partial" when a chart is directionally supportable but will need careful verification.
 - Use "weak" or "missing" for rejected items.

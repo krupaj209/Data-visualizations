@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import { eq, asc, sql, inArray } from "drizzle-orm";
+import { and, eq, asc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { extractPdfToMarkdown } from "../lib/extract-drd";
 import {
@@ -18,14 +18,35 @@ import {
 import { CreateCeBody, GetCeParams } from "@workspace/api-zod";
 import { generateCePayload, slugify } from "../lib/generate-ce";
 import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
-import { CHART_ARCHETYPES } from "@workspace/question-bank";
+import { CHART_ARCHETYPES, isKnownSubcategory } from "@workspace/question-bank";
 import { openai } from "../lib/openai";
+import { runResearchPipeline } from "../lib/research-pipeline";
 
 const router: IRouter = Router();
 
 const RegenerateCeBody = z.object({
   feedback: z.string().trim().max(4000).optional(),
 });
+
+function inferSubcategoryId(ce: Ce): string {
+  const raw = (ce.category || "").trim();
+  if (raw && isKnownSubcategory(raw)) return raw;
+
+  const haystack = `${ce.name} ${ce.category} ${ce.slug}`.toLowerCase();
+  if (/\b(cruise|river|boat|thames|seine|canal)\b/.test(haystack)) {
+    return "sightseeing_cruises";
+  }
+  if (/\b(gallery|museum|uffizi|accademia|louvre|vatican)\b/.test(haystack)) {
+    return "museums";
+  }
+  if (/\b(colosseum|tower|landmark|monument|palace)\b/.test(haystack)) {
+    return "landmarks";
+  }
+  if (/\b(day trip|day-trip|excursion)\b/.test(haystack)) {
+    return "day_trips";
+  }
+  return raw || "landmarks";
+}
 
 function serializeCe(
   ce: Ce,
@@ -367,6 +388,123 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
     .where(eq(cesTable.slug, params.data.slug));
   if (!ce) {
     res.status(404).json({ error: "CE not found" });
+    return;
+  }
+
+  const [drd] = await db
+    .select()
+    .from(drdsTable)
+    .where(eq(drdsTable.ceSlug, ce.slug));
+
+  if (drd?.markdown?.trim()) {
+    const existingCharts = await db
+      .select({
+        question: chartsTable.question,
+        chartType: chartsTable.chartType,
+        status: chartsTable.status,
+      })
+      .from(chartsTable)
+      .where(eq(chartsTable.ceId, ce.id))
+      .orderBy(asc(chartsTable.sortOrder));
+
+    let result;
+    try {
+      result = await runResearchPipeline({
+        ce: { name: ce.name, city: ce.city, country: ce.country, slug: ce.slug },
+        subcategoryId: inferSubcategoryId(ce),
+        drdMarkdown: drd.markdown,
+        regenerationFeedback: body.data.feedback,
+        existingCharts,
+      });
+    } catch (err) {
+      req.log.error({ err }, "Research regeneration failed");
+      res.status(502).json({
+        error:
+          err instanceof Error
+            ? `Research regeneration failed: ${err.message}`
+            : "Research regeneration failed",
+      });
+      return;
+    }
+
+    try {
+      const persisted = await db.transaction(async (tx) => {
+        await tx
+          .delete(chartsTable)
+          .where(
+            and(
+              eq(chartsTable.ceId, ce.id),
+              eq(chartsTable.status, "draft"),
+            ),
+          );
+
+        const publishedCount = await tx.$count(
+          chartsTable,
+          and(
+            eq(chartsTable.ceId, ce.id),
+            eq(chartsTable.status, "published"),
+          ),
+        );
+
+        const [updated] = await tx
+          .update(cesTable)
+          .set({
+            summary: result.summary,
+            emoji: result.emoji,
+            status: publishedCount > 0 ? ce.status : "draft",
+          })
+          .where(eq(cesTable.id, ce.id))
+          .returning();
+        if (!updated) throw new Error("Failed to update CE");
+
+        const draftSortBase = 1000;
+        const insertedCharts = await tx
+          .insert(chartsTable)
+          .values(
+            result.charts.map((c, idx) => ({
+              ceId: ce.id,
+              slug: c.slug,
+              question: c.question,
+              title: c.title,
+              subtitle: c.subtitle,
+              insight: c.insight,
+              chartType: c.spec.type,
+              spec: c.spec as unknown as Record<string, unknown>,
+              status: "draft",
+              provenance: {
+                ...c.provenance,
+                source_question: c.source_question,
+                recommended_archetype: c.recommended_archetype,
+              } as Record<string, unknown>,
+              sortOrder: draftSortBase + idx,
+            })),
+          )
+          .returning();
+
+        return { ce: updated, charts: insertedCharts, publishedKept: publishedCount };
+      });
+
+      res.json({
+        ce: serializeCe(
+          persisted.ce,
+          persisted.publishedKept + persisted.charts.length,
+          persisted.charts.length,
+          persisted.publishedKept,
+        ),
+        charts: persisted.charts.map((c) => serializeChart(c)),
+        publishedChartsKept: persisted.publishedKept,
+        droppedQuestions: result.dropped_questions,
+        proposedHeroQuestions: result.proposed_hero_questions,
+      });
+    } catch (err) {
+      req.log.error({ err }, "Failed to persist research regeneration");
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Failed to persist regenerated drafts: ${err.message}`
+            : "Failed to persist regenerated drafts",
+      });
+    }
     return;
   }
 
