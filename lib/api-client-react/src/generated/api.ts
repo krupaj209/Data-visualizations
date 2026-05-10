@@ -24,6 +24,7 @@ import type {
   CeIntelligenceRefreshInput,
   CeWithCharts,
   Chart,
+  ChartFactReviewInput,
   ChartFeedback,
   ChartFeedbackInput,
   ChartPublishInput,
@@ -1824,6 +1825,182 @@ export const usePublishChart = <
   TContext
 > => {
   return useMutation(getPublishChartMutationOptions(options));
+};
+
+/**
+ * Persists a writer's review decision for a single fact-table row onto
+the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+`valueOverride` to override the auto-generated claim/value text.
+
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const getUpsertChartFactReviewUrl = (id: number) => {
+  return `/api/charts/${id}/fact-reviews`;
+};
+
+export const upsertChartFactReview = async (
+  id: number,
+  chartFactReviewInput: ChartFactReviewInput,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getUpsertChartFactReviewUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chartFactReviewInput),
+  });
+};
+
+export const getUpsertChartFactReviewMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    TError,
+    { id: number; data: BodyType<ChartFactReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertChartFactReview>>,
+  TError,
+  { id: number; data: BodyType<ChartFactReviewInput> },
+  TContext
+> => {
+  const mutationKey = ["upsertChartFactReview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    { id: number; data: BodyType<ChartFactReviewInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return upsertChartFactReview(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertChartFactReviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertChartFactReview>>
+>;
+export type UpsertChartFactReviewMutationBody = BodyType<ChartFactReviewInput>;
+export type UpsertChartFactReviewMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const useUpsertChartFactReview = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    TError,
+    { id: number; data: BodyType<ChartFactReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertChartFactReview>>,
+  TError,
+  { id: number; data: BodyType<ChartFactReviewInput> },
+  TContext
+> => {
+  return useMutation(getUpsertChartFactReviewMutationOptions(options));
+};
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const getClearChartFactReviewUrl = (id: number, rowId: string) => {
+  return `/api/charts/${id}/fact-reviews/${rowId}`;
+};
+
+export const clearChartFactReview = async (
+  id: number,
+  rowId: string,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getClearChartFactReviewUrl(id, rowId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearChartFactReviewMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    TError,
+    { id: number; rowId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearChartFactReview>>,
+  TError,
+  { id: number; rowId: string },
+  TContext
+> => {
+  const mutationKey = ["clearChartFactReview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    { id: number; rowId: string }
+  > = (props) => {
+    const { id, rowId } = props ?? {};
+
+    return clearChartFactReview(id, rowId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearChartFactReviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearChartFactReview>>
+>;
+
+export type ClearChartFactReviewMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const useClearChartFactReview = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    TError,
+    { id: number; rowId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearChartFactReview>>,
+  TError,
+  { id: number; rowId: string },
+  TContext
+> => {
+  return useMutation(getClearChartFactReviewMutationOptions(options));
 };
 
 /**

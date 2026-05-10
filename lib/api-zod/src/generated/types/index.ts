@@ -16,6 +16,8 @@ export * from "./ceIntelligenceSource";
 export * from "./ceWithCharts";
 export * from "./chart";
 export * from "./chartEditInput";
+export * from "./chartFactReviewInput";
+export * from "./chartFactReviewInputStatus";
 export * from "./chartFeedback";
 export * from "./chartFeedbackInput";
 export * from "./chartProvenance";

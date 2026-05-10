@@ -377,6 +377,167 @@ router.post(
 );
 
 /* -------------------------------------------------------------------------- */
+/* POST /charts/:id/fact-reviews — writer review on a single fact-table row   */
+/* DELETE /charts/:id/fact-reviews/:rowId — clear a writer's review decision  */
+/* -------------------------------------------------------------------------- */
+
+const factReviewBody = z.object({
+  rowId: z.string().min(1).max(120),
+  status: z.enum(["approved", "rejected", "needs_review"]),
+  reason: z.string().max(800).optional(),
+  claimOverride: z.string().max(400).optional(),
+  valueOverride: z.string().max(400).optional(),
+  writerId: z.string().max(120).optional(),
+});
+
+interface FactReviewEntry {
+  status: "approved" | "rejected" | "needs_review";
+  reason?: string;
+  claim_override?: string;
+  value_override?: string;
+  reviewedAt: string;
+  reviewedBy?: string;
+}
+
+function readFactReviews(
+  provenance: unknown,
+): Record<string, FactReviewEntry> {
+  if (!provenance || typeof provenance !== "object") return {};
+  const map = (provenance as { fact_reviews?: unknown }).fact_reviews;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {};
+  return map as Record<string, FactReviewEntry>;
+}
+
+router.post(
+  "/charts/:id/fact-reviews",
+  async (req, res): Promise<void> => {
+    const params = GetChartParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const parsed = factReviewBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [chart] = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.id, params.data.id));
+    if (!chart) {
+      res.status(404).json({ error: "Chart not found" });
+      return;
+    }
+
+    const reviews = { ...readFactReviews(chart.provenance) };
+    const entry: FactReviewEntry = {
+      status: parsed.data.status,
+      reviewedAt: new Date().toISOString(),
+    };
+    if (parsed.data.reason !== undefined) entry.reason = parsed.data.reason;
+    if (parsed.data.claimOverride !== undefined)
+      entry.claim_override = parsed.data.claimOverride;
+    if (parsed.data.valueOverride !== undefined)
+      entry.value_override = parsed.data.valueOverride;
+    if (parsed.data.writerId) entry.reviewedBy = parsed.data.writerId;
+    reviews[parsed.data.rowId] = entry;
+
+    const baseProv =
+      chart.provenance && typeof chart.provenance === "object"
+        ? (chart.provenance as Record<string, unknown>)
+        : {};
+    const nextProv = { ...baseProv, fact_reviews: reviews };
+
+    const [updated] = await db
+      .update(chartsTable)
+      .set({ provenance: nextProv })
+      .where(eq(chartsTable.id, chart.id))
+      .returning();
+    if (!updated) {
+      res.status(500).json({ error: "Failed to persist fact review" });
+      return;
+    }
+
+    await db.insert(chartEditsTable).values({
+      chartId: chart.id,
+      writerId: parsed.data.writerId ?? "anonymous",
+      action: "fact_review",
+      before: null,
+      after: { rowId: parsed.data.rowId, ...entry },
+      note: parsed.data.reason ?? null,
+    });
+
+    res.json(serializeChart(updated));
+  },
+);
+
+router.delete(
+  "/charts/:id/fact-reviews/:rowId",
+  async (req, res): Promise<void> => {
+    const params = GetChartParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const rowId = req.params["rowId"];
+    if (!rowId) {
+      res.status(400).json({ error: "rowId is required" });
+      return;
+    }
+
+    const [chart] = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.id, params.data.id));
+    if (!chart) {
+      res.status(404).json({ error: "Chart not found" });
+      return;
+    }
+
+    const reviews = { ...readFactReviews(chart.provenance) };
+    if (!(rowId in reviews)) {
+      res.json(serializeChart(chart));
+      return;
+    }
+    delete reviews[rowId];
+
+    const baseProv =
+      chart.provenance && typeof chart.provenance === "object"
+        ? (chart.provenance as Record<string, unknown>)
+        : {};
+    const nextProv: Record<string, unknown> = { ...baseProv };
+    if (Object.keys(reviews).length === 0) {
+      delete nextProv["fact_reviews"];
+    } else {
+      nextProv["fact_reviews"] = reviews;
+    }
+
+    const [updated] = await db
+      .update(chartsTable)
+      .set({ provenance: nextProv })
+      .where(eq(chartsTable.id, chart.id))
+      .returning();
+    if (!updated) {
+      res.status(500).json({ error: "Failed to clear fact review" });
+      return;
+    }
+
+    await db.insert(chartEditsTable).values({
+      chartId: chart.id,
+      writerId: "anonymous",
+      action: "fact_review_clear",
+      before: null,
+      after: { rowId },
+      note: null,
+    });
+
+    res.json(serializeChart(updated));
+  },
+);
+
+/* -------------------------------------------------------------------------- */
 /* POST /charts/:id/verify — on-demand DRD + verifier check                    */
 /* -------------------------------------------------------------------------- */
 

@@ -69,6 +69,24 @@ export interface ChartUpdateInput {
   writerId?: string;
 }
 
+export type ChartFactReviewInputStatus =
+  (typeof ChartFactReviewInputStatus)[keyof typeof ChartFactReviewInputStatus];
+
+export const ChartFactReviewInputStatus = {
+  approved: "approved",
+  rejected: "rejected",
+  needs_review: "needs_review",
+} as const;
+
+export interface ChartFactReviewInput {
+  rowId: string;
+  status: ChartFactReviewInputStatus;
+  reason?: string;
+  claimOverride?: string;
+  valueOverride?: string;
+  writerId?: string;
+}
+
 export type ChartPublishInputStatus =
   (typeof ChartPublishInputStatus)[keyof typeof ChartPublishInputStatus];
 

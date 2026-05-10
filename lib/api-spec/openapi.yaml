@@ -623,6 +623,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /charts/{id}/fact-reviews:
+    post:
+      operationId: upsertChartFactReview
+      tags: [charts]
+      summary: Approve, reject, or flag a single fact-table row on a chart
+      description: |
+        Persists a writer's review decision for a single fact-table row onto
+        the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+        `valueOverride` to override the auto-generated claim/value text.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartFactReviewInput"
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/fact-reviews/{rowId}:
+    delete:
+      operationId: clearChartFactReview
+      tags: [charts]
+      summary: Clear a single writer review decision from the fact table
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: rowId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /ces/{slug}/charts:
     post:
       operationId: createChartFromTopic
@@ -971,6 +1040,25 @@ components:
           type: boolean
         writerId:
           type: string
+    ChartFactReviewInput:
+      type: object
+      properties:
+        rowId:
+          type: string
+        status:
+          type: string
+          enum: [approved, rejected, needs_review]
+        reason:
+          type: string
+        claimOverride:
+          type: string
+        valueOverride:
+          type: string
+        writerId:
+          type: string
+      required:
+        - rowId
+        - status
     ChartPublishInput:
       type: object
       properties:

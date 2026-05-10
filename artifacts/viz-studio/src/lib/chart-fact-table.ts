@@ -9,16 +9,79 @@ export type ChartFactStatus =
   | "verified"
   | "source_backed"
   | "estimated"
-  | "needs_review";
+  | "needs_review"
+  | "approved"
+  | "rejected";
+
+export interface ChartFactReview {
+  status: "approved" | "rejected" | "needs_review";
+  reason?: string;
+  claim_override?: string;
+  value_override?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+export interface ChartFactBackingSource {
+  kind: "drd" | "web" | "intel" | "estimate";
+  label: string;
+  detail?: string;
+  url?: string;
+  /**
+   * "row" = matched specifically to this row's claim/value/path keywords.
+   * "chart" = chart-level evidence shown as fallback when no row match was
+   * found. Lets the UI flag which evidence is actually scoped to the claim.
+   */
+  scope: "row" | "chart";
+}
+
+/**
+ * Lightweight shape of a CE intelligence fact, kept here to avoid pulling
+ * the full server type into the frontend lib. Mirrors `IntelFact` from
+ * `artifacts/api-server/src/lib/ce-intelligence.ts`.
+ */
+export interface ChartFactIntelFact {
+  id: string;
+  bucket?: string;
+  value: string;
+  quote?: string;
+  source_url?: string;
+}
+
+export interface BuildChartFactRowsOptions {
+  /**
+   * Resolved CE intelligence facts the chart cited in
+   * `provenance.intelligence_refs`. When provided, rows that share keywords
+   * with a fact's value/quote get that fact directly listed in their
+   * `backingSources`.
+   */
+  intelFacts?: ChartFactIntelFact[];
+}
 
 export interface ChartFactRow {
   id: string;
+  /** Default claim text from the spec (writer overrides take precedence). */
   claim: string;
+  /** Default value text from the spec (writer overrides take precedence). */
   value: string;
+  /** Writer's overridden claim text, if any. */
+  claimOverride?: string;
+  /** Writer's overridden value text, if any. */
+  valueOverride?: string;
   sourceLabel: string;
   sourceUrl?: string;
   confidence: number;
+  /**
+   * Status precedence: writer review (approved/rejected/needs_review) wins
+   * over the auto-derived verifier/source status.
+   */
   status: ChartFactStatus;
+  /** True when the row's value came from the generator's estimate path. */
+  estimated: boolean;
+  /** Persisted writer decision, if any. */
+  review?: ChartFactReview;
+  /** Merged list of evidence backing this row (DRD, web, intel, estimate). */
+  backingSources: ChartFactBackingSource[];
   path: string;
 }
 
@@ -29,31 +92,134 @@ interface SourceContext {
   status: ChartFactStatus;
 }
 
+function readFactReviews(
+  provenance: ChartProvenanceLite | null | undefined,
+): Record<string, ChartFactReview> {
+  const map = (provenance as { fact_reviews?: unknown } | null | undefined)
+    ?.fact_reviews;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {};
+  return map as Record<string, ChartFactReview>;
+}
+
 export function buildChartFactRows(
   spec: ChartSpec,
   provenance: ChartProvenanceLite | null | undefined,
+  options: BuildChartFactRowsOptions = {},
 ): ChartFactRow[] {
   const context = sourceContext(provenance);
   const estimates = provenance?.estimates ?? [];
+  const reviews = readFactReviews(provenance);
+
+  const drdSnippets = (provenance?.drd_snippets ?? []).filter(Boolean);
+  const webSources = (provenance?.web_sources ?? []).filter(
+    (s) => s?.title || s?.url,
+  );
+  const intelRefs = new Set(provenance?.intelligence_refs ?? []);
+  // Only consider intel facts that this chart actually cited.
+  const citedIntel = (options.intelFacts ?? []).filter((f) =>
+    intelRefs.has(f.id),
+  );
+
+  const allDrd: ChartFactBackingSource[] = drdSnippets.map((snippet) => ({
+    kind: "drd",
+    label: "Deep research doc",
+    detail: snippet,
+    scope: "chart",
+  }));
+  const allWeb: ChartFactBackingSource[] = webSources.map((source) => ({
+    kind: "web",
+    label: source.title || source.url || "Live source",
+    url: source.url,
+    scope: "chart",
+  }));
+  const allIntel: ChartFactBackingSource[] = citedIntel.map((fact) => ({
+    kind: "intel",
+    label: fact.value,
+    detail: fact.quote || (fact.bucket ? `Bucket: ${fact.bucket}` : undefined),
+    url: fact.source_url,
+    scope: "chart",
+  }));
 
   const withSource = (
-    row: Omit<ChartFactRow, "sourceLabel" | "sourceUrl" | "confidence" | "status">,
+    row: Pick<ChartFactRow, "id" | "claim" | "value" | "path">,
   ): ChartFactRow => {
     const estimate = estimates.find((item) => fieldMatchesPath(item.field, row.path));
+    const isEstimated = Boolean(estimate);
+    const baseStatus: ChartFactStatus = isEstimated ? "estimated" : context.status;
+    const baseLabel = isEstimated ? "Generator estimate" : context.label;
+    const baseUrl = isEstimated ? undefined : context.url;
+    const baseConfidence = isEstimated
+      ? Math.min(context.confidence, 55)
+      : context.confidence;
+
+    // Row-level keyword bag pulled from the claim text + value text + spec
+    // path. Every chart-level evidence item is then scored against it; items
+    // that share at least one keyword get promoted to row-scoped, the rest
+    // stay as a chart-level fallback list so writers can always see the full
+    // pool without leaving the row.
+    const rowKeywords = extractKeywords(
+      `${row.claim} ${row.value} ${row.path}`,
+    );
+
+    const matchedDrd = filterByKeywords(allDrd, rowKeywords, (item) => item.detail ?? "");
+    const matchedWeb = filterByKeywords(
+      allWeb,
+      rowKeywords,
+      (item) => `${item.label} ${item.url ?? ""}`,
+    );
+    const matchedIntel = filterByKeywords(
+      allIntel,
+      rowKeywords,
+      (item) => `${item.label} ${item.detail ?? ""}`,
+    );
+
+    const matchedIds = new Set([
+      ...matchedDrd.map((d) => d.detail),
+      ...matchedWeb.map((w) => `${w.label}|${w.url ?? ""}`),
+      ...matchedIntel.map((i) => i.label),
+    ]);
+
+    const remainingDrd = allDrd
+      .filter((d) => !matchedIds.has(d.detail))
+      .slice(0, 4);
+    const remainingWeb = allWeb
+      .filter((w) => !matchedIds.has(`${w.label}|${w.url ?? ""}`))
+      .slice(0, 6);
+    const remainingIntel = allIntel
+      .filter((i) => !matchedIds.has(i.label))
+      .slice(0, 6);
+
+    const backing: ChartFactBackingSource[] = [
+      ...matchedIntel.map((i) => ({ ...i, scope: "row" as const })),
+      ...matchedDrd.map((d) => ({ ...d, scope: "row" as const })),
+      ...matchedWeb.map((w) => ({ ...w, scope: "row" as const })),
+      ...remainingIntel,
+      ...remainingDrd,
+      ...remainingWeb,
+    ];
     if (estimate) {
-      return {
-        ...row,
-        sourceLabel: "Generator estimate",
-        confidence: Math.min(context.confidence, 55),
-        status: "estimated",
-      };
+      backing.unshift({
+        kind: "estimate",
+        label: estimate.field || "Estimated field",
+        detail: estimate.reasoning || "Marked as estimated by the generator.",
+        scope: "row",
+      });
     }
+
+    const review = reviews[row.id];
+    const status: ChartFactStatus = review ? review.status : baseStatus;
+
     return {
       ...row,
-      sourceLabel: context.label,
-      sourceUrl: context.url,
-      confidence: context.confidence,
-      status: context.status,
+      sourceLabel: baseLabel,
+      sourceUrl: baseUrl,
+      confidence: baseConfidence,
+      status,
+      estimated: isEstimated,
+      review,
+      claimOverride: review?.claim_override,
+      valueOverride: review?.value_override,
+      backingSources: backing,
     };
   };
 
@@ -508,10 +674,10 @@ function formatHour(hour: number): string {
 function genericFactRows(
   spec: ChartSpec,
   withSource: (
-    row: Omit<ChartFactRow, "sourceLabel" | "sourceUrl" | "confidence" | "status">,
+    row: Pick<ChartFactRow, "id" | "claim" | "value" | "path">,
   ) => ChartFactRow,
 ): ChartFactRow[] {
-  const entries = Object.entries(spec as Record<string, unknown>)
+  const entries = Object.entries(spec as unknown as Record<string, unknown>)
     .filter(([key]) => key !== "type")
     .slice(0, 10);
 
@@ -534,4 +700,45 @@ function summarizeUnknown(value: unknown): string {
 
 function humanizeKey(key: string): string {
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/* -------------------------------------------------------------------------- */
+/* Row-scoped evidence matching                                                */
+/* -------------------------------------------------------------------------- */
+
+const STOPWORDS = new Set([
+  "the","a","an","and","or","of","in","on","at","to","for","by","with","is",
+  "it","its","that","this","be","are","was","were","as","from","but","not",
+  "have","has","had","you","your","our","their","they","we","us","i","me",
+  "do","does","did","so","if","then","than","also","very","more","most",
+  "less","least","some","any","each","per","one","two","item","items","items",
+  "set","not","null","true","false","yes","no","value","values","level",
+  "score","note","notes","data","chart","claim","crowd","time","day","days",
+  "month","months","hour","hours","week","weeks","year","years","section",
+  "structured","tour","tours","ticket","tickets","metric","metrics","field",
+]);
+
+function extractKeywords(text: string): Set<string> {
+  if (!text) return new Set();
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  return new Set(tokens);
+}
+
+function filterByKeywords<T>(
+  items: T[],
+  rowKeywords: Set<string>,
+  textOf: (item: T) => string,
+): T[] {
+  if (rowKeywords.size === 0) return [];
+  return items.filter((item) => {
+    const tokens = extractKeywords(textOf(item));
+    for (const tok of tokens) {
+      if (rowKeywords.has(tok)) return true;
+    }
+    return false;
+  });
 }

@@ -624,6 +624,86 @@ export const PublishChartResponse = zod.object({
 });
 
 /**
+ * Persists a writer's review decision for a single fact-table row onto
+the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+`valueOverride` to override the auto-generated claim/value text.
+
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const UpsertChartFactReviewParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpsertChartFactReviewBody = zod.object({
+  rowId: zod.string(),
+  status: zod.enum(["approved", "rejected", "needs_review"]),
+  reason: zod.string().optional(),
+  claimOverride: zod.string().optional(),
+  valueOverride: zod.string().optional(),
+  writerId: zod.string().optional(),
+});
+
+export const UpsertChartFactReviewResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const ClearChartFactReviewParams = zod.object({
+  id: zod.coerce.number(),
+  rowId: zod.coerce.string(),
+});
+
+export const ClearChartFactReviewResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
  * @summary Generate a new draft chart for a CE from a writer's topic
  */
 export const CreateChartFromTopicParams = zod.object({
