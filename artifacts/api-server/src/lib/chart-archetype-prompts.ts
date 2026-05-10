@@ -139,10 +139,20 @@ Use for tour duration breakdown (transit / queue / at-site / breaks for guided t
 
   history_timeline: `{ "type": "history_timeline",
   "span_label": "<overall range, e.g. AD 72-2026>",
-  "events": [ { "date_label": "<year or compact date, e.g. AD 80>", "sort_year": <number, BCE negative if needed>, "title": "<short event title>", "era": "<origins|construction|spectacle|decline|reuse|restoration|modern>", "description": "<one sentence, <=160 chars>", "metric_label"?: "<e.g. 100 days>", "metric_value"?: "<short numeric fact>" }, ... 5-9 items ],
-  "highlight_event"?: "<exact event title to spotlight>",
-  "callout"?: "<one-sentence visitor-facing takeaway>" }
-Use ONLY for historical narrative questions: origin story, construction, major disasters, reuse, restoration, cultural symbolism. Every event MUST come directly from the DRD or grounded source, in chronological order. Prefer fewer, higher-signal turning points over encyclopedic detail. Include at least one modern/current event when the DRD has it. Do not turn history topics into crowd, booking, or weekly charts.`,
+  "events": [ { "date_label": "<year or compact date, e.g. AD 80>", "sort_year": <number, BCE negative if needed>, "title": "<very short event title, <=30 chars — must fit a single column at 9 events in horizontal layout>", "era": "<origins|construction|spectacle|decline|reuse|restoration|modern>", "description": "<one sentence, <=140 chars>", "metric_value"?: "<short numeric fact, e.g. '100 days', '~65,000', '14.7M'>", "metric_label"?: "<unit/context for metric_value, e.g. 'of games', 'seats', 'visitors / yr'>" }, ... 7-9 items ],
+  "highlight_event"?: "<exact event title to spotlight as the single most pivotal moment>",
+  "callout"?: "<one-sentence visitor-facing takeaway, <=160 chars>" }
+The renderer is an INFOGRAPHIC: every event is shown at a glance with date, era, title, one-sentence description, and (where useful) a punchy metric chip. Write for that — descriptions short, metrics short and numeric.
+Use ONLY for historical narrative questions: origin story, construction, major disasters, reuse, restoration, cultural symbolism. Every event MUST come directly from the DRD or grounded source, in chronological order.
+Era guidance — span the full arc the DRD documents, do not cluster all events in one era:
+  * origins: pre-construction backstory (site, motivation, planning).
+  * construction: build, expansion, major engineering additions.
+  * spectacle: the venue's active prime — opening, peak use, signature events.
+  * decline: damage, disuse, end of original purpose.
+  * reuse: medieval / post-prime repurposing (fortress, quarry, housing).
+  * restoration: papal / state / private rescue and conservation work.
+  * modern: 19th-century onward state ownership, current significance, recent figures.
+Aim for 7–9 events covering 4+ eras, NOT 5 events all in "construction". Include at least one modern/current event (visitor numbers, UNESCO listing, recent restoration) when the DRD has it. Use highlight_event for the single most iconic / pivotal moment (e.g. inaugural games). Do not turn history topics into crowd, booking, or weekly charts.`,
 
   slot_compare: `{ "type": "slot_compare",
   "slots": [ { "name": "Sunrise", "time_window"?: "5:00–7:30 am", "accent": "<purps|candy|hola|okay|slate>", "recommended": <bool> }, ... 2-3 items, AT MOST one recommended:true ],

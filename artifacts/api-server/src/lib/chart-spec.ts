@@ -1021,7 +1021,7 @@ export const historyTimelineSpec = z.object({
       z.object({
         date_label: z.string().max(24),
         sort_year: z.number().min(-5000).max(3000),
-        title: z.string().max(60),
+        title: z.string().max(30),
         era: z.enum([
           "origins",
           "construction",
@@ -1031,15 +1031,15 @@ export const historyTimelineSpec = z.object({
           "restoration",
           "modern",
         ]),
-        description: z.string().max(180),
+        description: z.string().max(140),
         metric_label: z.string().max(40).optional(),
         metric_value: z.string().max(32).optional(),
       }),
     )
-    .min(5)
+    .min(7)
     .max(9),
-  highlight_event: z.string().max(60).optional(),
-  callout: z.string().max(180).optional(),
+  highlight_event: z.string().max(40).optional(),
+  callout: z.string().max(160).optional(),
 });
 
 /* ========================================================================== */

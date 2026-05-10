@@ -65,7 +65,7 @@ Unit coverage for the deterministic rule and the missing-evidence derivation liv
 
 ### Curated / locked CEs
 
-`lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`). The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.
+`lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`) plus the `colosseum` history-timeline reference deck. The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.
 
 The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo}.mjs` because the dev `seed-*.mjs` scripts (raw `pg.Client`, run via `node`) need it. This duplication is short-term — long-term, those scripts should switch to importing from the lib via `tsx`.
 
@@ -90,6 +90,15 @@ The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo
 Generation: `artifacts/api-server/src/lib/generate-ce.ts` builds a strict prompt with per-type schemas, calls Gemini, validates against Zod, and retries once with the validation error fed back. Strict array lengths enforce data completeness (`.length(12)` for months, `.length(7)` for weekday rows, `.length(24)` for hours). Topic-to-chart creation also recognises history/origin/restoration prompts and routes them to `history_timeline`; unmatched topics now fail fast instead of defaulting to `weekly_pattern`.
 
 Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. All wrapped in `ChartCard` (header with ESTIMATED pill + title/subtitle, content area, footer insight). Charts use container queries + percentage-based geometry so they fill any size cleanly above the 400px embed floor.
+
+**Canonical timeline pattern.** `history_timeline` is the standard Headout pattern for any historical/narrative timeline visualization (founding → spectacle → decline → reuse → restoration → modern). The renderer is an at-a-glance **infographic**, not an interactive explorer: every event renders simultaneously with its date, era chip, title, and (where useful) a punchy metric chip; `highlight_event` decorates the most pivotal entry with a "★ Pivotal" pill rather than hiding the rest behind a click. Era color tokens follow the existing brand palette (purps for construction, candy for spectacle, hola for decline, slate for reuse, mint for restoration, indigo for modern).
+
+The renderer is **layout-responsive** based on container width (measured via `ResizeObserver`):
+
+- **Horizontal layered layout** (≥560px wide, non-compact): four stacked rows — (1) era pill rail where each pill spans `n` columns equal to the consecutive event count in that era, (2) date pills above the spine, (3) horizontal spine with one colored node per event (pivotal node enlarged with a `purps` ring), (4) titles + metric chips beneath each node. Callout sits as a centered footer band. Tuned for inline article-body embeds at ~720–1024 wide × ~280–400 tall — readers do not scroll inside an iframe nested in an article they're already scrolling, so the entire timeline must fit at-a-glance. Titles **must be ≤30 chars** to fit one column at 9 events; descriptions are intentionally omitted in horizontal mode (the at-a-glance era arc is the deliverable).
+- **Vertical layout** (<560px wide, or compact mode): one row per event with the date pill on the left and era chip + title + description + metric chip on the right, connected by a vertical era spine. This path also supports a `dense` mode (tall enough to skip global compact, but too short to fit all rows with descriptions): drops descriptions + callout but keeps every row.
+
+Compact mode (sub-340px embeds, set by the global Embed wrapper) tightens padding and forces vertical layout regardless of width. Reference implementation: the `colosseum` curated CE in `lib/curated-seeds/src/data/colosseum.ts` — future timeline questions on any CE should reuse `history_timeline` rather than introducing a parallel chart type, and curated titles should respect the ≤30 char budget so the horizontal layout reads cleanly.
 
 ## Key Commands
 
