@@ -709,9 +709,6 @@ function ChartRow({
   const opts = { preserve: ceName };
   const headline = toSentenceCase(chart.question || chart.title, opts);
   const insightText = chart.insight ? toSentenceCase(chart.insight, opts) : null;
-  const frame =
-    CHART_FRAME[spec.type] ?? { aspectRatio: "16 / 10", minHeight: 320 };
-
   const status = chart.status ?? "published";
   const isDraft = status === "draft";
 
@@ -926,20 +923,26 @@ function ChartRow({
       <div
         className={
           sidePanelOpen
-            ? "grid gap-4 items-start"
-            : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start"
+            ? "flex flex-col gap-4 items-start"
+            : "grid gap-4 lg:grid-cols-[800px_minmax(0,1fr)] items-start"
         }
       >
+        {/* Locked-dimension preview (800x500) — matches the default iframe
+            snippet exactly so writers see the chart at the size the CMS will
+            embed. Side panels never compress this. Horizontal overflow on
+            very narrow viewports gets a scrollbar instead of squishing. */}
         <div
-          className="rounded-3xl overflow-hidden"
-          style={{ background: BRAND.slate100 }}
+          className="rounded-3xl overflow-auto"
+          style={{
+            background: BRAND.slate100,
+            maxWidth: "100%",
+          }}
         >
           <div
-            className="w-full"
             style={{
-              aspectRatio: frame.aspectRatio,
-              minHeight: frame.minHeight,
-              maxHeight: frame.maxHeight,
+              width: 800,
+              height: 500,
+              flexShrink: 0,
             }}
           >
             <ChartRenderer
@@ -955,7 +958,10 @@ function ChartRow({
             />
           </div>
         </div>
-        <aside className="flex flex-col gap-3">
+        <aside
+          className="flex flex-col gap-3"
+          style={{ width: sidePanelOpen ? "100%" : undefined }}
+        >
           <div
             style={{
               fontSize: 11,
