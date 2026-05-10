@@ -1,0 +1,57 @@
+Got it — the Accademia page uses data to move past generic advice ("go early") to specific, defensible answers ("8:15–9:30am, here's the crowd curve"). Here's the same breakdown mapped to Thames River Cruise:
+
+---
+
+## Questions people ask + what data makes the answer better
+
+### 🕐 Timing questions
+
+| Question | What data makes it better |
+|---|---|
+| **What's the best time of day to cruise?** | Crowd index by departure slot (10am vs 1pm vs 6pm) + light quality for photos |
+| **Which days of the week are least crowded?** | Weekday vs weekend passenger volume — Saturdays are visibly busier but by how much? |
+| **What time does the sunset cruise actually start seeing the golden hour?** | Sunset time by month mapped to departure times (changes from 4pm in Dec to 9pm in June) |
+| **Is it worth going in winter?** | Daylight hours by month vs cruise duration — a 90-min cruise in December means 60% of it is dark |
+
+---
+
+### 🎟️ Booking & ticket questions
+
+| Question | What data makes it better |
+|---|---|
+| **How far in advance do I need to book?** | Lead time by season — July/August slots sell out X days ahead vs October |
+| **Is hop-on hop-off actually worth it vs a fixed sightseeing cruise?** | Average stops used per visitor + time between boats at each pier |
+| **Which ticket type gives the best value?** | Price-per-minute of actual cruise time across ticket types |
+| **Are dinner cruises worth the price premium?** | Price delta vs standalone cruise + meal, alongside review sentiment |
+
+---
+
+### 🗺️ Boarding & logistics questions
+
+| Question | What data makes it better |
+|---|---|
+| **Which pier should I board from?** | Walk time from top landmarks (Tower Bridge, London Eye, St Paul's) to each pier |
+| **How long is the queue at Westminster Pier?** | Wait time by time of day — worst between 11am–1pm |
+| **How long does the full route actually take?** | Actual journey time Westminster → Greenwich vs the advertised time |
+
+---
+
+### ⛅ Experience questions
+
+| Question | What data makes it better |
+|---|---|
+| **When do I get the best photography conditions?** | Golden hour by month + which side of the boat faces which landmarks |
+| **Is it worth doing on a cloudy/rainy day?** | % of days with rain per month + whether the boats are covered |
+| **How many landmarks do I actually pass?** | Landmark count by route, mapped to approximate minute-marks in the journey |
+
+---
+
+### The highest-priority ones for a data viz
+
+If you're building this page, these three have the most conversion impact — they're the questions where a generic text answer loses a reader but a chart closes them:
+
+1. **Crowd curve by time of day** — same as the Accademia David chart; shows exactly when to go
+2. **Booking lead time by month** — when does stock actually run thin?
+3. **Sunset time vs departure slot by month** — the #1 thing people get wrong when booking a "sunset cruise" in autumn
+
+Want me to draft the data viz specs or write the PYV section copy for any of these?
