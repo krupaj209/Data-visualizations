@@ -53,6 +53,36 @@ const BUCKET_LABELS: Record<string, string> = {
   ops_notes: "Operational notes",
 };
 
+// Mirror of EVIDENCE_TYPE_LABELS in artifacts/api-server/src/lib/ce-intelligence.ts —
+// kept inline (not exported across packages) because the API contract surfaces
+// `evidence_type` as a free-form string. Update both sides if you add a type.
+const EVIDENCE_TYPE_LABELS: Record<string, string> = {
+  authoritative_fact: "Authoritative fact",
+  visitor_tip: "Visitor tip",
+  wait_anecdote: "Wait anecdote",
+  sentiment_theme: "Sentiment theme",
+  trip_report: "Trip report",
+  product_offering: "Product offering",
+  price_point: "Price point",
+  bundle_pattern: "Bundle pattern",
+  operational_change: "Operational change",
+  other: "Other",
+};
+
+function evidenceTypeSummary(facts: CeIntelligenceFact[]): string {
+  const counts = new Map<string, number>();
+  for (const f of facts) {
+    if (!f.evidence_type) continue;
+    counts.set(f.evidence_type, (counts.get(f.evidence_type) ?? 0) + 1);
+  }
+  if (counts.size === 0) return "";
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([type, n]) => `${EVIDENCE_TYPE_LABELS[type] ?? type} · ${n}`)
+    .join(" • ");
+}
+
 interface VisualizationPlan {
   summary: string;
   generatedAt: string;
@@ -1047,6 +1077,26 @@ export function IntelPanel({
                           : "never tried"}
                         {s.error ? ` · error` : ""}
                       </div>
+                      {(() => {
+                        const summary = evidenceTypeSummary(sourceFacts);
+                        if (!summary) return null;
+                        return (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: BRAND.okayInk,
+                              marginTop: 2,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={summary}
+                          >
+                            {summary}
+                          </div>
+                        );
+                      })()}
                     </button>
                     <ChevronDown
                       size={14}
@@ -1298,6 +1348,19 @@ function FactListItem({
         >
           {SOURCE_LABELS[fact.source] ?? fact.source}
         </span>
+        {fact.evidence_type && (
+          <span
+            title={`Evidence type: ${EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}`}
+            style={{
+              background: BRAND.bgMint,
+              color: BRAND.okayInk,
+              padding: "1px 6px",
+              borderRadius: 999,
+            }}
+          >
+            {EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}
+          </span>
+        )}
         <span>conf {fact.confidence}</span>
         {fact.source_url && (
           <a

@@ -90,12 +90,6 @@ paths:
           required: true
           schema:
             type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: CE with charts
@@ -139,6 +133,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Regenerated
@@ -400,12 +400,6 @@ paths:
           required: true
           schema:
             type: integer
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Chart
@@ -471,6 +465,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Regenerated
@@ -1352,6 +1352,14 @@ components:
           type: integer
         fetched_at:
           type: string
+        evidence_type:
+          type: string
+          description: |
+            Optional evidence-type tag set by the source-specific adapter.
+            One of authoritative_fact, visitor_tip, wait_anecdote,
+            sentiment_theme, trip_report, product_offering, price_point,
+            bundle_pattern, operational_change, other. Older rows pre-date
+            this field and may omit it.
       required:
         - id
         - bucket

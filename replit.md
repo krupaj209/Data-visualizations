@@ -12,6 +12,17 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/api-server` (api) — Express API. POSTs to Gemini for chart generation, persists CEs + charts in Postgres, serves via OpenAPI/Orval-generated hooks.
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
 
+### Source-tailored CE Intelligence adapters (Task #61)
+
+Each adapter in `artifacts/api-server/src/lib/ce-intelligence.ts` is now **specialty-driven** rather than running the same generic prompt:
+
+- **Per-source `SOURCE_CONFIGS`** — each of `official_site`, `tripadvisor`, `getyourguide`, `viator`, `reddit` declares (a) 2-4 targeted **sub-queries** to broaden coverage of that source, (b) a `validEvidenceTypes` whitelist, and (c) an `extractionBrief` with explicit "look for / do NOT extract / good vs. bad fact" guidance so each source stays in its lane (e.g. official_site = ground truth only, TripAdvisor = visitor tips/sentiment/wait anecdotes, Reddit = trip reports + operational changes the operator hasn't acknowledged, GYG/Viator = product offerings/price points/bundle patterns). `headout` remains a stub.
+- **Parallel sub-queries with isolation** — `runSourceAdapter` runs all sub-queries via `Promise.allSettled`. Per-sub-query failures are logged and ignored; only when **every** sub-query fails does the adapter throw so the orchestrator marks the whole source as "error". One bad query never empties a source.
+- **Dedupe** — facts merged across sub-queries are deduped on a normalized key (lowercase / strip non-alphanumerics / first 80 chars), keeping the highest-confidence variant.
+- **`evidence_type` field** — optional enum on `IntelFact` (`authoritative_fact`, `visitor_tip`, `wait_anecdote`, `sentiment_theme`, `trip_report`, `product_offering`, `price_point`, `bundle_pattern`, `operational_change`, `other`). Set per fact by the source-specific prompt and validated against the source's allowed-types whitelist — facts tagged with a type that belongs to a different source's specialty are dropped rather than mis-stored. Old rows pre-date the field and continue to load (it's optional in the OpenAPI spec).
+- **`sliceIntelForArchetype` evidence-type bias** — `ARCHETYPE_EVIDENCE_AFFINITY` maps each chart archetype to its preferred evidence types (e.g. `ticket_ladder` → `[price_point, product_offering]`, `weekly_pattern` → `[visitor_tip, wait_anecdote, trip_report]`, `daily_programme` → `[authoritative_fact]`). Within bucket-matched facts, an evidence-type match adds a +200 boost over confidence so a perfectly-matched fact at conf 60 outranks an unmatched fact at conf 99. Untagged legacy facts get no boost and fall back to confidence-only sort — backward compatible.
+- **UI surfacing** (`IntelPanel.tsx`) — each fact row shows a mint **evidence-type chip** next to its source badge; each source row in the Sources strip shows a per-source **summary line** (`"Visitor tip · 4 • Wait anecdote · 2"`) so writers can see at a glance which kinds of evidence each source actually delivered. `EVIDENCE_TYPE_LABELS` is mirrored client-side (the API contract surfaces the field as a free-form string, so add new entries to both sides if you extend the enum).
+
 ### Research-grounded chart pipeline (Task #26)
 
 Backend pipeline that adapts a subcategory question bank to a specific CE using its Deep Research Doc (DRD), then generates a draft chart deck with provenance.

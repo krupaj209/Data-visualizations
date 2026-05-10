@@ -459,7 +459,7 @@ export const regenerateCe = async (
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(regenerateFeedbackInput ?? {}),
+    body: JSON.stringify(regenerateFeedbackInput),
   });
 };
 
@@ -470,14 +470,14 @@ export const getRegenerateCeMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data?: RegenerateFeedbackInput },
+    { slug: string; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data?: RegenerateFeedbackInput },
+  { slug: string; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   const mutationKey = ["regenerateCe"];
@@ -491,7 +491,7 @@ export const getRegenerateCeMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof regenerateCe>>,
-    { slug: string; data?: RegenerateFeedbackInput }
+    { slug: string; data: BodyType<RegenerateFeedbackInput> }
   > = (props) => {
     const { slug, data } = props ?? {};
 
@@ -504,7 +504,7 @@ export const getRegenerateCeMutationOptions = <
 export type RegenerateCeMutationResult = NonNullable<
   Awaited<ReturnType<typeof regenerateCe>>
 >;
-
+export type RegenerateCeMutationBody = BodyType<RegenerateFeedbackInput>;
 export type RegenerateCeMutationError = ErrorType<ApiError>;
 
 /**
@@ -517,14 +517,14 @@ export const useRegenerateCe = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data?: RegenerateFeedbackInput },
+    { slug: string; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data?: RegenerateFeedbackInput },
+  { slug: string; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   return useMutation(getRegenerateCeMutationOptions(options));
@@ -1410,7 +1410,7 @@ export const regenerateChart = async (
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(regenerateFeedbackInput ?? {}),
+    body: JSON.stringify(regenerateFeedbackInput),
   });
 };
 
@@ -1421,14 +1421,14 @@ export const getRegenerateChartMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateChart>>,
     TError,
-    { id: number; data?: RegenerateFeedbackInput },
+    { id: number; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof regenerateChart>>,
   TError,
-  { id: number; data?: RegenerateFeedbackInput },
+  { id: number; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   const mutationKey = ["regenerateChart"];
@@ -1442,7 +1442,7 @@ export const getRegenerateChartMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof regenerateChart>>,
-    { id: number; data?: RegenerateFeedbackInput }
+    { id: number; data: BodyType<RegenerateFeedbackInput> }
   > = (props) => {
     const { id, data } = props ?? {};
 
@@ -1455,7 +1455,7 @@ export const getRegenerateChartMutationOptions = <
 export type RegenerateChartMutationResult = NonNullable<
   Awaited<ReturnType<typeof regenerateChart>>
 >;
-
+export type RegenerateChartMutationBody = BodyType<RegenerateFeedbackInput>;
 export type RegenerateChartMutationError = ErrorType<ApiError>;
 
 /**
@@ -1468,14 +1468,14 @@ export const useRegenerateChart = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateChart>>,
     TError,
-    { id: number; data?: RegenerateFeedbackInput },
+    { id: number; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof regenerateChart>>,
   TError,
-  { id: number; data?: RegenerateFeedbackInput },
+  { id: number; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   return useMutation(getRegenerateChartMutationOptions(options));

@@ -41,6 +41,7 @@ export * from "./listAllFeedbackParams";
 export * from "./publishAllDraftsInput";
 export * from "./publishAllDraftsResult";
 export * from "./questionTroubleScore";
+export * from "./regenerateFeedbackInput";
 export * from "./researchGenerateInput";
 export * from "./researchGenerateResult";
 export * from "./researchGenerateResultDroppedQuestionsItem";

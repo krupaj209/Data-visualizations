@@ -113,8 +113,10 @@ export const RegenerateCeParams = zod.object({
   slug: zod.coerce.string(),
 });
 
-export const RegenerateFeedbackInput = zod.object({
-  feedback: zod.string().max(4000).optional(),
+export const regenerateCeBodyFeedbackMax = 4000;
+
+export const RegenerateCeBody = zod.object({
+  feedback: zod.string().max(regenerateCeBodyFeedbackMax).optional(),
 });
 
 export const RegenerateCeResponse = zod.object({
@@ -262,6 +264,12 @@ export const GetCeIntelligenceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -304,6 +312,12 @@ export const RefreshCeIntelligenceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -340,6 +354,12 @@ export const DeleteCeIntelligenceSourceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -461,6 +481,12 @@ in place. Requires a DRD uploaded for the CE. Locked CEs return 409.
  */
 export const RegenerateChartParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const regenerateChartBodyFeedbackMax = 4000;
+
+export const RegenerateChartBody = zod.object({
+  feedback: zod.string().max(regenerateChartBodyFeedbackMax).optional(),
 });
 
 export const RegenerateChartResponse = zod.object({

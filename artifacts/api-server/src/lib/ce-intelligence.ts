@@ -40,6 +40,44 @@ export const INTEL_BUCKET_LABELS: Record<IntelBucketId, string> = {
   ops_notes: "Operational notes",
 };
 
+/**
+ * Evidence-type vocabulary. Each source adapter is responsible for the
+ * evidence kinds it's actually good at — official site for ground truth,
+ * TripAdvisor for tips/sentiment, Reddit for trip reports, OTAs for
+ * product structure & pricing. The optional `evidence_type` field on
+ * IntelFact lets the chart pipeline bias toward the right kind of
+ * evidence per archetype, and lets the UI surface what each source
+ * uniquely contributed.
+ *
+ * Field is OPTIONAL — old rows without it keep working unchanged.
+ */
+export const EVIDENCE_TYPE_IDS = [
+  "authoritative_fact",
+  "visitor_tip",
+  "wait_anecdote",
+  "sentiment_theme",
+  "trip_report",
+  "product_offering",
+  "price_point",
+  "bundle_pattern",
+  "operational_change",
+  "other",
+] as const;
+export type EvidenceTypeId = (typeof EVIDENCE_TYPE_IDS)[number];
+
+export const EVIDENCE_TYPE_LABELS: Record<EvidenceTypeId, string> = {
+  authoritative_fact: "Authoritative fact",
+  visitor_tip: "Visitor tip",
+  wait_anecdote: "Wait anecdote",
+  sentiment_theme: "Sentiment theme",
+  trip_report: "Trip report",
+  product_offering: "Product offering",
+  price_point: "Price point",
+  bundle_pattern: "Bundle pattern",
+  operational_change: "Operational change",
+  other: "Other",
+};
+
 export interface IntelFact {
   /** Stable id per fact (source + index). Used for citation refs. */
   id: string;
@@ -57,6 +95,13 @@ export interface IntelFact {
   confidence: number;
   /** ISO timestamp when this fact was fetched. */
   fetched_at: string;
+  /**
+   * What KIND of evidence this fact represents. Optional — older rows
+   * predate this field and still load cleanly. New rows are tagged by
+   * the source-specific extraction prompt and validated against the
+   * source's allowed evidence-type set.
+   */
+  evidence_type?: EvidenceTypeId;
 }
 
 export interface IntelSourceStatus {
@@ -155,101 +200,6 @@ const BUCKET_HINT = INTEL_BUCKET_IDS.map(
   (b) => `- ${b}: ${INTEL_BUCKET_LABELS[b]}`,
 ).join("\n");
 
-/**
- * Run a single Gemini grounded search restricted to the given source query
- * and ask it to extract structured facts into the bucketed shape.
- */
-async function runGroundedAdapter(
-  source: IntelSourceId,
-  ctx: AdapterContext,
-  searchQuery: string,
-  sourceGuidance: string,
-): Promise<AdapterResult> {
-  const prompt = `You are building a research profile for a Headout listing-page tool.
-
-CE: ${ctx.ce.name} (${ctx.ce.city}, ${ctx.ce.country})
-
-Source to inspect: ${sourceGuidance}
-
-Use Google Search with this query to gather information from that source:
-"${searchQuery}"
-
-Extract concrete, useful facts a ticketing CMS team would want when designing visualizations. Group every fact under one of these buckets:
-${BUCKET_HINT}
-
-Output STRICT JSON only (no markdown), shape:
-{
-  "facts": [
-    {
-      "bucket": "<one of the bucket ids above>",
-      "value": "<one short sentence with the actual fact, ≤180 chars>",
-      "quote": "<optional verbatim phrase from the source, ≤240 chars>",
-      "source_url": "<canonical page url you read>",
-      "confidence": <0-100 int — your confidence based on how clearly the source stated this>
-    },
-    ... up to 12 items
-  ]
-}
-
-Rules:
-- Do NOT invent facts. If the source has nothing useful, return { "facts": [] }.
-- For OTA/review/forum sources, useful facts may come from listing pages, product pages, review snippets, Q&A pages, or category pages on that source.
-- Stay on the named source. Do not fill TripAdvisor/GetYourGuide/Viator/Reddit rows with official-site facts.
-- If Google Search only surfaces official/operator pages while this adapter is for TripAdvisor/GetYourGuide/Viator/Reddit, return an empty facts array instead of copying those official facts.
-- Each "value" should be standalone and readable — no pronouns referring to context.
-- Prefer numbers, dates, opening hours, prices, named zones, route/stop details, crowd descriptions, review themes, queue minutes, tour durations, inclusions, and cancellation or access notes.
-- If the source contradicts common knowledge, prefer what the source says — confidence reflects clarity, not plausibility.
-- Today is ${new Date().toISOString().slice(0, 10)}.`;
-
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      temperature: 0.3,
-      maxOutputTokens: 3072,
-      tools: [{ googleSearch: {} }],
-    },
-  });
-
-  const raw = response.text ?? "";
-  const groundedUrls = pullGroundingUrls(response);
-  const parsed = safeJson<{
-    facts?: {
-      bucket?: string;
-      value?: string;
-      quote?: string;
-      source_url?: string;
-      confidence?: number;
-    }[];
-  }>(raw);
-  const rawFacts = parsed?.facts ?? [];
-
-  const out: AdapterResult["facts"] = [];
-  const allowedDomains = SOURCE_DOMAIN_HINTS[source] ?? [];
-  for (const f of rawFacts) {
-    const bucket = f.bucket as IntelBucketId | undefined;
-    const value = (f.value ?? "").trim();
-    if (!bucket || !INTEL_BUCKET_IDS.includes(bucket)) continue;
-    if (!value) continue;
-    const sourceUrl = f.source_url
-      ? String(f.source_url)
-      : groundedUrls.find((url) => sourceUrlMatches(url, allowedDomains)) ??
-        groundedUrls[0];
-    if (allowedDomains.length > 0 && !sourceUrlMatches(sourceUrl, allowedDomains)) {
-      continue;
-    }
-    out.push({
-      bucket,
-      value: value.slice(0, 220),
-      ...(f.quote ? { quote: String(f.quote).slice(0, 280) } : {}),
-      ...(sourceUrl ? { source_url: sourceUrl } : {}),
-      confidence: clampInt(f.confidence ?? 60, 0, 100),
-    });
-  }
-
-  return { source, facts: out };
-}
-
 function sourceUrlMatches(url: string | undefined, hints: string[]): boolean {
   if (!url) return hints.length === 0;
   if (hints.length === 0) return true;
@@ -263,45 +213,442 @@ function clampInt(v: unknown, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
+/* -------------------------------------------------------------------------- */
+/* Source-specific adapters                                                    */
+/* -------------------------------------------------------------------------- */
+
+interface SubQuery {
+  /** Short label used in logs to identify which sub-query produced what. */
+  label: string;
+  query: string;
+}
+
+interface SourceConfig {
+  source: IntelSourceId;
+  /**
+   * Plain-language description of which page types on this source the
+   * adapter is expected to read. Surfaced in the extraction prompt.
+   */
+  sourceGuidance: string;
+  /** Build 2-4 targeted sub-queries to broaden coverage of this source. */
+  subQueries: (ctx: AdapterContext) => SubQuery[];
+  /**
+   * Evidence types this source is allowed to produce. The model is told
+   * to map each fact to ONE of these, and any fact tagged with anything
+   * else is dropped (or coerced to "other" with low confidence).
+   */
+  validEvidenceTypes: EvidenceTypeId[];
+  /**
+   * Source-specific extraction brief explaining what to look for, what
+   * to skip (because another source covers it better), and a few
+   * concrete good/bad examples. Inlined into the per-source prompt.
+   */
+  extractionBrief: string;
+}
+
+const SOURCE_CONFIGS: Record<IntelSourceId, SourceConfig | null> = {
+  official_site: {
+    source: "official_site",
+    sourceGuidance:
+      "the operator's own website (visit-info, hours, tickets, accessibility, FAQ, news / closure pages) — this is the AUTHORITATIVE source for ground truth",
+    subQueries: (ctx) => [
+      {
+        label: "hours_tickets",
+        query: `${ctx.ce.name} ${ctx.ce.city} official site opening hours tickets`,
+      },
+      {
+        label: "accessibility_rules",
+        query: `${ctx.ce.name} ${ctx.ce.city} official accessibility visitor rules`,
+      },
+      {
+        label: "closures_news",
+        query: `${ctx.ce.name} ${ctx.ce.city} official closure schedule announcements`,
+      },
+    ],
+    validEvidenceTypes: [
+      "authoritative_fact",
+      "operational_change",
+      "price_point",
+      "product_offering",
+    ],
+    extractionBrief: `Look for:
+- Authoritative ground truth: opening / closing times, last-admission times, weekly closures, official ticket categories and prices, accessibility provisions, dress code or bag rules, official visitor programme (mass times, guided-tour slots).
+- Operational changes the OPERATOR has announced: temporary closures, scaffolding/restoration windows, refurbishments, official policy changes.
+
+Do NOT extract:
+- Visitor opinions, "best time to visit" sentiment, ranking position — that's TripAdvisor's job.
+- Trip reports, recent first-hand experiences, traveler hacks — that's Reddit's job.
+- Third-party tour formats, OTA bundles, comparative pricing — that's GetYourGuide / Viator's job.
+
+Good fact: { value: "Last entry 18:30; building closes 19:00", evidence_type: "authoritative_fact" }
+Bad fact: { value: "Most visitors recommend going in the early morning to avoid crowds" } — that's a visitor tip, not authoritative ground truth, skip it.`,
+  },
+  tripadvisor: {
+    source: "tripadvisor",
+    sourceGuidance:
+      "TripAdvisor only — attraction review pages, the destination forum, Q&A, traveler tips, and the ranking/category pages",
+    subQueries: (ctx) => [
+      {
+        label: "reviews",
+        query: `site:tripadvisor.com ${ctx.ce.name} ${ctx.ce.city} reviews tips`,
+      },
+      {
+        label: "forum",
+        query: `site:tripadvisor.com forum ${ctx.ce.name} ${ctx.ce.city} best time avoid crowds`,
+      },
+      {
+        label: "qa",
+        query: `site:tripadvisor.com ${ctx.ce.name} ${ctx.ce.city} questions answers wait time`,
+      },
+    ],
+    validEvidenceTypes: [
+      "visitor_tip",
+      "wait_anecdote",
+      "sentiment_theme",
+      "trip_report",
+    ],
+    extractionBrief: `Look for:
+- Recurring visitor TIPS in reviews and forum threads ("go right at opening", "buy the combo, not the single", "skip the audio guide").
+- WAIT-TIME anecdotes with concrete numbers ("we waited 90 minutes at noon", "no line at 8:30 am").
+- SENTIMENT THEMES that recur across many reviews (loved/hated patterns, common complaints, ranking position).
+- Forum trip reports describing a specific visit.
+
+Do NOT extract:
+- Official opening hours, official ticket prices, ground-truth facts — those belong to the official site.
+- OTA-style "this product is best for groups of X" framing — that's GetYourGuide / Viator.
+- Generic city tips not tied to this CE.
+
+Good fact: { value: "Reviewers consistently flag the 11am-2pm wait as 60-90 min vs ~15 min before 9:30", evidence_type: "wait_anecdote" }
+Good fact: { value: "Top 3 attractions in ${ "${city}" } per current TripAdvisor ranking", evidence_type: "sentiment_theme" }
+Bad fact: { value: "Open daily 8:00-18:00" } — that's an authoritative_fact owned by the official site, skip it.`,
+  },
+  reddit: {
+    source: "reddit",
+    sourceGuidance:
+      "Reddit only — comment threads on the relevant city subreddit, r/travel, r/solotravel, and any topic-specific subreddit",
+    subQueries: (ctx) => {
+      const cityHandle = ctx.ce.city.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return [
+        {
+          label: "city_sub",
+          query: `site:reddit.com r/${cityHandle} ${ctx.ce.name} tips tickets`,
+        },
+        {
+          label: "r_travel",
+          query: `site:reddit.com r/travel ${ctx.ce.name} ${ctx.ce.city} trip report`,
+        },
+        {
+          label: "recent_changes",
+          query: `site:reddit.com ${ctx.ce.name} ${ctx.ce.city} "just went" OR "last week" OR "now closed"`,
+        },
+      ];
+    },
+    validEvidenceTypes: [
+      "trip_report",
+      "visitor_tip",
+      "operational_change",
+      "wait_anecdote",
+    ],
+    extractionBrief: `Look for:
+- TRIP REPORTS: recent first-hand experiences ("we just visited last week, here's what surprised us").
+- Lesser-known TIPS / hacks redditors share that wouldn't show up on operator pages (alternate entrances, less-known skip-the-line tactics, specific scams to avoid).
+- OPERATIONAL CHANGES the official site hasn't yet acknowledged ("scaffolding came down last month", "the side entrance is closed for restoration").
+- Concrete WAIT anecdotes with dates ("waited 2 hours on Sat at 11am, July 2024").
+
+Do NOT extract:
+- Generic SEO-listicle "best time to visit" advice not tied to a specific redditor's experience.
+- Official ticket prices or hours — those belong to the official site.
+- Standard product offerings — those belong to OTAs.
+- Pure-sentiment one-liners ("loved it!"); prefer concrete reports with detail.
+
+Good fact: { value: "Recent r/${ "${city}" } posts say the secondary entrance now opens at 8 am instead of 9 am", evidence_type: "operational_change" }
+Bad fact: { value: "It's a beautiful place" } — too generic, skip.`,
+  },
+  getyourguide: {
+    source: "getyourguide",
+    sourceGuidance:
+      "GetYourGuide only — product pages, category/listing pages, top-selling product details (durations, inclusions, languages, cancellation, price ladders)",
+    subQueries: (ctx) => [
+      {
+        label: "listing",
+        query: `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} tours tickets`,
+      },
+      {
+        label: "top_product",
+        query: `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} skip the line guided tour duration`,
+      },
+      {
+        label: "combos",
+        query: `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} combo combined ticket`,
+      },
+    ],
+    validEvidenceTypes: [
+      "product_offering",
+      "price_point",
+      "bundle_pattern",
+      "operational_change",
+    ],
+    extractionBrief: `Look for:
+- PRODUCT OFFERINGS: distinct tour formats (skip-the-line, guided, audio-guide, semi-private, with-host), typical durations, language options, cancellation terms, what's included/excluded.
+- PRICE POINTS for the headline products (e.g. "skip-the-line ticket from €27", "small-group guided 2h from €69").
+- BUNDLE PATTERNS: which combos / co-bookings GetYourGuide sells (e.g. "Vatican + Sistine Chapel + St. Peter's combo"), and which products are flagged "best-seller".
+
+Do NOT extract:
+- Reviews or visitor sentiment — that's TripAdvisor's job.
+- Official operator hours/policies — those belong to the official site.
+- Generic city facts.
+
+Good fact: { value: "GetYourGuide best-seller is a 2.5-hour skip-the-line guided tour from €54", evidence_type: "product_offering" }
+Good fact: { value: "Common combo: ${ "${ce_name}" } + nearby museum + audio guide, €79", evidence_type: "bundle_pattern" }`,
+  },
+  viator: {
+    source: "viator",
+    sourceGuidance:
+      "Viator only — product pages, listing pages, top-rated product details (durations, inclusions, languages, cancellation, price ladders)",
+    subQueries: (ctx) => [
+      {
+        label: "listing",
+        query: `site:viator.com ${ctx.ce.name} ${ctx.ce.city} tours tickets`,
+      },
+      {
+        label: "top_product",
+        query: `site:viator.com ${ctx.ce.name} ${ctx.ce.city} guided tour duration price`,
+      },
+      {
+        label: "combos",
+        query: `site:viator.com ${ctx.ce.name} ${ctx.ce.city} combo day trip`,
+      },
+    ],
+    validEvidenceTypes: [
+      "product_offering",
+      "price_point",
+      "bundle_pattern",
+      "operational_change",
+    ],
+    extractionBrief: `Look for:
+- PRODUCT OFFERINGS: distinct tour formats Viator sells (private, small-group, full-day, multi-day), durations, languages, inclusions, cancellation policy.
+- PRICE POINTS for headline products in local currency or USD.
+- BUNDLE PATTERNS: combo tickets, day-trip pairings, multi-attraction passes.
+
+Do NOT extract:
+- Reviews or sentiment themes — that's TripAdvisor.
+- Official operator hours/policies — that's the official site.
+
+Good fact: { value: "Viator top-rated full-day tour pairs ${ "${ce_name}" } with nearby UNESCO site, $129", evidence_type: "bundle_pattern" }`,
+  },
+  // Headout adapter is intentionally a stub — see headoutAdapter below.
+  headout: null,
+};
+
+const SUBQUERY_MAX_TOKENS = 1800;
+const SUBQUERY_FACT_CAP = 8;
+
+/**
+ * Run a single source-specific sub-query and parse facts. Per-sub-query
+ * failures throw; the caller (`runSourceAdapter`) catches and isolates
+ * them so one bad query never fails the whole adapter.
+ */
+async function runSubQuery(
+  config: SourceConfig,
+  ctx: AdapterContext,
+  subQuery: SubQuery,
+): Promise<AdapterResult["facts"]> {
+  const validTypesList = config.validEvidenceTypes
+    .map((t) => `"${t}"`)
+    .join(", ");
+
+  const prompt = `You are populating a research profile for a Headout listing-page tool.
+
+CE: ${ctx.ce.name} (${ctx.ce.city}, ${ctx.ce.country})
+Source under inspection: ${config.sourceGuidance}
+Sub-query focus: ${subQuery.label} — "${subQuery.query}"
+
+This source has a SPECIALTY. Stay in your lane:
+
+${config.extractionBrief}
+
+Use Google Search with the sub-query above to gather information. Map each fact to ONE of these BUCKETS:
+${BUCKET_HINT}
+
+And tag each fact with ONE of these EVIDENCE TYPES (this source is only allowed to produce these kinds): ${validTypesList}.
+
+Output STRICT JSON only (no markdown), shape:
+{
+  "facts": [
+    {
+      "bucket": "<bucket id>",
+      "evidence_type": "<one of the allowed evidence types above>",
+      "value": "<one short standalone sentence with the actual fact, ≤180 chars>",
+      "quote": "<optional verbatim phrase from the source, ≤240 chars>",
+      "source_url": "<canonical page url you read>",
+      "confidence": <0-100 int — how clearly the source stated this>
+    },
+    ... up to ${SUBQUERY_FACT_CAP} items
+  ]
+}
+
+Rules:
+- Do NOT invent facts. If the sub-query yields nothing useful, return { "facts": [] }.
+- Stay on the named source. Do not fill TripAdvisor/GetYourGuide/Viator/Reddit rows with official-site facts.
+- If Google Search only surfaces pages from OTHER sources for this sub-query, return an empty facts array rather than copy them.
+- Each "value" should be standalone and readable — no pronouns referring to the surrounding text.
+- Honour the "Do NOT extract" guidance above — facts that belong to another source must be skipped.
+- Today is ${new Date().toISOString().slice(0, 10)}.`;
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: {
+      temperature: 0.3,
+      maxOutputTokens: SUBQUERY_MAX_TOKENS,
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  const raw = response.text ?? "";
+  const groundedUrls = pullGroundingUrls(response);
+  const parsed = safeJson<{
+    facts?: {
+      bucket?: string;
+      evidence_type?: string;
+      value?: string;
+      quote?: string;
+      source_url?: string;
+      confidence?: number;
+    }[];
+  }>(raw);
+  const rawFacts = parsed?.facts ?? [];
+
+  const out: AdapterResult["facts"] = [];
+  const allowedDomains = SOURCE_DOMAIN_HINTS[config.source] ?? [];
+  const allowedTypes = new Set<EvidenceTypeId>(config.validEvidenceTypes);
+
+  for (const f of rawFacts) {
+    const bucket = f.bucket as IntelBucketId | undefined;
+    const value = (f.value ?? "").trim();
+    if (!bucket || !INTEL_BUCKET_IDS.includes(bucket)) continue;
+    if (!value) continue;
+
+    let evidenceType: EvidenceTypeId | undefined;
+    const rawType = f.evidence_type as EvidenceTypeId | undefined;
+    if (rawType && allowedTypes.has(rawType)) {
+      evidenceType = rawType;
+    } else if (rawType === "other") {
+      evidenceType = "other";
+    } else if (rawType) {
+      // Type belongs to a different source's specialty — skip the fact
+      // rather than store mis-tagged evidence. Keeps adapters honest.
+      continue;
+    }
+
+    const sourceUrl = f.source_url
+      ? String(f.source_url)
+      : groundedUrls.find((url) => sourceUrlMatches(url, allowedDomains)) ??
+        groundedUrls[0];
+    if (
+      allowedDomains.length > 0 &&
+      !sourceUrlMatches(sourceUrl, allowedDomains)
+    ) {
+      continue;
+    }
+
+    out.push({
+      bucket,
+      value: value.slice(0, 220),
+      ...(f.quote ? { quote: String(f.quote).slice(0, 280) } : {}),
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
+      confidence: clampInt(f.confidence ?? 60, 0, 100),
+      ...(evidenceType ? { evidence_type: evidenceType } : {}),
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Normalize a fact value for dedup: lowercase, collapse whitespace,
+ * strip non-alphanumerics, take first 80 chars. Catches near-identical
+ * facts that surface from multiple sub-queries on the same source.
+ */
+function dedupKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function dedupeFacts(
+  facts: AdapterResult["facts"],
+): AdapterResult["facts"] {
+  const seen = new Map<string, AdapterResult["facts"][number]>();
+  for (const f of facts) {
+    const key = dedupKey(f.value);
+    if (!key) continue;
+    const prev = seen.get(key);
+    if (!prev || f.confidence > prev.confidence) {
+      seen.set(key, f);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+/**
+ * Run all sub-queries for a source in parallel, isolate per-sub-query
+ * failures, merge & dedupe. A single sub-query failure must not fail
+ * the whole adapter.
+ */
+async function runSourceAdapter(
+  config: SourceConfig,
+  ctx: AdapterContext,
+): Promise<AdapterResult> {
+  const subQueries = config.subQueries(ctx);
+  const results = await Promise.allSettled(
+    subQueries.map((q) => runSubQuery(config, ctx, q)),
+  );
+
+  const merged: AdapterResult["facts"] = [];
+  let firstError: unknown = null;
+  let okCount = 0;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    if (r.status === "fulfilled") {
+      okCount++;
+      merged.push(...r.value);
+    } else {
+      firstError ??= r.reason;
+      logger.warn(
+        {
+          source: config.source,
+          sub_query: subQueries[i]?.label,
+          err: r.reason,
+          slug: ctx.ce.slug,
+        },
+        "Intel sub-query failed",
+      );
+    }
+  }
+
+  // If every sub-query failed, propagate so the orchestrator marks the
+  // whole source as "error" rather than silently empty.
+  if (okCount === 0 && firstError) {
+    throw firstError;
+  }
+
+  return { source: config.source, facts: dedupeFacts(merged) };
+}
+
 const officialSiteAdapter: IntelAdapter = (ctx) =>
-  runGroundedAdapter(
-    "official_site",
-    ctx,
-    `${ctx.ce.name} ${ctx.ce.city} official site opening hours tickets visitor information`,
-    "the attraction/operator official website or official ticketing page",
-  );
-
+  runSourceAdapter(SOURCE_CONFIGS.official_site!, ctx);
 const tripAdvisorAdapter: IntelAdapter = (ctx) =>
-  runGroundedAdapter(
-    "tripadvisor",
-    ctx,
-    `site:tripadvisor.com ${ctx.ce.name} ${ctx.ce.city} reviews tickets wait time visitor tips`,
-    "TripAdvisor pages only, including attraction reviews, forum posts, Q&A, and traveler tips",
-  );
-
+  runSourceAdapter(SOURCE_CONFIGS.tripadvisor!, ctx);
 const getYourGuideAdapter: IntelAdapter = (ctx) =>
-  runGroundedAdapter(
-    "getyourguide",
-    ctx,
-    `site:getyourguide.com ${ctx.ce.name} ${ctx.ce.city} tickets tours prices duration inclusions`,
-    "GetYourGuide product or category pages only",
-  );
-
+  runSourceAdapter(SOURCE_CONFIGS.getyourguide!, ctx);
 const viatorAdapter: IntelAdapter = (ctx) =>
-  runGroundedAdapter(
-    "viator",
-    ctx,
-    `site:viator.com ${ctx.ce.name} ${ctx.ce.city} tours tickets prices duration inclusions`,
-    "Viator product or category pages only",
-  );
-
+  runSourceAdapter(SOURCE_CONFIGS.viator!, ctx);
 const redditAdapter: IntelAdapter = (ctx) =>
-  runGroundedAdapter(
-    "reddit",
-    ctx,
-    `site:reddit.com ${ctx.ce.name} ${ctx.ce.city} best time visit crowds tickets tips`,
-    "Reddit posts and comment threads only",
-  );
+  runSourceAdapter(SOURCE_CONFIGS.reddit!, ctx);
 
 /**
  * Headout adapter — stub for now.
@@ -380,6 +727,7 @@ export async function refreshCeIntelligence(
         ...(f.source_url ? { source_url: f.source_url } : {}),
         confidence: f.confidence,
         fetched_at: now,
+        ...(f.evidence_type ? { evidence_type: f.evidence_type } : {}),
       }));
       facts.push(...newFacts);
       sources[id] = {
@@ -609,6 +957,51 @@ export interface IntelSlice {
   facts: IntelFact[];
 }
 
+/**
+ * Per-archetype evidence-type affinity. Facts whose `evidence_type` is
+ * in this set are ranked above bucket-only matches when slicing.
+ * Backward-compatible: facts without `evidence_type` (older rows) fall
+ * through to the confidence-only sort, so existing decks keep working.
+ */
+const ARCHETYPE_EVIDENCE_AFFINITY: Record<string, EvidenceTypeId[]> = {
+  // Wait/queue charts: lean on first-hand wait anecdotes and tips.
+  compare_zones: ["wait_anecdote", "visitor_tip"],
+  queue_compare: ["wait_anecdote", "visitor_tip"],
+  zone_wait_heatmap: ["wait_anecdote", "visitor_tip"],
+  zone_wait_compare: ["wait_anecdote", "visitor_tip"],
+  ride_wait_curve: ["wait_anecdote", "visitor_tip"],
+  opening_hour_rank: ["wait_anecdote", "visitor_tip"],
+  entrance_lanes: ["wait_anecdote", "visitor_tip"],
+  // Crowd / pattern charts: visitor tips + wait anecdotes are richest.
+  weekly_pattern: ["visitor_tip", "wait_anecdote", "trip_report"],
+  hourly_heatmap: ["visitor_tip", "wait_anecdote", "trip_report"],
+  daily_pattern: ["visitor_tip", "wait_anecdote"],
+  zone_crowd_heatmap: ["visitor_tip", "trip_report"],
+  tribune_density: ["visitor_tip", "wait_anecdote"],
+  // Price / ticket charts: explicit price points + product offerings.
+  ticket_ladder: ["price_point", "product_offering"],
+  price_curve: ["price_point", "product_offering"],
+  savings_breakdown: ["price_point", "product_offering"],
+  // Operational / conditions / reliability: operational changes + trip reports.
+  conditions_calendar: ["operational_change", "trip_report"],
+  departure_reliability: ["operational_change", "authoritative_fact"],
+  month_calendar: ["operational_change", "trip_report"],
+  seasonal_curve: ["trip_report", "operational_change"],
+  // Co-bookings / bundles: bundle patterns from OTAs.
+  co_bookings: ["bundle_pattern", "product_offering"],
+  // Sentiment-flavored archetypes: sentiment themes + visitor tips.
+  donut_breakdown: ["sentiment_theme", "visitor_tip"],
+  // Programme / authoritative timing: official ground truth.
+  daily_programme: ["authoritative_fact"],
+  history_timeline: ["authoritative_fact"],
+  // Comparison / slot charts: product offerings + visitor tips.
+  slot_compare: ["product_offering", "visitor_tip", "wait_anecdote"],
+  // Routes & duration: product offerings + trip reports.
+  route_profile: ["product_offering", "trip_report"],
+  duration_profiles: ["trip_report", "visitor_tip"],
+  duration_stat: ["trip_report", "visitor_tip"],
+};
+
 export function sliceIntelForArchetype(
   view: CeIntelligenceView | null,
   archetype: string,
@@ -618,8 +1011,21 @@ export function sliceIntelForArchetype(
   const buckets = new Set<IntelBucketId>(
     ARCHETYPE_BUCKET_HINTS[archetype] ?? [],
   );
+  const affinity = new Set<EvidenceTypeId>(
+    ARCHETYPE_EVIDENCE_AFFINITY[archetype] ?? [],
+  );
   const matched = view.facts.filter((f) => buckets.has(f.bucket));
-  matched.sort((a, b) => b.confidence - a.confidence);
+  // Stable rank: evidence-type match → +200 boost over confidence so a
+  // perfectly-matched-evidence-type fact at conf 60 beats an unmatched
+  // fact at conf 99. Untagged facts (legacy rows) get no boost and
+  // sort by confidence as before — backward compatible.
+  matched.sort((a, b) => {
+    const aBoost =
+      a.evidence_type && affinity.has(a.evidence_type) ? 200 : 0;
+    const bBoost =
+      b.evidence_type && affinity.has(b.evidence_type) ? 200 : 0;
+    return b.confidence + bBoost - (a.confidence + aBoost);
+  });
   return { facts: matched.slice(0, cap) };
 }
 
