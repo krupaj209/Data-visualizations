@@ -503,6 +503,66 @@ interface QuestionSelection {
   regen_summary?: RegenSummary;
 }
 
+const CATEGORY_CE_SUBCATEGORIES = new Set([
+  "sightseeing_cruises",
+  "day_trips",
+  "hop_on_hop_off",
+  "combos",
+  "city_cards",
+  "multi_day_tours",
+]);
+
+const CATEGORY_CE_PREFERRED_ARCHETYPES: ChartArchetypeId[] = [
+  "route_profile",
+  "slot_compare",
+  "duration_stat",
+  "time_split",
+  "optimal_departure",
+  "compare_zones",
+  "stop_frequency",
+];
+
+const CATEGORY_CE_PRICE_ARCHETYPES = new Set<ChartArchetypeId>([
+  "ticket_ladder",
+  "price_curve",
+  "month_calendar",
+  "booking_window",
+  "seasonal_curve",
+]);
+
+function isCategoryLikeSubcategory(subcategoryId: string): boolean {
+  return CATEGORY_CE_SUBCATEGORIES.has(subcategoryId);
+}
+
+function normalizeQuestionKey(question: string): string {
+  return question
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function looksLikeDynamicPriceQuestion(question: string): boolean {
+  return /\b(price|fare|cost|cheap|cheapest|expensive|value|deal|ticket|tier|pass|book|advance|sold out|sell out)\b/i.test(
+    question,
+  );
+}
+
+function writerExplicitlyAskedForPrice(feedback: string): boolean {
+  return /\b(price|fare|cost|cheap|cheapest|expensive|value|ticket|tier|pass)\b/i.test(
+    feedback,
+  );
+}
+
+function categoryCeSelectionPriority(s: SelectedQuestion): number {
+  const preferredIdx = CATEGORY_CE_PREFERRED_ARCHETYPES.indexOf(s.archetype);
+  if (preferredIdx >= 0) return preferredIdx;
+  if (s.archetype === "history_timeline") return 7;
+  if (s.archetype === "stat_grid") return 8;
+  if (CATEGORY_CE_PRICE_ARCHETYPES.has(s.archetype)) return 30;
+  if (s.kind === "standard") return 40;
+  return 20;
+}
+
 async function selectQuestions(
   input: ResearchPipelineInput,
 ): Promise<QuestionSelection> {
@@ -525,6 +585,8 @@ async function selectQuestions(
   const constraints = input.regenConstraints ?? emptyRegenConstraints();
   const retireTopics = (input.retireTopics ?? []).map((s) => s.toLowerCase());
   const retireArchetypes = input.retireArchetypes ?? [];
+  const categoryLikeSubcategory = isCategoryLikeSubcategory(input.subcategoryId);
+  const feedbackAsksForPrice = writerExplicitlyAskedForPrice(regenerationFeedback);
 
   // Render the prior-deck snapshot with feedback signals folded in so the
   // LLM can see WHY a chart was weak, not just that it existed.
@@ -610,11 +672,11 @@ ${JSON.stringify(standards, null, 2)}
 
 DRD-CONFIDENCE RULE (apply to BOTH standards and signatures): If the DRD itself rates the relevant topic as Low confidence, calls it out as an "Honest Gap", flags it as anecdotal/operator-marketing, or simply doesn't carry the evidence behind it, SKIP that question. Record it in \`dropped\` with a reason that begins \`drd_low_confidence: \` followed by a one-line explanation citing the DRD section. This is preferred over generating a chart that the verifier will then have to challenge.
 
-CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS THE BULK OF YOUR PICKS toward comparison and route archetypes — \`slot_compare\`, \`compare_zones\`, \`landmark_coverage\`, \`itinerary_flow\`, \`time_split\`, \`month_calendar\`, \`price_curve\`. You MUST include at least one \`slot_compare\` whose slots are the named sub-products. HOWEVER, the deck must NOT lose all timing/booking coverage: keep EXACTLY ONE timing chart (\`daily_pattern\` / \`hourly_heatmap\` / \`weekly_pattern\` / \`booking_window\` / \`seasonal_curve\` / \`optimal_departure\`) when the DRD carries direct numeric or operator-grounded backing for it (named lead-time windows, named sell-out windows, named popular-times signals, named seasonal sunset slots). Skip the timing chart only when no such grounding exists. If \`is_category_ce\` is false (single-product CE), pick normally.
+CATEGORY-CE DETECTION: Read the DRD's product/sub-product map. If it describes 3+ named sub-products with materially different positioning (e.g. an Uber Boat commuter ride vs a narrated sightseeing cruise vs a Greenwich destination cruise vs a dinner cruise vs a HOHO river pass), set \`is_category_ce\` to true and populate \`sub_products\` with one entry per named offering ({name, positioning}). When \`is_category_ce\` is true, BIAS THE BULK OF YOUR PICKS toward route, landmark, duration, pier/stop, time-of-day, best-for, and itinerary charts — especially \`route_profile\`, \`slot_compare\`, \`duration_stat\`, \`time_split\`, \`optimal_departure\`, \`compare_zones\`, and \`stop_frequency\`. Avoid generic crowd/weather charts unless the DRD has direct, specific evidence. You MUST include at least one \`slot_compare\` whose slots are the named sub-products and one route/itinerary-style chart when the DRD has ordered stops, piers, routes, or landmarks. HOWEVER, the deck must NOT lose all timing/booking coverage: keep EXACTLY ONE timing chart (\`daily_pattern\` / \`hourly_heatmap\` / \`weekly_pattern\` / \`booking_window\` / \`seasonal_curve\` / \`optimal_departure\`) when the DRD carries direct numeric or operator-grounded backing for it (named lead-time windows, named sell-out windows, named popular-times signals, named seasonal sunset slots). Skip the timing chart only when no such grounding exists. If \`is_category_ce\` is false (single-product CE), pick normally.
 
-REGENERATION QUALITY RULE: If writer feedback says the deck is generic, too similar, poor, or asks for an Accademia-level result, do NOT repeat the existing deck. Prefer CE-specific questions anchored in named routes, piers, sub-products, departure slots, fare windows, seating/deck choices, itinerary split, or landmark coverage. Avoid exact-repeat questions and avoid generic crowd/weather charts unless the DRD has direct, specific evidence.
+REGENERATION QUALITY RULE: If writer feedback says the deck is generic, too similar, poor, or asks for an Accademia-level result, do NOT repeat the existing deck. Treat the existing deck as the thing to improve away from, not a template to copy. Prefer CE-specific questions anchored in named routes, piers, sub-products, departure slots, seating/deck choices, itinerary split, best-for choices, or landmark coverage. Avoid exact-repeat questions and avoid generic crowd/weather charts unless the DRD has direct, specific evidence.
 
-DYNAMIC PRICE RULE: For cruises, tours, transport, or date-based tickets, do NOT use \`ticket_ladder\` for price comparison when fares vary by date/week. Use \`month_calendar\` for date/week fare windows or \`price_curve\` for monthly/lead-time price movement. Use \`ticket_ladder\` only when the question is about stable inclusions across fixed ticket tiers.
+DYNAMIC PRICE RULE: For cruises, tours, transport, or date-based tickets, weak price charts are worse than no price chart. Do NOT select \`ticket_ladder\`, \`month_calendar\`, \`price_curve\`, \`booking_window\`, or \`seasonal_curve\` just to compare dynamic fares. Use \`ticket_ladder\` only for stable inclusions/access differences across fixed tiers. Use \`month_calendar\` or \`price_curve\` only when the DRD or live facts contain direct date/week/month fare evidence and the writer specifically asked for price/fare guidance.
 
 Signature questions for this subcategory:
 ${signatures.length > 0 ? JSON.stringify(signatures, null, 2) : "(none — bootstrap signatures via proposed_hero[])"}
@@ -627,7 +689,7 @@ ${regenerationFeedback ? `Writer regeneration feedback to address:\n${regenerati
 
 ${constraintBlock}
 
-${existingBlock}
+${existingBlock}${existingCharts.length > 0 ? `\nOn regeneration, avoid selecting the same question again unless it is the only evidence-backed way to answer an important traveler decision.` : ""}
 
 After filtering, propose 0-2 ADDITIONAL hero questions tailored to THIS specific CE (e.g. a famous named room, a signature ride, a sunset slot) — anchored in the DRD, not invented. These go in proposed_hero[]. Each must carry kind:"signature".
 
@@ -704,6 +766,8 @@ ${truncate(input.drdMarkdown, 16000)}
   if (parsed.is_category_ce && parsed.sub_products.length < 3) {
     parsed.is_category_ce = false;
   }
+  const categoryCeMode = parsed.is_category_ce || categoryLikeSubcategory;
+  if (categoryCeMode) parsed.is_category_ce = true;
 
   // Build authoritative lookups for kind inference. Standards are
   // matched by exact question text; signatures by exact text against
@@ -751,6 +815,51 @@ ${truncate(input.drdMarkdown, 16000)}
     }
     return true;
   });
+
+  const isRegeneration =
+    regenerationFeedback.length > 0 || existingCharts.length > 0;
+  const existingQuestionKeys = new Set(
+    existingCharts.map((c) => normalizeQuestionKey(c.question)),
+  );
+
+  // Guardrail over the model: category pages like Thames cruises should not
+  // regenerate back into static price/ticket cards or exact repeats. Those
+  // outputs look plausible but age badly because fares vary by operator/date.
+  parsed.selected = parsed.selected.filter((s) => {
+    const repeatQuestion = existingQuestionKeys.has(
+      normalizeQuestionKey(s.question),
+    );
+    if (isRegeneration && repeatQuestion) {
+      parsed.dropped.push({
+        question: s.question,
+        reason:
+          "regeneration_diversity: already exists in the deck; selecting a more specific replacement",
+      });
+      return false;
+    }
+
+    const weakPriceDefault =
+      categoryCeMode &&
+      CATEGORY_CE_PRICE_ARCHETYPES.has(s.archetype) &&
+      looksLikeDynamicPriceQuestion(s.question) &&
+      !feedbackAsksForPrice;
+    if (weakPriceDefault) {
+      parsed.dropped.push({
+        question: s.question,
+        reason:
+          "category_ce_price_guardrail: skipped weak dynamic price/ticket chart; prefer route, duration, pier, time-of-day, or best-fit visuals unless price evidence was explicitly requested",
+      });
+      return false;
+    }
+
+    return true;
+  });
+
+  if (categoryCeMode) {
+    parsed.selected.sort(
+      (a, b) => categoryCeSelectionPriority(a) - categoryCeSelectionPriority(b),
+    );
+  }
 
   /* ---------- Deterministic post-LLM enforcement ---------- */
 
@@ -893,8 +1002,22 @@ ${truncate(input.drdMarkdown, 16000)}
     for (const c of candidates) {
       if (signatureSelections.length >= SIGNATURE_MIN) break;
       if (droppedQs.has(c.question)) continue;
+      if (
+        isRegeneration &&
+        existingQuestionKeys.has(normalizeQuestionKey(c.question))
+      ) {
+        continue;
+      }
       if (!archetypeIds.includes(c.archetype)) continue;
       if (!isImplementedArchetype(c.archetype)) continue;
+      if (
+        categoryCeMode &&
+        CATEGORY_CE_PRICE_ARCHETYPES.has(c.archetype) &&
+        looksLikeDynamicPriceQuestion(c.question) &&
+        !feedbackAsksForPrice
+      ) {
+        continue;
+      }
       signatureSelections.push({
         question: c.question,
         archetype: c.archetype,
@@ -919,6 +1042,42 @@ ${truncate(input.drdMarkdown, 16000)}
   // comparison the deck must always carry. Falls back gracefully if no
   // slot_compare candidate exists in the bank.
   if (parsed.is_category_ce) {
+    const promoteCategoryCandidate = (
+      archetypes: ChartArchetypeId[],
+      reason: string,
+    ): boolean => {
+      const droppedQs = new Set(parsed.dropped.map((d) => d.question));
+      const alreadyHas = parsed.selected.some((s) =>
+        archetypes.includes(s.archetype),
+      );
+      if (alreadyHas) return true;
+
+      const candidate = [...bank.questions, ...parsed.proposed_hero].find(
+        (q) =>
+          archetypes.includes(q.recommended_archetype) &&
+          !droppedQs.has(q.question) &&
+          !(
+            isRegeneration &&
+            existingQuestionKeys.has(normalizeQuestionKey(q.question))
+          ) &&
+          isImplementedArchetype(q.recommended_archetype) &&
+          !(
+            CATEGORY_CE_PRICE_ARCHETYPES.has(q.recommended_archetype) &&
+            looksLikeDynamicPriceQuestion(q.question) &&
+            !feedbackAsksForPrice
+          ),
+      );
+      if (!candidate) return false;
+
+      parsed.selected.push({
+        question: candidate.question,
+        archetype: candidate.recommended_archetype,
+        rationale: reason,
+        kind: "signature",
+      });
+      return true;
+    };
+
     const hasSlotCompare = parsed.selected.some(
       (s) => s.archetype === "slot_compare",
     );
@@ -931,6 +1090,10 @@ ${truncate(input.drdMarkdown, 16000)}
         (q) =>
           q.recommended_archetype === "slot_compare" &&
           !droppedQs.has(q.question) &&
+          !(
+            isRegeneration &&
+            existingQuestionKeys.has(normalizeQuestionKey(q.question))
+          ) &&
           isImplementedArchetype(q.recommended_archetype),
       );
       if (slotCompareCandidate) {
@@ -951,6 +1114,25 @@ ${truncate(input.drdMarkdown, 16000)}
         );
       }
     }
+
+    promoteCategoryCandidate(
+      ["route_profile"],
+      "auto-promoted route_profile for category-CE route, pier, stop, or landmark coverage",
+    );
+    promoteCategoryCandidate(
+      ["duration_stat", "time_split"],
+      "auto-promoted duration/itinerary chart for category-CE planning depth",
+    );
+    promoteCategoryCandidate(
+      ["optimal_departure", "compare_zones", "stop_frequency"],
+      "auto-promoted practical choice chart for category-CE time-of-day, pier, or seating decision",
+    );
+  }
+
+  if (categoryCeMode) {
+    parsed.selected.sort(
+      (a, b) => categoryCeSelectionPriority(a) - categoryCeSelectionPriority(b),
+    );
   }
 
   // (4c) CATEGORY-CE TIMING FLOOR (Task #80): the category-CE bias above

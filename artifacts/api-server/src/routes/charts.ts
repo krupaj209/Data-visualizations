@@ -845,12 +845,12 @@ function inferArchetype(topic: string): ChartArchetypeId | null {
   if (/\bday of (the )?week|weekday|weekend\b/.test(t)) return "weekly_pattern";
   if (/\bseason|month|monthly|year\b/.test(t)) return "seasonal_curve";
   if (/\bbook|in advance|days before|sell out|sold out\b/.test(t)) return "booking_window";
-  if (/\bticket|tier|price|pass|skip the line\b/.test(t)) return "ticket_ladder";
   if (/\broute|routes|stop|stops|pier|piers|landmark coverage|itinerary|covers|coverage\b/.test(t)) return "route_profile";
+  if (/\bduration|how long|takes|spend|time budget|plan to spend\b/.test(t)) return "duration_stat";
+  if (/\bticket|tier|price|pass|skip the line\b/.test(t)) return "ticket_ladder";
   if (/\bzone|hall|wing|area|room|gallery|section\b/.test(t)) return "compare_zones";
   if (/\bshare|breakdown|split|percentage|percent of\b/.test(t)) return "donut_breakdown";
   if (/\bdate|calendar|next \d+ (weeks|months|days)\b/.test(t)) return "month_calendar";
-  if (/\bduration|how long|takes|spend\b/.test(t)) return "stat_grid";
   return null;
 }
 

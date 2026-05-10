@@ -1288,6 +1288,7 @@ export const seasonWeatherFitSpec = z.object({
   helper: z.string().max(200).optional(),
 });
 
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
