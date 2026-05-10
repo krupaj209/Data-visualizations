@@ -25,6 +25,7 @@ import {
   type CeIntelligenceSource,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE_META } from "@/components/charts/meta";
 
 type CreatedPlanChart = {
   chartId: number;
@@ -134,6 +135,9 @@ export function IntelPanel({
   const [isPlanning, setIsPlanning] = useState(false);
   const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
   const [rejectedContext, setRejectedContext] = useState<Record<string, string>>(
+    () => ({}),
+  );
+  const [rejectedArchetype, setRejectedArchetype] = useState<Record<string, string>>(
     () => ({}),
   );
   const [showContextUpload, setShowContextUpload] = useState(false);
@@ -283,6 +287,23 @@ export function IntelPanel({
     }
   }
 
+  async function handleSearchMoreForRejected(
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) {
+    setCreatingQuestion(item.question);
+    setPlanError(null);
+    try {
+      await handleRefreshAll();
+      await handlePlanVisualizations();
+    } catch (err) {
+      setPlanError(
+        err instanceof Error ? err.message : "Could not search for more evidence",
+      );
+    } finally {
+      setCreatingQuestion(null);
+    }
+  }
+
   async function handleCreateFromPlan(
     item: VisualizationPlan["recommended_visualizations"][number],
   ) {
@@ -395,23 +416,51 @@ export function IntelPanel({
 
   async function handleCreateRejected(
     item: VisualizationPlan["rejected_visualizations"][number],
+    mode: "context" | "estimate" | "changed_archetype",
   ) {
     const context = (rejectedContext[item.question] ?? "").trim();
-    if (!context) {
+    const chosenArchetype =
+      rejectedArchetype[item.question] || item.archetype || undefined;
+    if (mode === "context" && !context) {
       setPlanError("Add the missing context or data before creating this chart.");
+      return;
+    }
+    if (mode === "changed_archetype" && !chosenArchetype) {
+      setPlanError("Choose a chart type before creating this chart.");
       return;
     }
     setCreatingQuestion(item.question);
     setPlanError(null);
     try {
+      const repairContext =
+        mode === "estimate"
+          ? [
+              "Evidence-gap repair: editor chose Create anyway as estimate.",
+              "Use honest, clearly marked estimates only where evidence is missing.",
+              "Do not imply source-backed precision; add estimated fields to provenance.estimates.",
+            ].join("\n")
+          : mode === "changed_archetype"
+            ? [
+                "Evidence-gap repair: editor changed the chart type.",
+                `Original rejected archetype: ${item.archetype || "none"}.`,
+                `Replacement archetype: ${chosenArchetype}.`,
+                context
+                  ? `Editor-added context:\n${context}`
+                  : "No extra context supplied; use only available evidence and mark estimates.",
+              ].join("\n")
+            : context;
+
       const res = await fetch(`/api/ces/${slug}/charts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: item.question,
-          archetype: item.archetype || undefined,
-          pastedData: context,
-          plannerContext: `Originally rejected by planner: ${item.reason}`,
+          archetype: chosenArchetype,
+          pastedData: repairContext,
+          plannerContext: [
+            `Originally rejected by planner: ${item.reason}`,
+            `Repair path: ${mode}`,
+          ].join("\n"),
           origin: "planner_recommendation",
         }),
       });
@@ -828,39 +877,37 @@ export function IntelPanel({
                   body: item.reason,
                   tone: "warn" as const,
                   createdChart: createdCharts[item.question],
-                  actionLabel: createdCharts[item.question]
-                    ? "Created"
-                    : "Create with context",
-                  actionDisabled:
-                    !!createdCharts[item.question] ||
-                    creatingQuestion !== null ||
-                    !(rejectedContext[item.question] ?? "").trim(),
-                  actionBusy: creatingQuestion === item.question,
-                  onAction: () => handleCreateRejected(item),
                   extra: !createdCharts[item.question] ? (
-                    <textarea
-                      value={rejectedContext[item.question] ?? ""}
-                      onChange={(e) =>
+                    <RejectedRepairTools
+                      item={item}
+                      context={rejectedContext[item.question] ?? ""}
+                      selectedArchetype={
+                        rejectedArchetype[item.question] ||
+                        item.archetype ||
+                        ""
+                      }
+                      isBusy={creatingQuestion === item.question}
+                      disabled={creatingQuestion !== null}
+                      onContextChange={(value) =>
                         setRejectedContext((prev) => ({
                           ...prev,
-                          [item.question]: e.target.value,
+                          [item.question]: value,
                         }))
                       }
-                      placeholder="Have the missing data? Paste source-backed context here..."
-                      rows={3}
-                      style={{
-                        marginTop: 8,
-                        width: "100%",
-                        resize: "vertical",
-                        border: `1px solid ${BRAND.slate200}`,
-                        borderRadius: 9,
-                        padding: 8,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: BRAND.slate950,
-                        outline: "none",
-                        background: BRAND.slate50,
-                      }}
+                      onArchetypeChange={(value) =>
+                        setRejectedArchetype((prev) => ({
+                          ...prev,
+                          [item.question]: value,
+                        }))
+                      }
+                      onAddContext={() => handleCreateRejected(item, "context")}
+                      onSearchMore={() => handleSearchMoreForRejected(item)}
+                      onCreateEstimate={() =>
+                        handleCreateRejected(item, "estimate")
+                      }
+                      onChangeType={() =>
+                        handleCreateRejected(item, "changed_archetype")
+                      }
                     />
                   ) : null,
                 }))}
@@ -1269,6 +1316,172 @@ function verifyTone(status: CreatedPlanChart["verifyStatus"]): {
   if (status === "issues") return { bg: BRAND.holaSoft, fg: BRAND.hola };
   if (status === "failed") return { bg: BRAND.candySoft, fg: BRAND.candy };
   return { bg: BRAND.bgCool, fg: BRAND.purps };
+}
+
+function RejectedRepairTools({
+  item,
+  context,
+  selectedArchetype,
+  isBusy,
+  disabled,
+  onContextChange,
+  onArchetypeChange,
+  onAddContext,
+  onSearchMore,
+  onCreateEstimate,
+  onChangeType,
+}: {
+  item: VisualizationPlan["rejected_visualizations"][number];
+  context: string;
+  selectedArchetype: string;
+  isBusy: boolean;
+  disabled: boolean;
+  onContextChange: (value: string) => void;
+  onArchetypeChange: (value: string) => void;
+  onAddContext: () => void;
+  onSearchMore: () => void;
+  onCreateEstimate: () => void;
+  onChangeType: () => void;
+}) {
+  const hasContext = context.trim().length > 0;
+  const canAct = !disabled && !isBusy;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <textarea
+        value={context}
+        onChange={(e) => onContextChange(e.target.value)}
+        placeholder="Add source-backed context or exact data to repair this gap..."
+        rows={3}
+        style={{
+          width: "100%",
+          resize: "vertical",
+          border: `1px solid ${BRAND.slate200}`,
+          borderRadius: 9,
+          padding: 8,
+          fontSize: 11,
+          fontWeight: 600,
+          color: BRAND.slate950,
+          outline: "none",
+          background: BRAND.slate50,
+        }}
+      />
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 6,
+        }}
+      >
+        <RepairButton
+          label="Add context"
+          busy={isBusy}
+          disabled={!canAct || !hasContext}
+          onClick={onAddContext}
+        />
+        <RepairButton
+          label="Search more"
+          busy={isBusy}
+          disabled={!canAct}
+          onClick={onSearchMore}
+          variant="secondary"
+        />
+        <RepairButton
+          label="Create anyway as estimate"
+          busy={isBusy}
+          disabled={!canAct}
+          onClick={onCreateEstimate}
+          variant="secondary"
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gap: 6,
+        }}
+      >
+        <select
+          value={selectedArchetype}
+          onChange={(e) => onArchetypeChange(e.target.value)}
+          style={{
+            minWidth: 0,
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 9,
+            padding: "6px 8px",
+            fontSize: 11,
+            fontWeight: 750,
+            color: BRAND.slate950,
+            background: "white",
+          }}
+          aria-label={`Change chart type for ${item.question}`}
+        >
+          <option value="">Change chart type</option>
+          {Object.entries(CHART_TYPE_META).map(([type, meta]) => (
+            <option key={type} value={type}>
+              {meta.emoji} {type}
+            </option>
+          ))}
+        </select>
+        <RepairButton
+          label="Change type"
+          busy={isBusy}
+          disabled={!canAct || !selectedArchetype}
+          onClick={onChangeType}
+          variant="secondary"
+        />
+      </div>
+    </div>
+  );
+}
+
+function RepairButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+  variant = "primary",
+}: {
+  label: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  variant?: "primary" | "secondary";
+}) {
+  const activeBg = variant === "primary" ? BRAND.purps : "white";
+  const activeFg = variant === "primary" ? "white" : BRAND.purps;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border: `1px solid ${disabled ? BRAND.slate200 : BRAND.purpsSoft}`,
+        borderRadius: 9,
+        padding: "6px 9px",
+        background: disabled ? BRAND.slate100 : activeBg,
+        color: disabled ? BRAND.slate500 : activeFg,
+        fontSize: 11,
+        fontWeight: 850,
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+      }}
+    >
+      {busy ? (
+        <Loader2 size={12} className="animate-spin" />
+      ) : (
+        <Plus size={12} />
+      )}
+      {label}
+    </button>
+  );
 }
 
 function PlanList({
