@@ -1026,6 +1026,8 @@ function ChartRow({
         </aside>
       </div>
 
+      <SuggestedContentPanel spec={spec} />
+
       {mode === "edit" && (
         <ChartEditor
           chart={chart}
@@ -3929,4 +3931,177 @@ function EmbedActions({ chartId }: { chartId: number }) {
       </a>
     </div>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Suggested content panel                                                    */
+/* -------------------------------------------------------------------------- */
+/* Copy-paste-ready HTML for the CMS team. The chart embed is the deliverable */
+/* in production, but for charts that carry rich supplementary text (e.g.    */
+/* hourly_heatmap.highlight_cards), we surface that text here so writers can */
+/* drop it into the article body alongside the embed.                         */
+
+const HOURLY_HIGHLIGHT_LABELS: Record<string, string> = {
+  quietest_hours: "Quietest hours",
+  best_photography: "Best for photography",
+  best_weather: "Best weather",
+  fastest_entry: "Fastest entry",
+  best_evening: "Best evening experience",
+  best_off_season: "Best off-season months",
+};
+
+function SuggestedContentPanel({ spec }: { spec: ChartSpec }) {
+  const [copied, setCopied] = useState(false);
+
+  if (spec.type !== "hourly_heatmap") return null;
+  const cards = spec.highlight_cards ?? [];
+  if (cards.length === 0) return null;
+
+  const htmlSnippet = [
+    "<ul>",
+    ...cards.map((card) => {
+      const label = HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind;
+      return `  <li><strong>${label} — ${escapeHtml(card.headline)}.</strong> ${escapeHtml(card.detail)}</li>`;
+    }),
+    "</ul>",
+  ].join("\n");
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(htmlSnippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* noop */
+    }
+  }
+
+  return (
+    <section
+      style={{
+        marginTop: 16,
+        background: "white",
+        border: `1px solid ${BRAND.slate200}`,
+        borderRadius: 16,
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: BRAND.slate500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Suggested content
+          </span>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: BRAND.slate700,
+              lineHeight: 1.4,
+              maxWidth: 640,
+            }}
+          >
+            Drop this paragraph into the article body next to the embed. It
+            won't ship inside the chart itself.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={copy}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "8px 14px",
+            borderRadius: 10,
+            background: copied ? BRAND.purps : "white",
+            color: copied ? "white" : BRAND.slate950,
+            border: `1px solid ${copied ? BRAND.purps : BRAND.slate200}`,
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          {copied ? "Copied" : "Copy as HTML"}
+        </button>
+      </div>
+
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        {cards.map((card) => (
+          <li
+            key={card.kind}
+            style={{
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: BRAND.slate900,
+            }}
+          >
+            <strong style={{ color: BRAND.slate950 }}>
+              {HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind} —{" "}
+              {card.headline}.
+            </strong>{" "}
+            <span style={{ color: BRAND.slate700 }}>{card.detail}</span>
+          </li>
+        ))}
+      </ul>
+
+      <details>
+        <summary
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: BRAND.slate500,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          Preview HTML
+        </summary>
+        <pre
+          style={{
+            marginTop: 8,
+            padding: 12,
+            background: BRAND.slate100,
+            borderRadius: 10,
+            fontSize: 11,
+            lineHeight: 1.5,
+            color: BRAND.slate900,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {htmlSnippet}
+        </pre>
+      </details>
+    </section>
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
