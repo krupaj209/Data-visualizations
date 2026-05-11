@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
-import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill } from "@/components/charts/system";
 import { type BookingWindowSpec } from "@/lib/chart-spec";
 

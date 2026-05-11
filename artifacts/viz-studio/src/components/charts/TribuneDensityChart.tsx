@@ -123,7 +123,7 @@ export function TribuneDensityChart({
   const X_AXIS = CHART_LAYOUT.xAxisStripPx;
   const Y_TICK_W = compact ? 16 : 22;
 
-  const { xs, dMin, dMax, range, yMax } = useMemo(() => {
+  const { xs, dMin, range, yMax } = useMemo(() => {
     const xsLocal = points.map((p) => toMin(p.time));
     const dMinLocal = Math.min(...xsLocal);
     const dMaxLocal = Math.max(...xsLocal);
@@ -132,7 +132,6 @@ export function TribuneDensityChart({
     return {
       xs: xsLocal,
       dMin: dMinLocal,
-      dMax: dMaxLocal,
       range: Math.max(dMaxLocal - dMinLocal, 1),
       yMax: yMaxLocal,
     };

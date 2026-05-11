@@ -2387,7 +2387,7 @@ function RegenSummaryPanel({
     textTransform: "uppercase",
     marginBottom: 6,
   };
-  const chip = (label: string, tone: "purps" | "candy" | "slate"): React.CSSProperties => ({
+  const chip = (_label: string, tone: "purps" | "candy" | "slate"): React.CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",
     padding: "3px 8px",

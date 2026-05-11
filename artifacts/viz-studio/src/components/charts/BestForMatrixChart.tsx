@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Sparkles, Star } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
-import { ACCENT_FG, ACCENT_FILL, ACCENT_SOFT, BRAND } from "@/lib/brand";
+import { ACCENT_FILL, ACCENT_SOFT, BRAND } from "@/lib/brand";
 import { type BestForMatrixSpec } from "@/lib/chart-spec";
 
 interface Props {

@@ -183,7 +183,6 @@ const ICONS_COBOOK = [
 
 type Spec<T extends ChartSpec["type"]> = Extract<ChartSpec, { type: T }>;
 
-const DAY_CODES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LEVELS = ["closed", "quietest", "quiet", "busy", "busiest"] as const;
 const SEASON_STATUSES = [
   "closed",
@@ -202,20 +201,6 @@ const ZONE_STATUSES = [
   "closed",
 ] as const;
 const ACCENTS = ["purps", "candy", "hola", "okay", "slate"] as const;
-const MONTHS = [
-  "jan",
-  "feb",
-  "mar",
-  "apr",
-  "may",
-  "jun",
-  "jul",
-  "aug",
-  "sep",
-  "oct",
-  "nov",
-  "dec",
-] as const;
 
 function WeeklyPatternEditor({
   spec,

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
-import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
+import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill } from "@/components/charts/system";
 import { type EntranceLanesSpec } from "@/lib/chart-spec";
 
