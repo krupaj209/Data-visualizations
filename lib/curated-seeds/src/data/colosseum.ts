@@ -112,5 +112,158 @@ export const colosseum: CuratedCe = {
           "Built in eight years, in continuous use for nearly two thousand — and now lit gold every time a death sentence is commuted.",
       },
     },
+    {
+      slug: "hourly-crowd-pattern",
+      question: "What does an hour-by-hour crowd pattern at the Colosseum look like?",
+      title: "Hour-by-hour crowd pattern at the Colosseum",
+      subtitle: "When the arena is calmest and when it's wall-to-wall",
+      insight:
+        "The Colosseum opens at 9:00 but most timed tickets dump groups in from 10:30 onwards — arrive at the 8:30 queue or push past 16:30 to walk the upper tier without shoulder-to-shoulder crowds.",
+      chart_type: "hourly_heatmap",
+      spec: {
+        type: "hourly_heatmap",
+        open_hour: 9,
+        close_hour: 18,
+        // Intensity 0–100 per hour. Hours outside open/close are masked
+        // by the renderer regardless of value.
+        rows: [
+          {
+            day: "mon",
+            closed: false,
+            // Mon: slightly lighter than Tue–Thu; many groups arrive Tue+
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 70, 88, 92, 88, 78, 62, 45, 30, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "tue",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 65, 82, 86, 82, 72, 55, 38, 25, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "wed",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 62, 80, 84, 80, 70, 52, 36, 24, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "thu",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 64, 82, 86, 82, 72, 55, 38, 26, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "fri",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 38, 75, 92, 96, 92, 82, 68, 52, 36, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "sat",
+            closed: false,
+            // Weekend peak — independent travellers added to tour groups.
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 85, 98, 100, 96, 88, 75, 60, 42, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "sun",
+            closed: false,
+            // Sunday similar to Sat; first Sunday of month free entry spikes
+            // even harder but isn't representative of every Sunday.
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 82, 95, 98, 94, 85, 72, 56, 40, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+        ],
+        best_window: {
+          label: "Tue–Thu, 8:30–9:30 entry",
+          day: "wed",
+          start_hour: 9,
+          end_hour: 10,
+        },
+        highlight_cards: [
+          {
+            kind: "quietest_hours",
+            headline: "8:30–9:30, Tue–Thu",
+            detail:
+              "Queue 30 minutes before opening with a pre-booked ticket and you'll walk the arena floor before the first group buses arrive at 10:30.",
+          },
+          {
+            kind: "best_photography",
+            headline: "16:30–17:30, low light",
+            detail:
+              "Late sun rakes the travertine outer ring in warm gold while the upper tier finally clears — best window for unobstructed wide shots.",
+          },
+          {
+            kind: "best_weather",
+            headline: "April–May, mornings",
+            detail:
+              "Average highs of 19–24 °C and the hypogeum is open without the July–August heat that turns the arena floor into a 35 °C oven by midday.",
+          },
+          {
+            kind: "fastest_entry",
+            headline: "Pre-booked, 9:00 sharp",
+            detail:
+              "Reserved-entry tickets bypass the standby line; security and bag check at the Stern entrance clear in under 10 minutes before 10:00.",
+          },
+          {
+            kind: "best_evening",
+            headline: "Moon Tour, Fri–Sat 19:00+",
+            detail:
+              "After-hours guided access lets ~25 people walk the arena floor and hypogeum lit by ambient lamps, with no day-ticket crowds inside.",
+          },
+          {
+            kind: "best_off_season",
+            headline: "Mid-Jan to late Feb",
+            detail:
+              "Lowest visitation of the year, short or no queues at opening, and shorter winter hours (9:00–16:30) with dry, crisp Roman afternoons.",
+          },
+        ],
+      },
+      provenance: {
+        status: "curated",
+        web_sources: [
+          {
+            url: "https://parcocolosseo.it/en/visit/visiting-hours/",
+            title: "Parco archeologico del Colosseo — Visiting hours",
+          },
+          {
+            url: "https://parcocolosseo.it/en/visit/the-moon-over-the-colosseum/",
+            title: "Parco archeologico del Colosseo — Moon Tour",
+          },
+          {
+            url: "https://www.romewise.com/colosseum-tips.html",
+            title: "Romewise — Colosseum visitor guidance",
+          },
+          {
+            url: "https://en.wikipedia.org/wiki/Climate_of_Rome",
+            title: "Wikipedia — Climate of Rome (monthly averages)",
+          },
+        ],
+        estimates: [
+          {
+            field: "rows[].hours",
+            note: "Hand-set 0–100 intensities reflecting the widely-reported pattern: opening hour quiet, 10:30–14:00 peak as group buses arrive, weekends ~10–15 points higher than mid-week, gentle drop after 15:00.",
+          },
+          {
+            field: "best_window",
+            note: "Tue–Thu 8:30–9:30 entry is the staple visitor-guidance recommendation across Romewise, The Roman Guy, and ItalyChronicles.",
+          },
+        ],
+      } as Record<string, unknown>,
+    },
   ],
 };

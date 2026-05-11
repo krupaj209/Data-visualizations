@@ -1,4 +1,5 @@
 import { db, cesTable, chartsTable } from "@workspace/db";
+import { eq, max } from "drizzle-orm";
 import { accademia } from "./data/accademia";
 import { uffizi } from "./data/uffizi";
 import { duomo } from "./data/duomo";
@@ -13,6 +14,11 @@ export interface SeedResult {
   inserted: string[];
   skipped: string[];
   failed: Array<{ slug: string; error: string }>;
+  /**
+   * Charts that were added to an already-existing curated CE because
+   * their slug was missing. Format: "<ceSlug>/<chartSlug>".
+   */
+  addedCharts: string[];
 }
 
 /**
@@ -36,10 +42,11 @@ export async function seedCuratedCesIdempotent(): Promise<SeedResult> {
   const inserted: string[] = [];
   const skipped: string[] = [];
   const failed: Array<{ slug: string; error: string }> = [];
+  const addedCharts: string[] = [];
 
   for (const { ce, charts } of CURATED_CES) {
     try {
-      await db.transaction(async (tx) => {
+      const existingCeRow = await db.transaction(async (tx) => {
         const insertedRows = await tx
           .insert(cesTable)
           .values({
@@ -59,8 +66,10 @@ export async function seedCuratedCesIdempotent(): Promise<SeedResult> {
           // Slug already existed — another instance won the race or this
           // CE was previously seeded. Leave existing data untouched so
           // chart IDs (referenced by external embed URLs) remain stable.
-          skipped.push(ce.slug);
-          return;
+          // We still want to additively insert any *new* curated charts
+          // (matched by slug) so library expansions ship without manual
+          // DB surgery — handled outside this txn below.
+          return null;
         }
 
         const insertedCe = insertedRows[0]!;
@@ -76,18 +85,70 @@ export async function seedCuratedCesIdempotent(): Promise<SeedResult> {
               insight: c.insight,
               chartType: c.chart_type,
               spec: c.spec,
+              provenance: c.provenance ?? null,
               sortOrder: i,
             })),
           );
         }
 
         inserted.push(ce.slug);
+        return insertedCe;
       });
+
+      if (existingCeRow !== null) {
+        // Freshly inserted CE — nothing more to do.
+        continue;
+      }
+
+      // CE pre-existed: additively insert any curated charts whose
+      // slug is missing. Existing rows (chart ids referenced by embed
+      // URLs) are never touched.
+      skipped.push(ce.slug);
+
+      if (charts.length === 0) continue;
+
+      const ceRow = await db
+        .select({ id: cesTable.id })
+        .from(cesTable)
+        .where(eq(cesTable.slug, ce.slug))
+        .limit(1);
+      if (ceRow.length === 0) continue;
+      const ceId = ceRow[0]!.id;
+
+      const existingCharts = await db
+        .select({ slug: chartsTable.slug })
+        .from(chartsTable)
+        .where(eq(chartsTable.ceId, ceId));
+      const existingSlugs = new Set(existingCharts.map((c) => c.slug));
+      const missing = charts.filter((c) => !existingSlugs.has(c.slug));
+      if (missing.length === 0) continue;
+
+      const maxRow = await db
+        .select({ max: max(chartsTable.sortOrder) })
+        .from(chartsTable)
+        .where(eq(chartsTable.ceId, ceId));
+      const startSort = (maxRow[0]?.max ?? -1) + 1;
+
+      await db.insert(chartsTable).values(
+        missing.map((c, i) => ({
+          ceId,
+          slug: c.slug,
+          question: c.question,
+          title: c.title,
+          subtitle: c.subtitle,
+          insight: c.insight,
+          chartType: c.chart_type,
+          spec: c.spec,
+          provenance: c.provenance ?? null,
+          sortOrder: startSort + i,
+        })),
+      );
+      for (const c of missing) addedCharts.push(`${ce.slug}/${c.slug}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       failed.push({ slug: ce.slug, error: message });
     }
   }
 
-  return { inserted, skipped, failed };
+  return { inserted, skipped, failed, addedCharts };
 }

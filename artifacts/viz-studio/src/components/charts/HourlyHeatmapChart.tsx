@@ -11,9 +11,22 @@ import {
 interface Props {
   spec: HourlyHeatmapSpec;
   context?: string;
+  compact?: boolean;
 }
 
 const HEAT_PALETTE = ["#F4EEFF", "#D9C5FF", "#B796FF", "#8000FF"];
+
+const HIGHLIGHT_LABELS: Record<
+  NonNullable<HourlyHeatmapSpec["highlight_cards"]>[number]["kind"],
+  string
+> = {
+  quietest_hours: "Quietest hours",
+  best_photography: "Best for photography",
+  best_weather: "Best weather",
+  fastest_entry: "Fastest entry",
+  best_evening: "Best evening experience",
+  best_off_season: "Best off-season months",
+};
 
 function intensityToColor(value: number, closed: boolean) {
   if (closed) return BRAND.slate100;
@@ -24,14 +37,16 @@ function intensityToColor(value: number, closed: boolean) {
   return HEAT_PALETTE[3];
 }
 
-export function HourlyHeatmapChart({ spec, context }: Props) {
+export function HourlyHeatmapChart({ spec, context, compact }: Props) {
   const rowsByDay = new Map(spec.rows.map((r) => [r.day, r]));
   const hours = Array.from({ length: 24 }, (_, i) => i);
+  const cards = spec.highlight_cards ?? [];
+  const showCards = !compact && cards.length > 0;
 
   return (
-    <ChartCard context={context ?? "Hourly crowd intensity"}>
+    <ChartCard context={context ?? "Hourly crowd intensity"} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 grid" style={{ gridTemplateColumns: "auto 1fr", columnGap: 10 }}>
+        <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "auto 1fr", columnGap: 10 }}>
           <div className="flex flex-col justify-around" style={{ paddingTop: 18 }}>
             {DAY_ORDER.map((d) => (
               <div
@@ -46,7 +61,7 @@ export function HourlyHeatmapChart({ spec, context }: Props) {
               </div>
             ))}
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col min-h-0">
             <div
               className="grid"
               style={{
@@ -137,6 +152,64 @@ export function HourlyHeatmapChart({ spec, context }: Props) {
             </CalloutPill>
           )}
         </div>
+
+        {showCards && (
+          <div
+            className="mt-3 grid"
+            style={{
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(min(180px, 100%), 1fr))",
+              gap: 8,
+            }}
+          >
+            {cards.map((card) => (
+              <div
+                key={card.kind}
+                style={{
+                  background: BRAND.purpsSoft,
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "clamp(8.5px, 0.95cqi, 10px)",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    color: BRAND.purps,
+                    opacity: 0.75,
+                  }}
+                >
+                  {HIGHLIGHT_LABELS[card.kind]}
+                </span>
+                <span
+                  style={{
+                    fontSize: "clamp(12px, 1.25cqi, 14px)",
+                    fontWeight: 800,
+                    color: BRAND.purps,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {card.headline}
+                </span>
+                <span
+                  style={{
+                    fontSize: CHART_TYPE.callout.fontSize,
+                    fontWeight: 500,
+                    color: BRAND.slate700,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {card.detail}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </ChartCard>
   );

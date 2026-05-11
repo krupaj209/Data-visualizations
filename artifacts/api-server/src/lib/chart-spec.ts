@@ -73,6 +73,28 @@ export const hourlyHeatmapSpec = z.object({
       end_hour: z.number().int().min(1).max(24),
     })
     .optional(),
+  /**
+   * Optional "when to go and why" highlight cards rendered beneath the
+   * heatmap. Curated-only for now; AI-generated heatmaps may omit. Hidden
+   * in compact mode so the grid + legend stay legible at small sizes.
+   */
+  highlight_cards: z
+    .array(
+      z.object({
+        kind: z.enum([
+          "quietest_hours",
+          "best_photography",
+          "best_weather",
+          "fastest_entry",
+          "best_evening",
+          "best_off_season",
+        ]),
+        headline: z.string().max(40),
+        detail: z.string().max(140),
+      }),
+    )
+    .max(6)
+    .optional(),
 });
 
 export const monthCalendarSpec = z.object({

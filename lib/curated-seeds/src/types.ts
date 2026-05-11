@@ -16,5 +16,10 @@ export interface CuratedCe {
     insight: string;
     chart_type: string;
     spec: Record<string, unknown>;
+    /**
+     * Optional curated provenance — sources + per-field estimate notes
+     * surfaced to writers so they can audit hand-curated numbers.
+     */
+    provenance?: Record<string, unknown>;
   }>;
 }

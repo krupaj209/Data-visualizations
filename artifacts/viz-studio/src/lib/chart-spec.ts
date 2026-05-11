@@ -107,6 +107,21 @@ export interface HourlyHeatmapSpec {
     start_hour: number;
     end_hour: number;
   };
+  /**
+   * Optional "when to go and why" highlight cards rendered under the
+   * heatmap. Hidden in compact mode.
+   */
+  highlight_cards?: {
+    kind:
+      | "quietest_hours"
+      | "best_photography"
+      | "best_weather"
+      | "fastest_entry"
+      | "best_evening"
+      | "best_off_season";
+    headline: string;
+    detail: string;
+  }[];
 }
 
 export interface MonthCalendarSpec {

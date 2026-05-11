@@ -84,7 +84,9 @@ export function ChartRenderer({
         <WeeklyPatternChart spec={spec} context={context} compact={compact} />
       );
     case "hourly_heatmap":
-      return <HourlyHeatmapChart spec={spec} context={context} />;
+      return (
+        <HourlyHeatmapChart spec={spec} context={context} compact={compact} />
+      );
     case "month_calendar":
       return <MonthCalendarChart spec={spec} context={context} />;
     case "booking_window":
