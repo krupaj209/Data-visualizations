@@ -1140,7 +1140,6 @@ function ChartFactTable({
 
   return (
     <details
-      open
       style={{
         border: `1px solid ${BRAND.slate200}`,
         borderRadius: 12,
