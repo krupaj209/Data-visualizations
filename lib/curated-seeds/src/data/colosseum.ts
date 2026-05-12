@@ -229,7 +229,7 @@ export const colosseum: CuratedCe = {
           },
           {
             kind: "best_off_season",
-            headline: "Mid-Jan to late Feb",
+            headline: "Mid-January to late February",
             detail:
               "Lowest visitation of the year, short or no queues at opening, and shorter winter hours (8:30–16:30) with dry, crisp Roman afternoons.",
           },

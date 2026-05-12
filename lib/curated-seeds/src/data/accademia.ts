@@ -446,9 +446,9 @@ export const accademia: CuratedCe = {
         best_months: ["May", "September"],
         worst_months: ["July", "August"],
         calendar_notes: [
-          { label: "Jan 1 closed", kind: "closed" },
-          { label: "May 1 closed", kind: "closed" },
-          { label: "Dec 25 closed", kind: "closed" },
+          { label: "1 January closed", kind: "closed" },
+          { label: "1 May closed", kind: "closed" },
+          { label: "25 December closed", kind: "closed" },
           { label: "First Sunday: free entry, long queues", kind: "free" },
         ],
         metric_insights: {

@@ -7,6 +7,7 @@ import {
   DAY_ORDER,
   type HourlyHeatmapSpec,
 } from "@/lib/chart-spec";
+import { formatHour } from "@/lib/time";
 
 interface Props {
   spec: HourlyHeatmapSpec;
@@ -64,9 +65,11 @@ export function HourlyHeatmapChart({ spec, context, compact }: Props) {
                     color: BRAND.slate500,
                     fontWeight: CHART_TYPE.axisTick.fontWeight,
                     textAlign: "center",
+                    whiteSpace: "nowrap",
+                    overflow: "visible",
                   }}
                 >
-                  {h % 3 === 0 ? h : ""}
+                  {h % 3 === 0 ? formatHour(h) : ""}
                 </div>
               ))}
             </div>

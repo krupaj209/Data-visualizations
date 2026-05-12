@@ -9,6 +9,7 @@ import {
 } from "@/lib/chart-system";
 import { ChartTooltip } from "@/components/charts/system";
 import { type DailyProgrammeSpec } from "@/lib/chart-spec";
+import { formatClock } from "@/lib/time";
 
 interface Props {
   spec: DailyProgrammeSpec;
@@ -32,13 +33,7 @@ function toMin(t: string) {
   return h * 60 + (m || 0);
 }
 
-function fmtClock(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  const hh = h % 12 || 12;
-  const mm = m ? `:${String(m).padStart(2, "0")}` : "";
-  const ap = h < 12 ? "am" : "pm";
-  return `${hh}${mm}${ap}`;
-}
+const fmtClock = formatClock;
 
 export function DailyProgrammeChart({
   spec,

@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import { formatHour } from "@/lib/time";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import {
@@ -33,12 +34,7 @@ const ZONE_BAND: Record<CurveSpec["zones"][number]["tone"], BandToneKey> = {
   second_best: "calm",
 };
 
-function fmtClock(hour: number) {
-  const h = Math.floor(hour);
-  const hh = h % 12 || 12;
-  const ap = h < 12 || h === 24 ? "am" : "pm";
-  return `${hh}${ap}`;
-}
+const fmtClock = (hour: number) => formatHour(Math.floor(hour));
 
 /**
  * Shared smooth-hourly-curve renderer for `ride_wait_curve` and

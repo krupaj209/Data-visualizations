@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { BRAND } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { ChartTooltip } from "@/components/charts/system";
+import { formatHour } from "@/lib/time";
 
 export interface ZoneRow {
   name: string;
@@ -24,7 +25,7 @@ interface Props {
   footer?: ReactNode;
 }
 
-const DEFAULT_FORMAT_HOUR = (h: number) => `${h}`;
+const DEFAULT_FORMAT_HOUR = formatHour;
 
 /**
  * Shared primitive for `zone_crowd_heatmap` and `zone_wait_heatmap`. Renders

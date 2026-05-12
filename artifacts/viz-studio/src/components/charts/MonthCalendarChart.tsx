@@ -2,6 +2,7 @@ import { ChartCard } from "@/components/ChartCard";
 import { BRAND, SEASON_DOT, SEASON_FILL, SEASON_LABEL, type SeasonKey } from "@/lib/brand";
 import { Legend, LegendItem } from "@/components/charts/system";
 import { type MonthCalendarSpec } from "@/lib/chart-spec";
+import { formatDayMonth } from "@/lib/time";
 
 interface Props {
   spec: MonthCalendarSpec;
@@ -178,10 +179,7 @@ export function MonthCalendarChart({ spec, context }: Props) {
                       textAlign: "center",
                     }}
                   >
-                    {d.toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatDayMonth(d)}
                   </div>
                   <div
                     style={{

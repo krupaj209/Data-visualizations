@@ -1,5 +1,6 @@
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { formatHour as fmtHour } from "@/lib/time";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill, LegendSwatch } from "@/components/charts/system";
 import { type ZoneWaitHeatmapSpec } from "@/lib/chart-spec";
@@ -36,12 +37,6 @@ function waitColor(v: number): string {
   if (v < 60) return WAIT_PALETTE[3];
   if (v < 120) return WAIT_PALETTE[4];
   return WAIT_PALETTE[5];
-}
-
-function fmtHour(h: number) {
-  const ap = h < 12 ? "a" : "p";
-  const hh = h % 12 || 12;
-  return `${hh}${ap}`;
 }
 
 export function ZoneWaitHeatmapChart({ spec, context, compact = false }: Props) {

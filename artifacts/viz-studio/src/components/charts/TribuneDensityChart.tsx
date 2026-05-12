@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatClock as fmtClock } from "@/lib/time";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
@@ -67,14 +68,6 @@ const ICON_FOR: Record<
 function toMin(t: string) {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + (m || 0);
-}
-
-function fmtClock(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  const hh = h % 12 || 12;
-  const mm = m ? `:${String(m).padStart(2, "0")}` : "";
-  const ap = h < 12 ? "am" : "pm";
-  return `${hh}${mm}${ap}`;
 }
 
 function fmtMin(mins: number) {

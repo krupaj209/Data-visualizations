@@ -4,6 +4,7 @@ import {
   type ChartProvenanceLite,
   type ChartSpec,
 } from "./chart-spec";
+import { formatHour } from "./time";
 
 export type ChartFactStatus =
   | "verified"
@@ -666,13 +667,6 @@ function summarizeNumbers(values: number[], suffix: string): string {
   const max = Math.max(...values);
   const avg = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   return `min ${min}${suffix} · avg ${avg}${suffix} · max ${max}${suffix}`;
-}
-
-function formatHour(hour: number): string {
-  const safe = Number.isFinite(hour) ? hour : 0;
-  const suffix = safe >= 12 ? "pm" : "am";
-  const display = safe % 12 === 0 ? 12 : safe % 12;
-  return `${display}${suffix}`;
 }
 
 function genericFactRows(
