@@ -118,12 +118,14 @@ export const colosseum: CuratedCe = {
       title: "Hour-by-hour crowd pattern at the Colosseum",
       subtitle: "When the arena is calmest and when it's wall-to-wall",
       insight:
-        "The Colosseum opens at 9:00 but most timed tickets dump groups in from 10:30 onwards — arrive at the 8:30 queue or push past 16:30 to walk the upper tier without shoulder-to-shoulder crowds.",
+        "The Colosseum opens at 8:30 but most timed-entry slots release groups in from 10:30 onwards — get in line by 8:00 or push past 16:30 to walk the upper tier without shoulder-to-shoulder crowds.",
       chart_type: "hourly_heatmap",
       spec: {
         type: "hourly_heatmap",
-        open_hour: 9,
-        close_hour: 18,
+        // Reflects summer schedule (29 Apr–30 Sep): 8:30–19:15, last entry 18:15.
+        // Autumn shoulder closes 18:30, winter closes 16:30; opening is 8:30 year-round.
+        open_hour: 8,
+        close_hour: 19,
         // Intensity 0–100 per hour. Hours outside open/close are masked
         // by the renderer regardless of value.
         rows: [
@@ -132,40 +134,40 @@ export const colosseum: CuratedCe = {
             closed: false,
             // Mon: slightly lighter than Tue–Thu; many groups arrive Tue+
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 70, 88, 92, 88, 78, 62, 45, 30, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 25, 35, 70, 88, 92, 88, 78, 62, 45, 30,
+              15, 0, 0, 0, 0, 0,
             ],
           },
           {
             day: "tue",
             closed: false,
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 65, 82, 86, 82, 72, 55, 38, 25, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 22, 30, 65, 82, 86, 82, 72, 55, 38, 25,
+              12, 0, 0, 0, 0, 0,
             ],
           },
           {
             day: "wed",
             closed: false,
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 62, 80, 84, 80, 70, 52, 36, 24, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 20, 28, 62, 80, 84, 80, 70, 52, 36, 24,
+              12, 0, 0, 0, 0, 0,
             ],
           },
           {
             day: "thu",
             closed: false,
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 64, 82, 86, 82, 72, 55, 38, 26, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 22, 30, 64, 82, 86, 82, 72, 55, 38, 26,
+              13, 0, 0, 0, 0, 0,
             ],
           },
           {
             day: "fri",
             closed: false,
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 38, 75, 92, 96, 92, 82, 68, 52, 36, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 28, 38, 75, 92, 96, 92, 82, 68, 52, 36,
+              18, 0, 0, 0, 0, 0,
             ],
           },
           {
@@ -173,26 +175,26 @@ export const colosseum: CuratedCe = {
             closed: false,
             // Weekend peak — independent travellers added to tour groups.
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 85, 98, 100, 96, 88, 75, 60, 42, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 35, 50, 85, 98, 100, 96, 88, 75, 60, 42,
+              22, 0, 0, 0, 0, 0,
             ],
           },
           {
             day: "sun",
             closed: false,
-            // Sunday similar to Sat; first Sunday of month free entry spikes
-            // even harder but isn't representative of every Sunday.
+            // Sunday similar to Sat; first Sunday of month is free entry and
+            // spikes even harder but isn't representative of every Sunday.
             hours: [
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 82, 95, 98, 94, 85, 72, 56, 40, 0,
-              0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 32, 48, 82, 95, 98, 94, 85, 72, 56, 40,
+              20, 0, 0, 0, 0, 0,
             ],
           },
         ],
         best_window: {
           label: "Tue–Thu, 8:30–9:30 entry",
           day: "wed",
-          start_hour: 9,
-          end_hour: 10,
+          start_hour: 8,
+          end_hour: 9,
         },
         highlight_cards: [
           {
@@ -215,9 +217,9 @@ export const colosseum: CuratedCe = {
           },
           {
             kind: "fastest_entry",
-            headline: "Pre-booked, 9:00 sharp",
+            headline: "Pre-booked, 8:30 sharp",
             detail:
-              "Reserved-entry tickets bypass the standby line; security and bag check at the Stern entrance clear in under 10 minutes before 10:00.",
+              "Reserved-entry tickets bypass the standby line; security and bag check at the Stern entrance clear in under 10 minutes before 9:30.",
           },
           {
             kind: "best_evening",
@@ -229,7 +231,7 @@ export const colosseum: CuratedCe = {
             kind: "best_off_season",
             headline: "Mid-Jan to late Feb",
             detail:
-              "Lowest visitation of the year, short or no queues at opening, and shorter winter hours (9:00–16:30) with dry, crisp Roman afternoons.",
+              "Lowest visitation of the year, short or no queues at opening, and shorter winter hours (8:30–16:30) with dry, crisp Roman afternoons.",
           },
         ],
       },
