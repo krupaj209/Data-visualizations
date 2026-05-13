@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Landmark } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Landmark } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
 import type { HistoryTimelineSpec } from "@/lib/chart-spec";
@@ -11,8 +11,11 @@ interface Props {
   compact?: boolean;
 }
 
+type EraKey = HistoryTimelineSpec["events"][number]["era"];
+type Event = HistoryTimelineSpec["events"][number];
+
 const ERA_TONES: Record<
-  HistoryTimelineSpec["events"][number]["era"],
+  EraKey,
   { bg: string; fg: string; line: string; label: string }
 > = {
   origins: {
@@ -41,7 +44,7 @@ const ERA_TONES: Record<
   },
   reuse: {
     bg: BRAND.slate100,
-    fg: BRAND.slate800,
+    fg: BRAND.slate900,
     line: BRAND.slate500,
     label: "Reuse",
   },
@@ -59,27 +62,52 @@ const ERA_TONES: Record<
   },
 };
 
+/** Width threshold: at or above this, render the horizontal layered layout. */
+const HORIZONTAL_MIN_WIDTH = 560;
+
 export function HistoryTimelineChart({ spec, context, compact }: Props) {
   const events = useMemo(
     () => [...spec.events].sort((a, b) => a.sort_year - b.sort_year),
     [spec.events],
   );
-  const initialIndex = Math.max(
-    0,
-    events.findIndex((event) => event.title === spec.highlight_event),
-  );
-  const [activeIndex, setActiveIndex] = useState(initialIndex);
+  const highlightTitle = spec.highlight_event;
+
+  // Layout switch: measure the chart container width via ResizeObserver and
+  // pick horizontal (≥560px wide and not in compact mode) or vertical fallback.
+  // Compact mode (sub-340px iframes) always uses vertical — horizontal can't
+  // fit 9 columns of titles below ~440px wide.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
   useEffect(() => {
-    setActiveIndex(initialIndex);
-  }, [initialIndex]);
-  const active = events[activeIndex] ?? events[0];
-  const activeTone = active ? ERA_TONES[active.era] : ERA_TONES.origins;
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (!r) return;
+      setWidth(r.width);
+      setHeight(r.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const useHorizontal = !compact && width >= HORIZONTAL_MIN_WIDTH;
+
+  // Vertical "dense" auto-detect (legacy path): when the iframe is tall enough
+  // to skip global compact (≥340px) but still too short to show every event
+  // with description without scrolling, drop descriptions + callout.
+  const verticalNeeded = events.length * 64 + 80;
+  const verticalDense =
+    !useHorizontal && !compact && height > 0 && height < verticalNeeded;
+  const hideDescriptions = compact || verticalDense;
 
   return (
     <ChartCard context={context} compact={compact} pill="Timeline">
       <div
+        ref={containerRef}
         className="flex h-full min-h-0 flex-col"
-        style={{ gap: compact ? 10 : 14 }}
+        style={{ gap: compact ? 8 : 12 }}
       >
         {!compact && (
           <div className="flex items-center justify-between gap-3">
@@ -97,88 +125,395 @@ export function HistoryTimelineChart({ spec, context, compact }: Props) {
               <Landmark size={14} strokeWidth={2.5} />
               {toSentenceCase(spec.span_label)}
             </div>
-            {active && (
-              <div
-                className="hidden items-center gap-1.5 rounded-full sm:inline-flex"
-                style={{
-                  background: BRAND.bgLilac,
-                  color: BRAND.purps,
-                  padding: "6px 10px",
-                  fontSize: "clamp(10px, 1.05cqi, 12px)",
-                  fontWeight: 800,
-                }}
-              >
-                <CalendarDays size={13} strokeWidth={2.5} />
-                {toSentenceCase(active.title)}
-              </div>
-            )}
+            <div
+              className="text-right"
+              style={{
+                color: BRAND.slate500,
+                fontSize: "clamp(9px, 0.95cqi, 11px)",
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              {events.length} key moments
+            </div>
           </div>
         )}
 
-        <div
-          className="relative min-h-0"
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${events.length}, minmax(0, 1fr))`,
-            alignItems: "start",
-            gap: "clamp(4px, 1cqi, 10px)",
-            padding: compact ? "2px 0 0" : "4px 0 2px",
-          }}
-        >
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: "5%",
-              right: "5%",
-              top: compact ? 18 : 22,
-              height: 2,
-              background: BRAND.slate100,
-            }}
+        {useHorizontal ? (
+          <HorizontalTimeline
+            events={events}
+            highlightTitle={highlightTitle}
+            callout={spec.callout}
           />
-          {events.map((event, index) => {
-            const isActive = index === activeIndex;
-            return (
-              <button
-                type="button"
-                key={`${event.date_label}-${event.title}-${index}`}
-                onClick={() => setActiveIndex(index)}
-                className="relative z-10 flex min-w-0 flex-col items-center"
+        ) : (
+          <VerticalTimeline
+            events={events}
+            highlightTitle={highlightTitle}
+            compact={!!compact}
+            hideDescriptions={hideDescriptions}
+            callout={spec.callout}
+          />
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Horizontal layered layout (≥560px wide)                             */
+/* ------------------------------------------------------------------ */
+
+function HorizontalTimeline({
+  events,
+  highlightTitle,
+  callout,
+}: {
+  events: Event[];
+  highlightTitle?: string;
+  callout?: string;
+}) {
+  // Group consecutive events by era for the top pill rail. Each group spans
+  // a number of columns equal to its event count, so the era pill rail
+  // visually weights eras by how much happened in them.
+  const eraGroups = useMemo(() => {
+    const groups: { era: EraKey; count: number; startIndex: number }[] = [];
+    for (let i = 0; i < events.length; i++) {
+      const era = events[i]!.era;
+      const last = groups[groups.length - 1];
+      if (last && last.era === era) {
+        last.count += 1;
+      } else {
+        groups.push({ era, count: 1, startIndex: i });
+      }
+    }
+    return groups;
+  }, [events]);
+
+  const cols = `repeat(${events.length}, minmax(0, 1fr))`;
+  const highlightIndex = events.findIndex((e) => e.title === highlightTitle);
+
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      style={{ gap: 8, position: "relative" }}
+    >
+      {/* Row 1 — era pill rail */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: cols,
+          gap: 4,
+        }}
+      >
+        {eraGroups.map((g) => {
+          const tone = ERA_TONES[g.era];
+          return (
+            <div
+              key={`era-${g.startIndex}`}
+              style={{
+                gridColumn: `span ${g.count}`,
+                background: tone.bg,
+                color: tone.fg,
+                border: `1px solid ${tone.line}33`,
+                borderRadius: 999,
+                padding: "3px 8px",
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+                textAlign: "center",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                lineHeight: 1.4,
+              }}
+              title={tone.label}
+            >
+              {tone.label}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Row 2 — date pills above timeline spine + nodes */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: cols,
+          gap: 0,
+          position: "relative",
+          paddingTop: 4,
+        }}
+      >
+        {events.map((event, i) => {
+          const tone = ERA_TONES[event.era];
+          return (
+            <div
+              key={`date-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                minWidth: 0,
+              }}
+            >
+              <span
                 style={{
-                  appearance: "none",
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  gap: compact ? 4 : 6,
+                  background: tone.bg,
+                  color: tone.fg,
+                  border: `1px solid ${tone.line}33`,
+                  borderRadius: 8,
+                  padding: "3px 7px",
+                  fontSize: 11,
+                  fontWeight: 900,
+                  lineHeight: 1.05,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: "100%",
                 }}
-                aria-pressed={isActive}
-                title={`${event.date_label}: ${event.title}`}
               >
-                <div
-                  className="grid place-items-center rounded-full"
+                {event.date_label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Row 3 — spine + nodes */}
+      <div
+        style={{
+          position: "relative",
+          height: 18,
+          display: "grid",
+          gridTemplateColumns: cols,
+          alignItems: "center",
+        }}
+      >
+        {/* Spine line spans only between first and last node center */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: `calc((100% / ${events.length}) / 2)`,
+            right: `calc((100% / ${events.length}) / 2)`,
+            height: 2,
+            background: BRAND.slate200,
+            transform: "translateY(-1px)",
+          }}
+        />
+        {events.map((event, i) => {
+          const tone = ERA_TONES[event.era];
+          const isHighlight = i === highlightIndex;
+          const size = isHighlight ? 16 : 12;
+          return (
+            <div
+              key={`node-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              <span
+                style={{
+                  width: size,
+                  height: size,
+                  borderRadius: "50%",
+                  background: tone.line,
+                  border: isHighlight
+                    ? `3px solid ${BRAND.bgLilac}`
+                    : `2px solid #fff`,
+                  boxShadow: isHighlight
+                    ? `0 0 0 2px ${BRAND.purps}`
+                    : `0 0 0 1px ${tone.line}33`,
+                  display: "block",
+                }}
+                title={event.title}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Row 4 — titles + metric chips */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: cols,
+          gap: 4,
+          minHeight: 0,
+          flex: 1,
+        }}
+      >
+        {events.map((event, i) => {
+          const isHighlight = i === highlightIndex;
+          return (
+            <div
+              key={`title-${i}`}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                textAlign: "center",
+                gap: 4,
+                padding: "0 4px",
+                minWidth: 0,
+              }}
+            >
+              {isHighlight && (
+                <span
                   style={{
-                    width: compact ? 30 : 38,
-                    height: compact ? 30 : 38,
-                    background: isActive ? BRAND.purps : "white",
-                    color: isActive ? "white" : BRAND.slate700,
-                    border: `2px solid ${isActive ? BRAND.purps : BRAND.slate300}`,
-                    boxShadow: isActive
-                      ? "0 8px 18px rgba(128, 0, 255, 0.18)"
-                      : "0 3px 10px rgba(17, 24, 39, 0.06)",
-                    fontSize: compact ? 10 : 11,
+                    background: BRAND.bgLilac,
+                    color: BRAND.purps,
+                    fontSize: 8,
                     fontWeight: 900,
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    lineHeight: 1.4,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {index + 1}
-                </div>
+                  ★ Pivotal
+                </span>
+              )}
+              <h3
+                style={{
+                  margin: 0,
+                  color: BRAND.slate950,
+                  fontSize: "clamp(10px, 1.05cqi, 12px)",
+                  fontWeight: 900,
+                  lineHeight: 1.2,
+                  letterSpacing: 0,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  wordBreak: "break-word",
+                  hyphens: "auto",
+                }}
+              >
+                {toSentenceCase(event.title)}
+              </h3>
+              {event.metric_value && (
+                <span
+                  style={{
+                    background: BRAND.bgCream,
+                    border: `1px solid ${BRAND.slate100}`,
+                    color: BRAND.slate950,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    lineHeight: 1.3,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "100%",
+                  }}
+                  title={
+                    event.metric_label
+                      ? `${event.metric_value} ${event.metric_label}`
+                      : event.metric_value
+                  }
+                >
+                  {event.metric_value}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {callout && (
+        <div
+          className="rounded-2xl"
+          style={{
+            background: BRAND.bgLilac,
+            color: BRAND.purps,
+            border: `1px solid ${BRAND.purpsSoft}`,
+            padding: "8px 12px",
+            fontSize: "clamp(10px, 1.1cqi, 12px)",
+            fontWeight: 750,
+            lineHeight: 1.3,
+            textAlign: "center",
+          }}
+        >
+          {toSentenceCase(callout)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Vertical layout (narrow widths + compact)                           */
+/* ------------------------------------------------------------------ */
+
+function VerticalTimeline({
+  events,
+  highlightTitle,
+  compact,
+  hideDescriptions,
+  callout,
+}: {
+  events: Event[];
+  highlightTitle?: string;
+  compact: boolean;
+  hideDescriptions: boolean;
+  callout?: string;
+}) {
+  return (
+    <>
+      <ol
+        className="relative min-h-0 flex-1"
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: hideDescriptions ? 6 : 10,
+        }}
+      >
+        {events.map((event, index) => {
+          const tone = ERA_TONES[event.era];
+          const isHighlight = highlightTitle === event.title;
+          const isLast = index === events.length - 1;
+          return (
+            <li
+              key={`${event.date_label}-${event.title}-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: compact
+                  ? "60px 1fr"
+                  : "minmax(72px, 88px) 1fr",
+                gap: compact ? 10 : 14,
+                position: "relative",
+                paddingBottom: isLast ? 0 : compact ? 2 : 4,
+              }}
+            >
+              <div
+                className="flex flex-col items-stretch"
+                style={{ minWidth: 0, position: "relative" }}
+              >
                 <div
                   style={{
-                    color: isActive ? BRAND.purps : BRAND.slate500,
-                    fontSize: "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 850,
-                    lineHeight: 1.1,
-                    maxWidth: "100%",
+                    background: tone.bg,
+                    color: tone.fg,
+                    border: `1px solid ${tone.line}33`,
+                    borderRadius: 10,
+                    padding: compact ? "4px 6px" : "6px 8px",
+                    fontWeight: 900,
+                    fontSize: compact ? 11 : 13,
+                    lineHeight: 1.05,
+                    textAlign: "center",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -186,133 +521,135 @@ export function HistoryTimelineChart({ spec, context, compact }: Props) {
                 >
                   {event.date_label}
                 </div>
-              </button>
-            );
-          })}
-        </div>
+                {!isLast && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: compact ? 26 : 32,
+                      bottom: -6,
+                      width: 2,
+                      background: BRAND.slate100,
+                      transform: "translateX(-1px)",
+                    }}
+                  />
+                )}
+              </div>
 
-        {active && (
-          <div
-            className="grid min-h-0 rounded-2xl"
-            style={{
-              gridTemplateColumns: compact ? "1fr" : "minmax(84px, 0.24fr) 1fr",
-              gap: compact ? 8 : 12,
-              border: `1px solid ${BRAND.slate100}`,
-              background: "white",
-              boxShadow: "0 8px 24px rgba(17, 24, 39, 0.05)",
-              padding: compact ? "10px" : "12px",
-            }}
-          >
-            <div
-              className="rounded-xl"
-              style={{
-                background: activeTone.bg,
-                color: activeTone.fg,
-                padding: "10px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                gap: 6,
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "clamp(15px, 2cqi, 22px)",
-                  fontWeight: 900,
-                  lineHeight: 1,
-                }}
-              >
-                {active.date_label}
-              </div>
-              <div
-                style={{
-                  fontSize: "clamp(9px, 0.95cqi, 11px)",
-                  fontWeight: 900,
-                  lineHeight: 1.1,
-                  textTransform: "uppercase",
-                  color: activeTone.fg,
-                }}
-              >
-                {activeTone.label}
-              </div>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <h3
-                style={{
-                  color: BRAND.slate950,
-                  fontSize: "clamp(16px, 2.2cqi, 24px)",
-                  fontWeight: 900,
-                  lineHeight: 1.08,
-                  margin: 0,
-                  letterSpacing: 0,
-                }}
-              >
-                {toSentenceCase(active.title)}
-              </h3>
-              <p
-                style={{
-                  margin: "7px 0 0",
-                  color: BRAND.slate700,
-                  fontSize: "clamp(11px, 1.3cqi, 14px)",
-                  fontWeight: 650,
-                  lineHeight: 1.35,
-                }}
-              >
-                {toSentenceCase(active.description)}
-              </p>
-              {!compact && active.metric_value && (
+              <div style={{ minWidth: 0 }}>
                 <div
-                  className="mt-2 inline-flex items-baseline gap-2 rounded-full"
-                  style={{
-                    background: BRAND.slate50,
-                    border: `1px solid ${BRAND.slate100}`,
-                    padding: "6px 9px",
-                  }}
+                  className="flex flex-wrap items-center gap-1.5"
+                  style={{ rowGap: 4 }}
                 >
                   <span
                     style={{
-                      color: BRAND.slate950,
-                      fontSize: "clamp(12px, 1.35cqi, 15px)",
+                      background: tone.bg,
+                      color: tone.fg,
+                      fontSize: compact ? 8 : 9,
                       fontWeight: 900,
+                      padding: compact ? "1px 6px" : "2px 7px",
+                      borderRadius: 999,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      lineHeight: 1.4,
                     }}
                   >
-                    {active.metric_value}
+                    {tone.label}
                   </span>
-                  {active.metric_label && (
+                  {isHighlight && (
                     <span
                       style={{
-                        color: BRAND.slate500,
-                        fontSize: "clamp(9px, 1cqi, 11px)",
-                        fontWeight: 800,
+                        background: BRAND.bgLilac,
+                        color: BRAND.purps,
+                        fontSize: compact ? 8 : 9,
+                        fontWeight: 900,
+                        padding: compact ? "1px 6px" : "2px 7px",
+                        borderRadius: 999,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        lineHeight: 1.4,
                       }}
                     >
-                      {toSentenceCase(active.metric_label)}
+                      ★ Pivotal
+                    </span>
+                  )}
+                  {event.metric_value && (
+                    <span
+                      className="inline-flex items-baseline gap-1"
+                      style={{
+                        background: BRAND.bgCream,
+                        border: `1px solid ${BRAND.slate100}`,
+                        color: BRAND.slate950,
+                        fontSize: compact ? 10 : 11,
+                        fontWeight: 900,
+                        padding: compact ? "1px 7px" : "2px 8px",
+                        borderRadius: 999,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {event.metric_value}
+                      {event.metric_label && (
+                        <span
+                          style={{
+                            color: BRAND.slate700,
+                            fontWeight: 700,
+                            fontSize: compact ? 9 : 10,
+                          }}
+                        >
+                          {event.metric_label}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+                <h3
+                  style={{
+                    margin: compact ? "3px 0 0" : "5px 0 0",
+                    color: BRAND.slate950,
+                    fontSize: compact ? 13 : "clamp(14px, 1.5cqi, 16px)",
+                    fontWeight: 900,
+                    lineHeight: 1.15,
+                    letterSpacing: 0,
+                  }}
+                >
+                  {toSentenceCase(event.title)}
+                </h3>
+                {!hideDescriptions && (
+                  <p
+                    style={{
+                      margin: "3px 0 0",
+                      color: BRAND.slate700,
+                      fontSize: "clamp(11px, 1.15cqi, 13px)",
+                      fontWeight: 600,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {toSentenceCase(event.description)}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
 
-        {!compact && spec.callout && (
-          <div
-            className="rounded-2xl"
-            style={{
-              background: BRAND.slate50,
-              color: BRAND.slate700,
-              border: `1px solid ${BRAND.slate100}`,
-              padding: "10px 12px",
-              fontSize: "clamp(11px, 1.15cqi, 13px)",
-              fontWeight: 750,
-              lineHeight: 1.25,
-            }}
-          >
-            {toSentenceCase(spec.callout)}
-          </div>
-        )}
-      </div>
-    </ChartCard>
+      {!hideDescriptions && callout && (
+        <div
+          className="rounded-2xl"
+          style={{
+            background: BRAND.bgLilac,
+            color: BRAND.purps,
+            border: `1px solid ${BRAND.purpsSoft}`,
+            padding: "9px 12px",
+            fontSize: "clamp(11px, 1.15cqi, 13px)",
+            fontWeight: 750,
+            lineHeight: 1.3,
+          }}
+        >
+          {toSentenceCase(callout)}
+        </div>
+      )}
+    </>
   );
 }

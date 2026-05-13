@@ -3,6 +3,7 @@ import { MapPin, Navigation, Timer } from "lucide-react";
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE } from "@/lib/chart-system";
 import type { RouteProfileSpec } from "@/lib/chart-spec";
 
 interface Props {
@@ -21,17 +22,18 @@ function formatDuration(min?: number): string | null {
 
 export function RouteProfileChart({ spec, context, compact = false }: Props) {
   const stops = spec.stops;
-  const manyStops = stops.length > 6;
+  const stopCount = stops.length;
+  const dense = stopCount > 6;
+  const veryDense = stopCount > 9;
   const hasTiming = stops.some((s) => s.duration_from_start_min !== undefined);
   const maxMin =
     spec.total_duration_min ??
     Math.max(...stops.map((s) => s.duration_from_start_min ?? 0), 1);
 
+  const labelWidth = compact ? 56 : veryDense ? 64 : dense ? 78 : 96;
+
   return (
-    <ChartCard
-      context={context ?? spec.route_label}
-      compact={compact}
-    >
+    <ChartCard context={context ?? spec.route_label} compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
         {!compact && (
           <div
@@ -39,10 +41,16 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
             style={{ marginBottom: 12 }}
           >
             {spec.headline_metric && (
-              <MetricPill icon={<Navigation size={13} />} label={spec.headline_metric} />
+              <MetricPill
+                icon={<Navigation size={13} />}
+                label={spec.headline_metric}
+              />
             )}
             {formatDuration(spec.total_duration_min) && (
-              <MetricPill icon={<Timer size={13} />} label={formatDuration(spec.total_duration_min)!} />
+              <MetricPill
+                icon={<Timer size={13} />}
+                label={formatDuration(spec.total_duration_min)!}
+              />
             )}
             {spec.distance_km !== undefined && (
               <MetricPill
@@ -65,7 +73,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
             className="relative"
             style={{
               minHeight: 0,
-              padding: compact ? "8px 4px 18px" : "34px 8px 44px",
+              padding: compact ? "10px 4px 14px" : "38px 8px 44px",
             }}
           >
             <div
@@ -97,13 +105,15 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
 
             {stops.map((stop, i) => {
               const pct = hasTiming
-                ? ((stop.duration_from_start_min ?? (i / (stops.length - 1)) * maxMin) /
+                ? ((stop.duration_from_start_min ??
+                    (i / Math.max(stopCount - 1, 1)) * maxMin) /
                     Math.max(maxMin, 1)) *
                   92
-                : (i / Math.max(stops.length - 1, 1)) * 92;
+                : (i / Math.max(stopCount - 1, 1)) * 92;
               const left = 4 + pct;
-              const isEdge = i === 0 || i === stops.length - 1;
+              const isEdge = i === 0 || i === stopCount - 1;
               const isHighlight = stop.highlight || isEdge;
+              const above = i % 2 === 0;
               return (
                 <div
                   key={`${stop.name}-${i}`}
@@ -113,21 +123,22 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                     top: "50%",
                     transform: "translate(-50%, -50%)",
                     textAlign: "center",
-                    width: compact ? 54 : manyStops ? 78 : 92,
+                    width: labelWidth,
                   }}
+                  title={stop.name}
                 >
                   <motion.div
                     initial={{ scale: 0.6, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ delay: i * 0.05 }}
                     style={{
-                      width: isHighlight ? 20 : 15,
-                      height: isHighlight ? 20 : 15,
+                      width: isHighlight ? 18 : 13,
+                      height: isHighlight ? 18 : 13,
                       margin: "0 auto",
                       borderRadius: 999,
                       background: isHighlight ? BRAND.purps : "white",
-                      border: `3px solid ${isHighlight ? BRAND.purps : BRAND.slate300}`,
-                      boxShadow: "0 0 0 4px white",
+                      border: `2.5px solid ${isHighlight ? BRAND.purps : BRAND.slate300}`,
+                      boxShadow: "0 0 0 3px white",
                     }}
                   />
                   <div
@@ -135,19 +146,19 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                       position: compact ? "static" : "absolute",
                       left: compact ? undefined : "50%",
                       transform: compact ? undefined : "translateX(-50%)",
-                      top: compact ? undefined : i % 2 === 0 ? 26 : -42,
-                      width: compact ? undefined : manyStops ? 86 : 106,
+                      top: compact ? undefined : above ? 24 : -38,
+                      width: compact ? undefined : labelWidth,
                       marginTop: compact ? 5 : 0,
-                      fontSize: compact
-                        ? "clamp(8px, 1cqi, 10px)"
-                        : "clamp(8px, 0.95cqi, 10px)",
+                      fontSize: CHART_TYPE.axisTick.fontSize,
                       fontWeight: 800,
-                      lineHeight: 1.1,
+                      lineHeight: 1.15,
                       color: isHighlight ? BRAND.slate950 : BRAND.slate700,
                       overflow: "hidden",
                       display: "-webkit-box",
                       WebkitLineClamp: compact ? 1 : 2,
                       WebkitBoxOrient: "vertical",
+                      textOverflow: "ellipsis",
+                      wordBreak: "break-word",
                     }}
                   >
                     {stop.name}
@@ -158,10 +169,11 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                         position: "absolute",
                         left: "50%",
                         transform: "translateX(-50%)",
-                        top: i % 2 === 0 ? 50 : -18,
+                        top: above ? 56 : -16,
                         fontSize: 10,
                         fontWeight: 800,
                         color: BRAND.slate500,
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {formatDuration(stop.duration_from_start_min)}
@@ -192,10 +204,11 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                       padding: "8px 9px",
                       minWidth: 0,
                     }}
+                    title={s.name}
                   >
                     <div
                       style={{
-                        fontSize: 10.5,
+                        fontSize: CHART_TYPE.axisTick.fontSize,
                         fontWeight: 850,
                         color: BRAND.slate950,
                         whiteSpace: "nowrap",
@@ -208,10 +221,15 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
                     <div
                       style={{
                         marginTop: 3,
-                        fontSize: 9.5,
+                        fontSize: CHART_TYPE.legend.fontSize,
                         fontWeight: 650,
                         color: BRAND.slate700,
                         lineHeight: 1.25,
+                        overflow: "hidden",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        textOverflow: "ellipsis",
                       }}
                     >
                       {s.landmark_count !== undefined
@@ -228,7 +246,7 @@ export function RouteProfileChart({ spec, context, compact = false }: Props) {
           <div
             style={{
               marginTop: 8,
-              fontSize: 11,
+              fontSize: CHART_TYPE.legend.fontSize,
               color: BRAND.slate700,
               fontWeight: 700,
               lineHeight: 1.35,

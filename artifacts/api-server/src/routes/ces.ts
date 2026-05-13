@@ -18,9 +18,21 @@ import {
 import { CreateCeBody, GetCeParams } from "@workspace/api-zod";
 import { generateCePayload, slugify } from "../lib/generate-ce";
 import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
-import { CHART_ARCHETYPES, isKnownSubcategory } from "@workspace/question-bank";
+import {
+  CHART_ARCHETYPES,
+  isKnownSubcategory,
+  type ChartArchetypeId,
+} from "@workspace/question-bank";
 import { openai } from "../lib/openai";
-import { runResearchPipeline } from "../lib/research-pipeline";
+import {
+  runResearchPipeline,
+  type ExistingChartSnapshot,
+} from "../lib/research-pipeline";
+import {
+  loadRegenConstraints,
+  parseFeedback,
+  mergeConstraints,
+} from "../lib/regen-constraints";
 
 const router: IRouter = Router();
 
@@ -397,15 +409,97 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
     .where(eq(drdsTable.ceSlug, ce.slug));
 
   if (drd?.markdown?.trim()) {
-    const existingCharts = await db
-      .select({
-        question: chartsTable.question,
-        chartType: chartsTable.chartType,
-        status: chartsTable.status,
-      })
+    const priorRows = await db
+      .select()
       .from(chartsTable)
       .where(eq(chartsTable.ceId, ce.id))
       .orderBy(asc(chartsTable.sortOrder));
+
+    // Aggregate per-chart feedback + edit counts so the selector's
+    // enriched snapshot carries severity context, not just chart-type.
+    const enrichment = await loadChartEnrichment(priorRows.map((r) => r.id));
+    const feedbackNotesByChart = new Map<number, string[]>();
+    if (priorRows.length > 0) {
+      const fb = await db
+        .select()
+        .from(chartFeedbackTable)
+        .where(
+          inArray(
+            chartFeedbackTable.chartId,
+            priorRows.map((r) => r.id),
+          ),
+        );
+      for (const f of fb) {
+        if (f.status !== "open" && f.status !== "escalated") continue;
+        if (!f.note?.trim()) continue;
+        const arr = feedbackNotesByChart.get(f.chartId) ?? [];
+        arr.push(f.note.trim());
+        feedbackNotesByChart.set(f.chartId, arr);
+      }
+    }
+
+    const archetypeSet = new Set(Object.keys(CHART_ARCHETYPES));
+    const existingCharts: ExistingChartSnapshot[] = priorRows.map((r) => {
+      const e = enrichment.get(r.id);
+      const prov =
+        r.provenance && typeof r.provenance === "object"
+          ? (r.provenance as Record<string, unknown>)
+          : null;
+      const topicId =
+        prov && typeof prov["topic_id"] === "string"
+          ? (prov["topic_id"] as string)
+          : undefined;
+      const insight = (r.insight ?? "").split(/[.!?]/)[0]?.trim() || undefined;
+      const specDigest = JSON.stringify(r.spec ?? {}).slice(0, 320);
+      const notes = (feedbackNotesByChart.get(r.id) ?? [])
+        .join(" | ")
+        .slice(0, 240);
+      return {
+        question: r.question,
+        chartType: r.chartType,
+        status: r.status,
+        archetype: archetypeSet.has(r.chartType)
+          ? (r.chartType as ChartArchetypeId)
+          : undefined,
+        ...(topicId ? { topicId } : {}),
+        ...(insight ? { insight } : {}),
+        specDigest,
+        feedback: {
+          editCount: e?.editCount ?? 0,
+          issue: e?.topFeedbackSeverity ?? null,
+          ...(notes ? { note: notes } : {}),
+        },
+      };
+    });
+
+    // Parse this click's feedback, merge with whatever we persisted from
+    // a prior regen run on the same CE, and derive retire signals from
+    // chronically-weak prior charts.
+    const stored = loadRegenConstraints(ce.regenConstraints);
+    const { parsed: incoming, honored: parserNotes } = parseFeedback(
+      body.data.feedback,
+    );
+    const merged = mergeConstraints(stored, incoming);
+
+    // Retire-topic signal: any prior chart with rating ≤ 2 OR a high-
+    // severity issue OR ≥ 2 edits AND a topic_id is treated as
+    // chronically weak. The selector drops candidates carrying that
+    // topic this run.
+    const retireTopics = new Set<string>();
+    const retireArchetypes = new Set<ChartArchetypeId>();
+    for (const snap of existingCharts) {
+      const fb = snap.feedback;
+      const weak =
+        (fb?.issue === "high") ||
+        ((fb?.editCount ?? 0) >= 2 && (fb?.note?.length ?? 0) > 0);
+      if (!weak) continue;
+      if (snap.topicId) retireTopics.add(snap.topicId.toLowerCase());
+      // Only retire the archetype outright when the issue is "wrong_data"
+      // (severity high) — otherwise the topic-level retire is enough.
+      if (fb?.issue === "high" && snap.archetype) {
+        retireArchetypes.add(snap.archetype);
+      }
+    }
 
     let result;
     try {
@@ -415,6 +509,9 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
         drdMarkdown: drd.markdown,
         regenerationFeedback: body.data.feedback,
         existingCharts,
+        regenConstraints: merged,
+        retireTopics: Array.from(retireTopics),
+        retireArchetypes: Array.from(retireArchetypes),
       });
     } catch (err) {
       req.log.error({ err }, "Research regeneration failed");
@@ -452,6 +549,7 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
             summary: result.summary,
             emoji: result.emoji,
             status: publishedCount > 0 ? ce.status : "draft",
+            regenConstraints: merged as unknown as Record<string, unknown>,
           })
           .where(eq(cesTable.id, ce.id))
           .returning();
@@ -484,6 +582,17 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
         return { ce: updated, charts: insertedCharts, publishedKept: publishedCount };
       });
 
+      // Combine the parser-side honored bullets (rule matches that fired
+      // even when no chart needed dropping) with the selector-side
+      // honored bullets (constraints actually applied during selection)
+      // so the writer sees the union.
+      const honoredFeedback = Array.from(
+        new Set([
+          ...parserNotes,
+          ...result.regen_summary.honoredFeedback,
+        ]),
+      );
+
       res.json({
         ce: serializeCe(
           persisted.ce,
@@ -495,6 +604,14 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
         publishedChartsKept: persisted.publishedKept,
         droppedQuestions: result.dropped_questions,
         proposedHeroQuestions: result.proposed_hero_questions,
+        regenSummary: {
+          honoredFeedback,
+          suppressedArchetypes: result.regen_summary.suppressedArchetypes,
+          retiredTopics: result.regen_summary.retiredTopics,
+          priorDeckOverlap: result.regen_summary.priorDeckOverlap,
+          priorDeckSize: result.regen_summary.priorDeckSize,
+          storedConstraints: merged,
+        },
       });
     } catch (err) {
       req.log.error({ err }, "Failed to persist research regeneration");

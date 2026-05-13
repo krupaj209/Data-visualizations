@@ -113,8 +113,13 @@ export const RegenerateCeParams = zod.object({
   slug: zod.coerce.string(),
 });
 
-export const RegenerateFeedbackInput = zod.object({
-  feedback: zod.string().max(4000).optional(),
+export const RegenerateCeBody = zod.object({
+  feedback: zod
+    .string()
+    .optional()
+    .describe(
+      "Optional free-text writer feedback. Parsed by the api-server\ninto structured constraints (banned archetypes \/ topics \/\nphrases, must-include topics) and merged with whatever was\npersisted from prior regen runs on the same CE.\n",
+    ),
 });
 
 export const RegenerateCeResponse = zod.object({
@@ -161,6 +166,42 @@ export const RegenerateCeResponse = zod.object({
       updatedAt: zod.string(),
     }),
   ),
+  publishedChartsKept: zod
+    .number()
+    .optional()
+    .describe(
+      "Count of `published` charts preserved across the run (only\n`draft` rows are deleted by the research pipeline).\n",
+    ),
+  droppedQuestions: zod
+    .array(
+      zod.object({
+        question: zod.string(),
+        reason: zod.string(),
+      }),
+    )
+    .optional(),
+  proposedHeroQuestions: zod
+    .array(zod.record(zod.string(), zod.unknown()))
+    .optional(),
+  regenSummary: zod
+    .object({
+      honoredFeedback: zod.array(zod.string()),
+      suppressedArchetypes: zod.array(zod.string()),
+      retiredTopics: zod.array(zod.string()),
+      priorDeckOverlap: zod
+        .number()
+        .describe("How many selected questions overlap the prior deck."),
+      priorDeckSize: zod.number().describe("Total prior charts considered."),
+      storedConstraints: zod
+        .record(zod.string(), zod.unknown())
+        .describe(
+          'Merged constraint set (parsed feedback ∪ prior persisted\nconstraints) re-persisted on the CE row this run. Surfaced so\nthe UI can show the writer what\'s \"sticky\" for next regen.\n',
+        ),
+    })
+    .optional()
+    .describe(
+      "Surfaced by \/ces\/{slug}\/regenerate so the writer can confirm the\nrun honored their feedback. Plain-English bullets first, then the\nstructured signals so the UI can render either.\n",
+    ),
 });
 
 /**
@@ -262,6 +303,12 @@ export const GetCeIntelligenceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -304,6 +351,12 @@ export const RefreshCeIntelligenceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -318,6 +371,72 @@ export const RefreshCeIntelligenceResponse = zod.object({
   ),
   createdAt: zod.string(),
   updatedAt: zod.string(),
+});
+
+/**
+ * Derives 1–3 missing-evidence buckets from the rejection reason and archetype data shape, fans out one Gemini+googleSearch call per bucket, merges findings, and re-scores the idea editorially. The deterministic ship/hold/cut verdict drives whether the rejected idea is promoted into the saved plan's recommended list.
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const RecheckCeIntelligenceGapParams = zod.object({
+  ceSlug: zod.coerce.string(),
+});
+
+export const RecheckCeIntelligenceGapBody = zod.object({
+  question: zod.string(),
+  archetype: zod.string().optional(),
+  reason: zod.string().optional(),
+});
+
+export const RecheckCeIntelligenceGapResponse = zod.object({
+  status: zod.enum(["found", "partial", "not_found"]),
+  recommended_archetype: zod.string().optional(),
+  findings: zod.array(zod.string()),
+  source_refs: zod.array(zod.string()),
+  generation_context: zod.string(),
+  reason: zod.string(),
+  buckets: zod.array(
+    zod.object({
+      bucket: zod.string(),
+      query: zod.string(),
+      description: zod.string(),
+    }),
+  ),
+  editorial: zod
+    .union([
+      zod.object({
+        useful: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        ce_specific: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        better_than_existing: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        conversion_driven: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+        visually_strong: zod.object({
+          verdict: zod.enum(["yes", "weak", "no"]),
+          rationale: zod.string(),
+        }),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  editorial_verdict: zod
+    .union([zod.enum(["ship", "hold", "cut"]), zod.null()])
+    .optional(),
+  plan: zod
+    .union([zod.record(zod.string(), zod.unknown()), zod.null()])
+    .optional()
+    .describe(
+      "The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present.",
+    ),
 });
 
 /**
@@ -340,6 +459,12 @@ export const DeleteCeIntelligenceSourceResponse = zod.object({
       source_url: zod.string().optional(),
       confidence: zod.number(),
       fetched_at: zod.string(),
+      evidence_type: zod
+        .string()
+        .optional()
+        .describe(
+          "Optional evidence-type tag set by the source-specific adapter.\nOne of authoritative_fact, visitor_tip, wait_anecdote,\nsentiment_theme, trip_report, product_offering, price_point,\nbundle_pattern, operational_change, other. Older rows pre-date\nthis field and may omit it.\n",
+        ),
     }),
   ),
   sources: zod.array(
@@ -463,6 +588,12 @@ export const RegenerateChartParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const regenerateChartBodyFeedbackMax = 4000;
+
+export const RegenerateChartBody = zod.object({
+  feedback: zod.string().max(regenerateChartBodyFeedbackMax).optional(),
+});
+
 export const RegenerateChartResponse = zod.object({
   chart: zod.object({
     id: zod.number(),
@@ -572,6 +703,86 @@ export const PublishChartBody = zod.object({
 });
 
 export const PublishChartResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * Persists a writer's review decision for a single fact-table row onto
+the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+`valueOverride` to override the auto-generated claim/value text.
+
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const UpsertChartFactReviewParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpsertChartFactReviewBody = zod.object({
+  rowId: zod.string(),
+  status: zod.enum(["approved", "rejected", "needs_review"]),
+  reason: zod.string().optional(),
+  claimOverride: zod.string().optional(),
+  valueOverride: zod.string().optional(),
+  writerId: zod.string().optional(),
+});
+
+export const UpsertChartFactReviewResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const ClearChartFactReviewParams = zod.object({
+  id: zod.coerce.number(),
+  rowId: zod.coerce.string(),
+});
+
+export const ClearChartFactReviewResponse = zod.object({
   id: zod.number(),
   ceId: zod.number(),
   slug: zod.string(),

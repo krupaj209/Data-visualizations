@@ -271,7 +271,7 @@ function ChartTriageRow({
     const feedback = prompt(
       `What should improve when regenerating "${chart.title}"?\n\nThe visual will be replaced and the current DRD will be used.`,
       items
-        .map((item) => item.feedback.note || item.feedback.category)
+        .map((item) => item.feedback.note || item.feedback.issueCategory)
         .filter(Boolean)
         .slice(0, 3)
         .join("\n"),

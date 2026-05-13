@@ -5,6 +5,9 @@ import { BRAND } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { type DurationProfilesSpec } from "@/lib/chart-spec";
 
+const NAME_COL = "minmax(96px, 138px)";
+const ICON_COL = "36px";
+
 interface Props {
   spec: DurationProfilesSpec;
   context?: string;
@@ -113,7 +116,7 @@ export function DurationProfilesChart({
           <div
             className="grid"
             style={{
-              gridTemplateColumns: "40px minmax(118px, 150px) minmax(0, 1fr)",
+              gridTemplateColumns: `${ICON_COL} ${NAME_COL} minmax(0, 1fr)`,
               columnGap: 10,
               marginTop: dense ? 6 : 10,
               flexShrink: 0,
@@ -222,18 +225,18 @@ function ProfileRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "40px minmax(118px, 150px) minmax(0, 1fr)",
+        gridTemplateColumns: `${ICON_COL} ${NAME_COL} minmax(0, 1fr)`,
         columnGap: 10,
         alignItems: "center",
-        minHeight: dense ? 46 : 54,
+        minHeight: dense ? 42 : 52,
       }}
     >
       <div className="flex items-center justify-center">
         <div
           className="flex items-center justify-center"
           style={{
-            width: dense ? 32 : 36,
-            height: dense ? 32 : 36,
+            width: dense ? 30 : 34,
+            height: dense ? 30 : 34,
             borderRadius: "50%",
             background: isHi ? BRAND.purps : BRAND.purpsSoft,
             color: isHi ? "white" : BRAND.purps,
@@ -251,13 +254,16 @@ function ProfileRow({
         </div>
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0" title={profile.name}>
         <div
           style={{
             color: isHi ? BRAND.purps : BRAND.slate900,
             fontWeight: 800,
-            fontSize: "clamp(10px, 1.15cqi, 13px)",
+            fontSize: CHART_TYPE.catLabel.fontSize,
             lineHeight: 1.15,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {profile.name}
@@ -266,14 +272,15 @@ function ProfileRow({
           <div
             style={{
               color: BRAND.slate700,
-              fontSize: "clamp(9px, 1cqi, 11px)",
+              fontSize: CHART_TYPE.legend.fontSize,
               fontWeight: 600,
-              lineHeight: 1.15,
+              lineHeight: 1.2,
               marginTop: 2,
               overflow: "hidden",
               display: "-webkit-box",
-              WebkitLineClamp: dense ? 2 : 3,
+              WebkitLineClamp: dense ? 1 : 2,
               WebkitBoxOrient: "vertical",
+              textOverflow: "ellipsis",
             }}
           >
             {profile.note}
@@ -298,7 +305,7 @@ function ProfileRow({
             background: fill,
             borderRadius: 8,
             paddingRight: 10,
-            minWidth: 86,
+            minWidth: 72,
           }}
         >
           <span

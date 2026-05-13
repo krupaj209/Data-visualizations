@@ -15,4 +15,11 @@ export interface CeIntelligenceFact {
   source_url?: string;
   confidence: number;
   fetched_at: string;
+  /** Optional evidence-type tag set by the source-specific adapter.
+One of authoritative_fact, visitor_tip, wait_anecdote,
+sentiment_theme, trip_report, product_offering, price_point,
+bundle_pattern, operational_change, other. Older rows pre-date
+this field and may omit it.
+ */
+  evidence_type?: string;
 }

@@ -24,6 +24,7 @@ import type {
   CeIntelligenceRefreshInput,
   CeWithCharts,
   Chart,
+  ChartFactReviewInput,
   ChartFeedback,
   ChartFeedbackInput,
   ChartPublishInput,
@@ -40,6 +41,10 @@ import type {
   PublishAllDraftsInput,
   PublishAllDraftsResult,
   QuestionTroubleScore,
+  RecheckGapRequest,
+  RecheckGapResponse,
+  RegenerateCeInput,
+  RegenerateCeResult,
   RegenerateFeedbackInput,
   ResearchGenerateInput,
   ResearchGenerateResult,
@@ -452,14 +457,14 @@ export const getRegenerateCeUrl = (slug: string) => {
 
 export const regenerateCe = async (
   slug: string,
-  regenerateFeedbackInput?: RegenerateFeedbackInput,
+  regenerateCeInput?: RegenerateCeInput,
   options?: RequestInit,
-): Promise<CeWithCharts> => {
-  return customFetch<CeWithCharts>(getRegenerateCeUrl(slug), {
+): Promise<RegenerateCeResult> => {
+  return customFetch<RegenerateCeResult>(getRegenerateCeUrl(slug), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(regenerateFeedbackInput ?? {}),
+    body: JSON.stringify(regenerateCeInput),
   });
 };
 
@@ -470,14 +475,14 @@ export const getRegenerateCeMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data?: RegenerateFeedbackInput },
+    { slug: string; data: BodyType<RegenerateCeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data?: RegenerateFeedbackInput },
+  { slug: string; data: BodyType<RegenerateCeInput> },
   TContext
 > => {
   const mutationKey = ["regenerateCe"];
@@ -491,7 +496,7 @@ export const getRegenerateCeMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof regenerateCe>>,
-    { slug: string; data?: RegenerateFeedbackInput }
+    { slug: string; data: BodyType<RegenerateCeInput> }
   > = (props) => {
     const { slug, data } = props ?? {};
 
@@ -504,7 +509,7 @@ export const getRegenerateCeMutationOptions = <
 export type RegenerateCeMutationResult = NonNullable<
   Awaited<ReturnType<typeof regenerateCe>>
 >;
-
+export type RegenerateCeMutationBody = BodyType<RegenerateCeInput>;
 export type RegenerateCeMutationError = ErrorType<ApiError>;
 
 /**
@@ -517,14 +522,14 @@ export const useRegenerateCe = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateCe>>,
     TError,
-    { slug: string; data?: RegenerateFeedbackInput },
+    { slug: string; data: BodyType<RegenerateCeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof regenerateCe>>,
   TError,
-  { slug: string; data?: RegenerateFeedbackInput },
+  { slug: string; data: BodyType<RegenerateCeInput> },
   TContext
 > => {
   return useMutation(getRegenerateCeMutationOptions(options));
@@ -1126,6 +1131,97 @@ export const useRefreshCeIntelligence = <
 };
 
 /**
+ * Derives 1–3 missing-evidence buckets from the rejection reason and archetype data shape, fans out one Gemini+googleSearch call per bucket, merges findings, and re-scores the idea editorially. The deterministic ship/hold/cut verdict drives whether the rejected idea is promoted into the saved plan's recommended list.
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const getRecheckCeIntelligenceGapUrl = (ceSlug: string) => {
+  return `/api/ce-intelligence/${ceSlug}/recheck-gap`;
+};
+
+export const recheckCeIntelligenceGap = async (
+  ceSlug: string,
+  recheckGapRequest: RecheckGapRequest,
+  options?: RequestInit,
+): Promise<RecheckGapResponse> => {
+  return customFetch<RecheckGapResponse>(
+    getRecheckCeIntelligenceGapUrl(ceSlug),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(recheckGapRequest),
+    },
+  );
+};
+
+export const getRecheckCeIntelligenceGapMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    TError,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+  TError,
+  { ceSlug: string; data: BodyType<RecheckGapRequest> },
+  TContext
+> => {
+  const mutationKey = ["recheckCeIntelligenceGap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> }
+  > = (props) => {
+    const { ceSlug, data } = props ?? {};
+
+    return recheckCeIntelligenceGap(ceSlug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecheckCeIntelligenceGapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>
+>;
+export type RecheckCeIntelligenceGapMutationBody = BodyType<RecheckGapRequest>;
+export type RecheckCeIntelligenceGapMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Targeted multi-query recheck of a rejected planner idea
+ */
+export const useRecheckCeIntelligenceGap = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+    TError,
+    { ceSlug: string; data: BodyType<RecheckGapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recheckCeIntelligenceGap>>,
+  TError,
+  { ceSlug: string; data: BodyType<RecheckGapRequest> },
+  TContext
+> => {
+  return useMutation(getRecheckCeIntelligenceGapMutationOptions(options));
+};
+
+/**
  * @summary Drop all facts attributed to a single source
  */
 export const getDeleteCeIntelligenceSourceUrl = (
@@ -1410,7 +1506,7 @@ export const regenerateChart = async (
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(regenerateFeedbackInput ?? {}),
+    body: JSON.stringify(regenerateFeedbackInput),
   });
 };
 
@@ -1421,14 +1517,14 @@ export const getRegenerateChartMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateChart>>,
     TError,
-    { id: number; data?: RegenerateFeedbackInput },
+    { id: number; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof regenerateChart>>,
   TError,
-  { id: number; data?: RegenerateFeedbackInput },
+  { id: number; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   const mutationKey = ["regenerateChart"];
@@ -1442,7 +1538,7 @@ export const getRegenerateChartMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof regenerateChart>>,
-    { id: number; data?: RegenerateFeedbackInput }
+    { id: number; data: BodyType<RegenerateFeedbackInput> }
   > = (props) => {
     const { id, data } = props ?? {};
 
@@ -1455,7 +1551,7 @@ export const getRegenerateChartMutationOptions = <
 export type RegenerateChartMutationResult = NonNullable<
   Awaited<ReturnType<typeof regenerateChart>>
 >;
-
+export type RegenerateChartMutationBody = BodyType<RegenerateFeedbackInput>;
 export type RegenerateChartMutationError = ErrorType<ApiError>;
 
 /**
@@ -1468,14 +1564,14 @@ export const useRegenerateChart = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof regenerateChart>>,
     TError,
-    { id: number; data?: RegenerateFeedbackInput },
+    { id: number; data: BodyType<RegenerateFeedbackInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof regenerateChart>>,
   TError,
-  { id: number; data?: RegenerateFeedbackInput },
+  { id: number; data: BodyType<RegenerateFeedbackInput> },
   TContext
 > => {
   return useMutation(getRegenerateChartMutationOptions(options));
@@ -1824,6 +1920,182 @@ export const usePublishChart = <
   TContext
 > => {
   return useMutation(getPublishChartMutationOptions(options));
+};
+
+/**
+ * Persists a writer's review decision for a single fact-table row onto
+the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+`valueOverride` to override the auto-generated claim/value text.
+
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const getUpsertChartFactReviewUrl = (id: number) => {
+  return `/api/charts/${id}/fact-reviews`;
+};
+
+export const upsertChartFactReview = async (
+  id: number,
+  chartFactReviewInput: ChartFactReviewInput,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getUpsertChartFactReviewUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(chartFactReviewInput),
+  });
+};
+
+export const getUpsertChartFactReviewMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    TError,
+    { id: number; data: BodyType<ChartFactReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertChartFactReview>>,
+  TError,
+  { id: number; data: BodyType<ChartFactReviewInput> },
+  TContext
+> => {
+  const mutationKey = ["upsertChartFactReview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    { id: number; data: BodyType<ChartFactReviewInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return upsertChartFactReview(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertChartFactReviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertChartFactReview>>
+>;
+export type UpsertChartFactReviewMutationBody = BodyType<ChartFactReviewInput>;
+export type UpsertChartFactReviewMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Approve, reject, or flag a single fact-table row on a chart
+ */
+export const useUpsertChartFactReview = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertChartFactReview>>,
+    TError,
+    { id: number; data: BodyType<ChartFactReviewInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertChartFactReview>>,
+  TError,
+  { id: number; data: BodyType<ChartFactReviewInput> },
+  TContext
+> => {
+  return useMutation(getUpsertChartFactReviewMutationOptions(options));
+};
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const getClearChartFactReviewUrl = (id: number, rowId: string) => {
+  return `/api/charts/${id}/fact-reviews/${rowId}`;
+};
+
+export const clearChartFactReview = async (
+  id: number,
+  rowId: string,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getClearChartFactReviewUrl(id, rowId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearChartFactReviewMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    TError,
+    { id: number; rowId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearChartFactReview>>,
+  TError,
+  { id: number; rowId: string },
+  TContext
+> => {
+  const mutationKey = ["clearChartFactReview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    { id: number; rowId: string }
+  > = (props) => {
+    const { id, rowId } = props ?? {};
+
+    return clearChartFactReview(id, rowId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearChartFactReviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearChartFactReview>>
+>;
+
+export type ClearChartFactReviewMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Clear a single writer review decision from the fact table
+ */
+export const useClearChartFactReview = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearChartFactReview>>,
+    TError,
+    { id: number; rowId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearChartFactReview>>,
+  TError,
+  { id: number; rowId: string },
+  TContext
+> => {
+  return useMutation(getClearChartFactReviewMutationOptions(options));
 };
 
 /**

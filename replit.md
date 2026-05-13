@@ -12,6 +12,17 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/api-server` (api) — Express API. POSTs to Gemini for chart generation, persists CEs + charts in Postgres, serves via OpenAPI/Orval-generated hooks.
 - `artifacts/mockup-sandbox` (design) — Vite preview server for component variants on the canvas.
 
+### Source-tailored CE Intelligence adapters (Task #61)
+
+Each adapter in `artifacts/api-server/src/lib/ce-intelligence.ts` is now **specialty-driven** rather than running the same generic prompt:
+
+- **Per-source `SOURCE_CONFIGS`** — each of `official_site`, `tripadvisor`, `getyourguide`, `viator`, `reddit` declares (a) 2-4 targeted **sub-queries** to broaden coverage of that source, (b) a `validEvidenceTypes` whitelist, and (c) an `extractionBrief` with explicit "look for / do NOT extract / good vs. bad fact" guidance so each source stays in its lane (e.g. official_site = ground truth only, TripAdvisor = visitor tips/sentiment/wait anecdotes, Reddit = trip reports + operational changes the operator hasn't acknowledged, GYG/Viator = product offerings/price points/bundle patterns). `headout` remains a stub.
+- **Parallel sub-queries with isolation** — `runSourceAdapter` runs all sub-queries via `Promise.allSettled`. Per-sub-query failures are logged and ignored; only when **every** sub-query fails does the adapter throw so the orchestrator marks the whole source as "error". One bad query never empties a source.
+- **Dedupe** — facts merged across sub-queries are deduped on a normalized key (lowercase / strip non-alphanumerics / first 80 chars), keeping the highest-confidence variant.
+- **`evidence_type` field** — optional enum on `IntelFact` (`authoritative_fact`, `visitor_tip`, `wait_anecdote`, `sentiment_theme`, `trip_report`, `product_offering`, `price_point`, `bundle_pattern`, `operational_change`, `other`). Set per fact by the source-specific prompt and validated against the source's allowed-types whitelist — facts tagged with a type that belongs to a different source's specialty are dropped rather than mis-stored. Old rows pre-date the field and continue to load (it's optional in the OpenAPI spec).
+- **`sliceIntelForArchetype` evidence-type bias** — `ARCHETYPE_EVIDENCE_AFFINITY` maps each chart archetype to its preferred evidence types (e.g. `ticket_ladder` → `[price_point, product_offering]`, `weekly_pattern` → `[visitor_tip, wait_anecdote, trip_report]`, `daily_programme` → `[authoritative_fact]`). Within bucket-matched facts, an evidence-type match adds a +200 boost over confidence so a perfectly-matched fact at conf 60 outranks an unmatched fact at conf 99. Untagged legacy facts get no boost and fall back to confidence-only sort — backward compatible.
+- **UI surfacing** (`IntelPanel.tsx`) — each fact row shows a mint **evidence-type chip** next to its source badge; each source row in the Sources strip shows a per-source **summary line** (`"Visitor tip · 4 • Wait anecdote · 2"`) so writers can see at a glance which kinds of evidence each source actually delivered. `EVIDENCE_TYPE_LABELS` is mirrored client-side (the API contract surfaces the field as a free-form string, so add new entries to both sides if you extend the enum).
+
 ### Research-grounded chart pipeline (Task #26)
 
 Backend pipeline that adapts a subcategory question bank to a specific CE using its Deep Research Doc (DRD), then generates a draft chart deck with provenance.
@@ -22,6 +33,8 @@ Backend pipeline that adapts a subcategory question bank to a specific CE using 
   - Curated `BankQuestion[]` for 14 of 15 subcategories (`outdoor_activities` and a couple long-tail ones are stubs returning `unratified: true` — orchestrator bootstraps from DRD only)
   - `SUBCATEGORIES` registry (15 ids: landmarks, museums, sightseeing_cruises, day_trips, guided_tours, theme_parks, walking_tours, hop_on_hop_off, plays, helicopter_tours, cooking_classes, wineries, spa, outdoor_activities, combos)
 - **DRD storage** — `drds` table keyed on `ceSlug` (one canonical latest DRD per CE). Accepts markdown JSON or PDF upload (multer + `unpdf` for extraction). Multipart endpoint exists at runtime but is intentionally omitted from the OpenAPI spec because Orval's Zod generator can't model `Blob` bodies in a Node typecheck context — use `fetch` + `FormData` directly for PDF uploads.
+**Category-CE timing floor (Task #80).** The category-CE bias above strips standard timing charts and pushes the LLM toward comparison archetypes — that cost the Thames cruise deck 100% of timing/booking coverage. Step `(4c)` in `selectQuestions` reserves one slot: if no chart in the surviving deck has a TIMING archetype (`daily_pattern` / `hourly_heatmap` / `weekly_pattern` / `booking_window` / `seasonal_curve` / `optimal_departure`), the deterministic helper `pickCategoryCeTimingFloor` (also exported for testing) picks the highest-priority candidate from the bank then standards whose drop reason isn't a hard data-signal skip (`drd_flag` / `unlimited_capacity` / `no_data_signal` / `drd_low_confidence`). At the signature cap (5 for category-CE) it displaces the lowest-ranked signature; standards are never displaced. Belt-and-braces: the standards auto-restore loop in step (1) also restores S2 booking_window for category-CEs when no other timing chart was kept. The `sightseeing_cruises` bank gained matching `daily_pattern` and cruise-framed `booking_window` signatures plus a sunset-by-month-aware `optimal_departure` so the floor has real candidates to draw on. Unit coverage in `scripts/src/test-cruise-timing-floor.mts` (run via `pnpm --filter @workspace/scripts run test-cruise-timing-floor`).
+
 - **Pipeline** (`artifacts/api-server/src/lib/research-pipeline.ts`):
   1. **Select questions** — Gemini reads DRD + bank, picks 4-7 questions (one per archetype), drops the rest with reasons, proposes 1-2 hero questions. Two prompt-level rules tighten DRD grounding:
      - **DRD-confidence rule**: questions whose underlying topic is rated Low confidence / called out as an "Honest Gap" / flagged as anecdotal in the DRD must be skipped, with a `dropped` reason prefixed `drd_low_confidence:` so writers see exactly which DRD section drove the suppression.
@@ -32,9 +45,29 @@ Backend pipeline that adapts a subcategory question bank to a specific CE using 
 - **Endpoints** — `GET/POST/DELETE /api/drds[/:ceSlug]`, `GET /api/research/subcategories`, `POST /api/research/generate`. The Florence cluster CEs are guarded by `lib/locked-ces.ts` (shared by `/ces` and `/research/generate`) — pipeline returns 409 for them so curated decks can never be wiped. Unknown subcategory ids are accepted and bootstrapped as `unratified` (cross-cutting questions only).
 - **Web search at runtime** — uses Gemini's built-in `googleSearch` tool because the workspace `web-search` skill is agent-only (not server-callable from the running api-server).
 
+### Editorial verdict + targeted recheck (Task #66)
+
+Each planner idea (recommended *and* rejected) carries a five-judgement editorial block (`useful`, `ce_specific`, `better_than_existing`, `conversion_driven`, `visually_strong`, each `{verdict: yes|weak|no, rationale}`). The deterministic ship/hold/cut rule lives in `artifacts/api-server/src/lib/editorial-verdict.ts` (also home to the missing-evidence query derivation):
+
+- `cut` if `useful` or `ce_specific` is `no` (regardless of other yes votes)
+- `ship` if ≥4 `yes` AND zero `no`
+- `hold` otherwise
+
+The verdict is **always computed server-side** from the five judgements — the model never picks ship/hold/cut directly.
+
+`POST /api/ce-intelligence/:slug/recheck-gap` is now a multi-query pipeline rather than a single Gemini shot:
+1. Derive 1–3 missing-evidence buckets deterministically from the rejection reason + the archetype's `data_shape` (regex patterns in `editorial-verdict.ts`).
+2. Fan out one Gemini-with-`googleSearch` call per bucket; failures isolated.
+3. Merge findings + source_refs (deduped) and aggregate the per-bucket `found / partial / not_found` statuses.
+4. Re-score the idea editorially (`scoreEditorialForIdea`) — same five judgements, deterministic verdict.
+
+Response shape extends the legacy contract with `editorial`, `editorial_verdict`, and a `buckets[]` array showing which queries fired. The IntelPanel UI promotes recheck-promoted rejected cards (verdict `ship`/`hold`) into the Recommended list with a "Found by recheck" badge instead of immediately auto-creating a chart; `cut` keeps them rejected. The 7 numeric quality axes now hide behind a "Why this score" disclosure under each card; the editorial chip strip + verdict pill are the primary surface.
+
+Unit coverage for the deterministic rule and the missing-evidence derivation lives in `scripts/src/test-editorial-verdict.mjs` (run via `pnpm --filter @workspace/scripts run test-editorial-verdict`). The script intentionally re-implements both helpers in plain JS — there's no TS-aware test runner wired up yet, so keep the mirror in sync with the TS source.
+
 ### Curated / locked CEs
 
-`lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`). The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.
+`lib/curated-seeds` is a workspace lib that owns the hand-curated chart decks for the locked Florence cluster (`galleria-dellaccademia`, `galleria-degli-uffizi`, `duomo-di-firenze`) plus the `colosseum` history-timeline reference deck. The api-server calls `seedCuratedCesIdempotent()` on startup (in `artifacts/api-server/src/index.ts`) — if a slug is missing it inserts the CE and all its charts in one transaction, otherwise it skips so existing chart IDs (referenced by external embed URLs) stay stable. CE insert uses `ON CONFLICT (slug) DO NOTHING` for safety under multi-instance startup. Failures per CE are isolated and never block server startup.
 
 The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo}.mjs` because the dev `seed-*.mjs` scripts (raw `pg.Client`, run via `node`) need it. This duplication is short-term — long-term, those scripts should switch to importing from the lib via `tsx`.
 
@@ -59,6 +92,15 @@ The same data is also still present in `scripts/src/data/{accademia,uffizi,duomo
 Generation: `artifacts/api-server/src/lib/generate-ce.ts` builds a strict prompt with per-type schemas, calls Gemini, validates against Zod, and retries once with the validation error fed back. Strict array lengths enforce data completeness (`.length(12)` for months, `.length(7)` for weekday rows, `.length(24)` for hours). Topic-to-chart creation also recognises history/origin/restoration prompts and routes them to `history_timeline`; unmatched topics now fail fast instead of defaulting to `weekly_pattern`.
 
 Renderers: `artifacts/viz-studio/src/components/charts/` — one file per type. All wrapped in `ChartCard` (header with ESTIMATED pill + title/subtitle, content area, footer insight). Charts use container queries + percentage-based geometry so they fill any size cleanly above the 400px embed floor.
+
+**Canonical timeline pattern.** `history_timeline` is the standard Headout pattern for any historical/narrative timeline visualization (founding → spectacle → decline → reuse → restoration → modern). The renderer is an at-a-glance **infographic**, not an interactive explorer: every event renders simultaneously with its date, era chip, title, and (where useful) a punchy metric chip; `highlight_event` decorates the most pivotal entry with a "★ Pivotal" pill rather than hiding the rest behind a click. Era color tokens follow the existing brand palette (purps for construction, candy for spectacle, hola for decline, slate for reuse, mint for restoration, indigo for modern).
+
+The renderer is **layout-responsive** based on container width (measured via `ResizeObserver`):
+
+- **Horizontal layered layout** (≥560px wide, non-compact): four stacked rows — (1) era pill rail where each pill spans `n` columns equal to the consecutive event count in that era, (2) date pills above the spine, (3) horizontal spine with one colored node per event (pivotal node enlarged with a `purps` ring), (4) titles + metric chips beneath each node. Callout sits as a centered footer band. Tuned for inline article-body embeds at ~720–1024 wide × ~280–400 tall — readers do not scroll inside an iframe nested in an article they're already scrolling, so the entire timeline must fit at-a-glance. Titles **must be ≤30 chars** to fit one column at 9 events; descriptions are intentionally omitted in horizontal mode (the at-a-glance era arc is the deliverable).
+- **Vertical layout** (<560px wide, or compact mode): one row per event with the date pill on the left and era chip + title + description + metric chip on the right, connected by a vertical era spine. This path also supports a `dense` mode (tall enough to skip global compact, but too short to fit all rows with descriptions): drops descriptions + callout but keeps every row.
+
+Compact mode (sub-340px embeds, set by the global Embed wrapper) tightens padding and forces vertical layout regardless of width. Reference implementation: the `colosseum` curated CE in `lib/curated-seeds/src/data/colosseum.ts` — future timeline questions on any CE should reuse `history_timeline` rather than introducing a parallel chart type, and curated titles should respect the ≤30 char budget so the horizontal layout reads cleanly.
 
 ## Key Commands
 

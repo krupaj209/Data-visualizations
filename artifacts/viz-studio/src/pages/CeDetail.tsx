@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
   Code2,
   Copy,
   ExternalLink,
@@ -15,9 +16,12 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Send,
   ShieldCheck,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -31,6 +35,11 @@ import {
   useCreateChartFromTopic,
   useGetIdeation,
   useClearIdeation,
+  useUpsertChartFactReview,
+  useClearChartFactReview,
+  useGetCeIntelligence,
+  getGetCeIntelligenceQueryKey,
+  type CeIntelligence,
   getGetCeQueryKey,
   getListCesQueryKey,
   getGetIdeationQueryKey,
@@ -45,11 +54,15 @@ import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { FeedbackButton } from "@/components/FeedbackButton";
 import {
+  EVIDENCE_KIND_META,
+  evidenceKindCounts,
   type ChartProvenanceLite,
   type ChartSpec,
+  type EvidenceKind,
 } from "@/lib/chart-spec";
 import {
   buildChartFactRows,
+  type ChartFactBackingSource,
   type ChartFactRow,
   type ChartFactStatus,
 } from "@/lib/chart-fact-table";
@@ -88,6 +101,12 @@ const CHART_FRAME: Record<
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
   route_profile: { aspectRatio: "16 / 8", minHeight: 340, maxHeight: 500 },
+  ticket_access_matrix: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 460 },
+  duration_budget: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  landmark_coverage: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 480 },
+  itinerary_flow: { aspectRatio: "16 / 9", minHeight: 340, maxHeight: 500 },
+  best_for_matrix: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
+  season_weather_fit: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,
@@ -245,12 +264,20 @@ function CeDetailInner({
     archetype?: string;
   } | null>(null);
   const [showRegenFeedback, setShowRegenFeedback] = useState(false);
+  const [regenSummary, setRegenSummary] = useState<
+    import("@workspace/api-client-react").RegenSummary | null
+  >(null);
 
   async function regenerateWithFeedback(feedback: string) {
-    await regenMut.mutateAsync({ slug, data: { feedback } });
+    const result = await regenMut.mutateAsync({ slug, data: { feedback } });
     qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    setRegenSummary(result.regenSummary ?? null);
+  }
+
+  function closeRegenDialog() {
     setShowRegenFeedback(false);
+    setRegenSummary(null);
   }
 
   async function handlePublishAll() {
@@ -490,8 +517,9 @@ function CeDetailInner({
           title="Regenerate chart set"
           description="Tell the AI what should improve. The current chart set will be replaced with a fresh version guided by this feedback."
           isPending={regenMut.isPending}
-          onCancel={() => setShowRegenFeedback(false)}
+          onCancel={closeRegenDialog}
           onSubmit={regenerateWithFeedback}
+          summary={regenSummary}
         />
       )}
 
@@ -500,8 +528,8 @@ function CeDetailInner({
         style={{
           display: "grid",
           gridTemplateColumns:
-            showIdeation || showIntel ? "minmax(0, 1fr) 400px" : "1fr",
-          gap: 28,
+            showIdeation || showIntel ? "minmax(0, 1fr) 360px" : "1fr",
+          gap: 24,
         }}
       >
         <div>
@@ -562,6 +590,7 @@ function CeDetailInner({
                 ceSlug={slug}
                 ceName={ce.name}
                 autoEdit={editId === chart.id}
+                sidePanelOpen={showIdeation || showIntel}
               />
             ))}
             {visibleCharts.length === 0 && (
@@ -646,11 +675,13 @@ function ChartRow({
   ceSlug,
   ceName,
   autoEdit,
+  sidePanelOpen = false,
 }: {
   chart: Chart;
   ceSlug: string;
   ceName: string;
   autoEdit?: boolean;
+  sidePanelOpen?: boolean;
 }) {
   const [mode, setMode] = useState<"view" | "edit">(autoEdit ? "edit" : "view");
   const [verification, setVerification] = useState<ChartVerification | null>(
@@ -678,9 +709,6 @@ function ChartRow({
   const opts = { preserve: ceName };
   const headline = toSentenceCase(chart.question || chart.title, opts);
   const insightText = chart.insight ? toSentenceCase(chart.insight, opts) : null;
-  const frame =
-    CHART_FRAME[spec.type] ?? { aspectRatio: "16 / 10", minHeight: 320 };
-
   const status = chart.status ?? "published";
   const isDraft = status === "draft";
 
@@ -832,19 +860,23 @@ function ChartRow({
           </button>
 
           {Array.isArray(
-            (chart.provenance as { intelligence_refs?: string[] } | null)
+            (chart.provenance as ChartProvenanceLite | null)
               ?.intelligence_refs,
           ) &&
-            ((chart.provenance as { intelligence_refs?: string[] })
+            ((chart.provenance as ChartProvenanceLite)
               .intelligence_refs?.length ?? 0) > 0 && (
               <ChartCitations
                 ceSlug={ceSlug}
                 refs={
-                  (chart.provenance as { intelligence_refs?: string[] })
+                  (chart.provenance as ChartProvenanceLite)
                     .intelligence_refs ?? []
                 }
               />
             )}
+
+          <EvidenceKindRollup
+            provenance={chart.provenance as ChartProvenanceLite | null}
+          />
 
           <EmbedActions chartId={chart.id} />
           <button
@@ -888,17 +920,29 @@ function ChartRow({
         />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] items-start">
+      <div
+        className={
+          sidePanelOpen
+            ? "flex flex-col gap-4 items-start"
+            : "grid gap-4 lg:grid-cols-[800px_minmax(0,1fr)] items-start"
+        }
+      >
+        {/* Locked-dimension preview (800x500) — matches the default iframe
+            snippet exactly so writers see the chart at the size the CMS will
+            embed. Side panels never compress this. Horizontal overflow on
+            very narrow viewports gets a scrollbar instead of squishing. */}
         <div
-          className="rounded-3xl overflow-hidden"
-          style={{ background: BRAND.slate100 }}
+          className="rounded-3xl overflow-auto"
+          style={{
+            background: BRAND.slate100,
+            maxWidth: "100%",
+          }}
         >
           <div
-            className="w-full"
             style={{
-              aspectRatio: frame.aspectRatio,
-              minHeight: frame.minHeight,
-              maxHeight: frame.maxHeight,
+              width: 800,
+              height: 500,
+              flexShrink: 0,
             }}
           >
             <ChartRenderer
@@ -914,7 +958,10 @@ function ChartRow({
             />
           </div>
         </div>
-        <aside className="flex flex-col gap-3">
+        <aside
+          className="flex flex-col gap-3"
+          style={{ width: sidePanelOpen ? "100%" : undefined }}
+        >
           <div
             style={{
               fontSize: 11,
@@ -967,9 +1014,11 @@ function ChartRow({
             provenance={chart.provenance as ChartProvenanceLite | null}
           />
           <ChartFactTable
+            chartId={chart.id}
+            ceSlug={ceSlug}
             spec={spec}
             provenance={chart.provenance as ChartProvenanceLite | null}
-            onEdit={(path) => {
+            onEditInSpec={(path) => {
               setEditFocus(path);
               setMode("edit");
             }}
@@ -1002,23 +1051,94 @@ function ChartRow({
 }
 
 function ChartFactTable({
+  chartId,
+  ceSlug,
   spec,
   provenance,
-  onEdit,
+  onEditInSpec,
 }: {
+  chartId: number;
+  ceSlug: string;
   spec: ChartSpec;
   provenance: ChartProvenanceLite | null;
-  onEdit: (path: string) => void;
+  onEditInSpec: (path: string) => void;
 }) {
+  const qc = useQueryClient();
+  // Only fetch CE intel when this chart actually cites at least one fact —
+  // most charts don't, and we don't want to fan out one extra request per
+  // chart card on the page.
+  const hasIntelRefs =
+    Array.isArray(
+      (provenance as { intelligence_refs?: string[] } | null)
+        ?.intelligence_refs,
+    ) &&
+    ((provenance as { intelligence_refs?: string[] }).intelligence_refs
+      ?.length ?? 0) > 0;
+  const { data: intelData } = useGetCeIntelligence(ceSlug, {
+    query: {
+      enabled: hasIntelRefs,
+      queryKey: getGetCeIntelligenceQueryKey(ceSlug),
+    },
+  });
+  const intelFacts = useMemo(() => {
+    const intel = intelData as CeIntelligence | null | undefined;
+    return (intel?.facts ?? []).map((f) => ({
+      id: f.id,
+      bucket: f.bucket,
+      value: f.value,
+      quote: f.quote,
+      source_url: f.source_url,
+    }));
+  }, [intelData]);
   const rows = useMemo(
-    () => buildChartFactRows(spec, provenance).slice(0, 14),
-    [spec, provenance],
+    () => buildChartFactRows(spec, provenance, { intelFacts }).slice(0, 14),
+    [spec, provenance, intelFacts],
   );
+
+  const upsertReview = useUpsertChartFactReview();
+  const clearReview = useClearChartFactReview();
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+
+  async function handleReview(
+    rowId: string,
+    payload: {
+      status: "approved" | "rejected" | "needs_review";
+      reason?: string;
+      claimOverride?: string;
+      valueOverride?: string;
+    },
+  ) {
+    await upsertReview.mutateAsync({
+      id: chartId,
+      data: { rowId, ...payload },
+    });
+    await invalidate();
+  }
+
+  async function handleClear(rowId: string) {
+    await clearReview.mutateAsync({ id: chartId, rowId });
+    await invalidate();
+  }
 
   if (rows.length === 0) return null;
 
+  const counts = rows.reduce(
+    (acc, row) => {
+      if (row.status === "approved") acc.approved += 1;
+      else if (row.status === "rejected") acc.rejected += 1;
+      else if (row.status === "needs_review") acc.needsReview += 1;
+      else acc.unreviewed += 1;
+      return acc;
+    },
+    { approved: 0, rejected: 0, needsReview: 0, unreviewed: 0 },
+  );
+  const reviewed = counts.approved + counts.rejected + counts.needsReview;
+
   return (
     <details
+      open
       style={{
         border: `1px solid ${BRAND.slate200}`,
         borderRadius: 12,
@@ -1040,87 +1160,239 @@ function ChartFactTable({
           fontWeight: 800,
         }}
       >
-        Fact table
-        <span
-          style={{
-            color: BRAND.slate500,
-            fontSize: 10,
-            fontWeight: 800,
-          }}
-        >
-          {rows.length} claim{rows.length === 1 ? "" : "s"}
-        </span>
+        <span>Fact table</span>
+        <FactTableProgressChip
+          approved={counts.approved}
+          needsReview={counts.needsReview + counts.unreviewed}
+          rejected={counts.rejected}
+          total={rows.length}
+          reviewed={reviewed}
+        />
       </summary>
       <div style={{ borderTop: `1px solid ${BRAND.slate100}` }}>
         {rows.map((row) => (
-          <FactTableRow key={row.id} row={row} onEdit={onEdit} />
+          <FactTableRow
+            key={row.id}
+            row={row}
+            isPending={upsertReview.isPending || clearReview.isPending}
+            onApprove={(reason) =>
+              handleReview(row.id, { status: "approved", reason })
+            }
+            onReject={(reason) =>
+              handleReview(row.id, { status: "rejected", reason })
+            }
+            onSaveEdit={(claimOverride, valueOverride) =>
+              handleReview(row.id, {
+                status: row.review?.status ?? "needs_review",
+                claimOverride,
+                valueOverride,
+                reason: row.review?.reason,
+              })
+            }
+            onClear={() => handleClear(row.id)}
+            onEditInSpec={() => onEditInSpec(row.path)}
+          />
         ))}
       </div>
     </details>
   );
 }
 
+function FactTableProgressChip({
+  approved,
+  needsReview,
+  rejected,
+  total,
+  reviewed,
+}: {
+  approved: number;
+  needsReview: number;
+  rejected: number;
+  total: number;
+  reviewed: number;
+}) {
+  // Show all-green when every claim is approved; otherwise show breakdown.
+  const allDone = approved === total && total > 0;
+  const bg = allDone
+    ? BRAND.bgMint
+    : reviewed > 0
+      ? BRAND.bgLilac
+      : BRAND.slate100;
+  const fg = allDone
+    ? BRAND.okayInk
+    : reviewed > 0
+      ? BRAND.purps
+      : BRAND.slate700;
+  const label = allDone
+    ? `${approved}/${total} approved`
+    : `${approved} approved · ${needsReview} needs review${
+        rejected > 0 ? ` · ${rejected} rejected` : ""
+      } of ${total}`;
+  return (
+    <span
+      style={{
+        background: bg,
+        color: fg,
+        fontSize: 10,
+        fontWeight: 800,
+        padding: "3px 8px",
+        borderRadius: 999,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function FactTableRow({
   row,
-  onEdit,
+  isPending,
+  onApprove,
+  onReject,
+  onSaveEdit,
+  onClear,
+  onEditInSpec,
 }: {
   row: ChartFactRow;
-  onEdit: (path: string) => void;
+  isPending: boolean;
+  onApprove: (reason?: string) => Promise<void>;
+  onReject: (reason: string) => Promise<void>;
+  onSaveEdit: (claim: string | undefined, value: string | undefined) => Promise<void>;
+  onClear: () => Promise<void>;
+  onEditInSpec: () => void;
 }) {
   const statusStyle = factStatusStyle(row.status);
+  const displayClaim = row.claimOverride ?? row.claim;
+  const displayValue = row.valueOverride ?? row.value;
+
+  const [showSources, setShowSources] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState(row.review?.reason ?? "");
+  const [editing, setEditing] = useState(false);
+  const [draftClaim, setDraftClaim] = useState(displayClaim);
+  const [draftValue, setDraftValue] = useState(displayValue);
+
+  // Estimate accent: candy left border for unmissable visual cue.
+  const leftBorderColor = row.estimated ? BRAND.candy : "transparent";
 
   return (
     <div
       style={{
         display: "grid",
         gap: 8,
-        padding: "10px 12px",
+        padding: "10px 12px 12px 14px",
         borderBottom: `1px solid ${BRAND.slate100}`,
+        borderLeft: `3px solid ${leftBorderColor}`,
+        background: row.estimated ? "#FFF7FB" : "white",
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div
-            style={{
-              color: BRAND.slate950,
-              fontSize: 12,
-              fontWeight: 800,
-              lineHeight: 1.25,
-            }}
-          >
-            {row.claim}
-          </div>
-          <div
-            style={{
-              color: BRAND.slate700,
-              fontSize: 11,
-              fontWeight: 600,
-              lineHeight: 1.35,
-              marginTop: 3,
-            }}
-          >
-            {row.value}
-          </div>
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="text"
+                value={draftClaim}
+                onChange={(e) => setDraftClaim(e.target.value)}
+                placeholder="Claim text"
+                style={editInputStyle(true)}
+              />
+              <input
+                type="text"
+                value={draftValue}
+                onChange={(e) => setDraftValue(e.target.value)}
+                placeholder="Value text"
+                style={editInputStyle(false)}
+              />
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={async () => {
+                    const claimChanged = draftClaim.trim() !== row.claim;
+                    const valueChanged = draftValue.trim() !== row.value;
+                    await onSaveEdit(
+                      claimChanged ? draftClaim.trim() : undefined,
+                      valueChanged ? draftValue.trim() : undefined,
+                    );
+                    setEditing(false);
+                  }}
+                  style={primaryMiniBtn()}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false);
+                    setDraftClaim(displayClaim);
+                    setDraftValue(displayValue);
+                  }}
+                  style={ghostMiniBtn()}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  color: BRAND.slate950,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  lineHeight: 1.25,
+                }}
+              >
+                {displayClaim}
+                {row.claimOverride && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      color: BRAND.purps,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    edited
+                  </span>
+                )}
+              </div>
+              <div
+                style={{
+                  color: BRAND.slate700,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  lineHeight: 1.35,
+                  marginTop: 3,
+                }}
+              >
+                {displayValue}
+              </div>
+            </>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => onEdit(row.path)}
-          style={{
-            border: `1px solid ${BRAND.slate200}`,
-            borderRadius: 8,
-            background: BRAND.slate50,
-            color: BRAND.slate900,
-            fontSize: 10,
-            fontWeight: 800,
-            padding: "5px 7px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Edit
-        </button>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(true);
+              setDraftClaim(displayClaim);
+              setDraftValue(displayValue);
+            }}
+            style={ghostMiniBtn()}
+            title="Edit this claim text"
+          >
+            <Pencil size={10} />
+            Edit
+          </button>
+        )}
       </div>
 
+      {/* Status + meta pills */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <span
           style={{
@@ -1130,6 +1402,9 @@ function FactTableRow({
             color: statusStyle.fg,
             fontSize: 10,
             fontWeight: 800,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
           {statusStyle.label}
@@ -1151,35 +1426,322 @@ function FactTableRow({
             href={row.sourceUrl}
             target="_blank"
             rel="noreferrer"
-            style={{
-              borderRadius: 999,
-              padding: "3px 7px",
-              background: "#F3EAFF",
-              color: BRAND.purps,
-              fontSize: 10,
-              fontWeight: 800,
-              display: "inline-flex",
-              gap: 3,
-              alignItems: "center",
-              textDecoration: "none",
-            }}
+            style={sourcePillStyle()}
           >
             {row.sourceLabel}
             <ExternalLink size={10} />
           </a>
         ) : (
+          <span style={sourcePillStyle()}>{row.sourceLabel}</span>
+        )}
+        {row.review?.reviewedAt && (
           <span
             style={{
-              borderRadius: 999,
-              padding: "3px 7px",
-              background: "#F3EAFF",
-              color: BRAND.purps,
               fontSize: 10,
-              fontWeight: 800,
+              fontWeight: 700,
+              color: BRAND.slate500,
+            }}
+            title={new Date(row.review.reviewedAt).toLocaleString()}
+          >
+            reviewed {relativeTime(row.review.reviewedAt)}
+          </span>
+        )}
+      </div>
+
+      {row.review?.status === "rejected" && row.review.reason && (
+        <div
+          style={{
+            background: BRAND.candySoft,
+            color: BRAND.candy,
+            borderRadius: 8,
+            padding: "6px 8px",
+            fontSize: 11,
+            fontWeight: 600,
+            lineHeight: 1.35,
+          }}
+        >
+          <strong style={{ fontWeight: 800 }}>Reject reason:</strong>{" "}
+          {row.review.reason}
+        </div>
+      )}
+
+      {/* Approve/Reject controls */}
+      {!editing && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => onApprove()}
+            style={
+              row.status === "approved"
+                ? activePillBtn(BRAND.bgMint, BRAND.okayInk)
+                : ghostPillBtn()
+            }
+            title="Approve this claim"
+          >
+            <ThumbsUp size={10} />
+            {row.status === "approved" ? "Approved" : "Approve"}
+          </button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              setRejecting((v) => !v);
+              setRejectReason(row.review?.reason ?? "");
+            }}
+            style={
+              row.status === "rejected"
+                ? activePillBtn(BRAND.candySoft, BRAND.candy)
+                : ghostPillBtn()
+            }
+            title="Reject this claim"
+          >
+            <ThumbsDown size={10} />
+            {row.status === "rejected" ? "Rejected" : "Reject"}
+          </button>
+          {row.review && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={onClear}
+              style={ghostMiniBtn()}
+              title="Clear writer decision"
+            >
+              <RotateCcw size={10} />
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowSources((v) => !v)}
+            style={ghostMiniBtn()}
+            title="Show evidence backing this claim"
+          >
+            <ChevronDown
+              size={10}
+              style={{
+                transform: showSources ? "rotate(180deg)" : "none",
+                transition: "transform 120ms",
+              }}
+            />
+            Backing sources ({row.backingSources.length})
+          </button>
+          <button
+            type="button"
+            onClick={onEditInSpec}
+            style={{ ...ghostMiniBtn(), color: BRAND.slate500 }}
+            title="Open the full spec editor for this field"
+          >
+            <Code2 size={10} />
+            Edit in spec
+          </button>
+        </div>
+      )}
+
+      {/* Inline reject reason */}
+      {rejecting && (
+        <div className="flex items-start gap-1.5">
+          <textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Why is this claim wrong? (required)"
+            rows={2}
+            style={{
+              flex: 1,
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 11,
+              fontWeight: 600,
+              color: BRAND.slate900,
+              resize: "vertical",
+              fontFamily: "inherit",
+            }}
+          />
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={isPending || rejectReason.trim().length < 4}
+              onClick={async () => {
+                await onReject(rejectReason.trim());
+                setRejecting(false);
+              }}
+              style={primaryMiniBtn(BRAND.candy)}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setRejecting(false)}
+              style={ghostMiniBtn()}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Backing sources disclosure */}
+      {showSources && (
+        <div
+          style={{
+            background: BRAND.slate50,
+            borderRadius: 8,
+            padding: "8px 10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          {row.backingSources.length === 0 ? (
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: BRAND.slate500,
+              }}
+            >
+              No backing sources captured for this claim. Treat as estimated
+              and verify manually.
+            </div>
+          ) : (
+            (() => {
+              const rowScoped = row.backingSources.filter(
+                (s) => s.scope === "row",
+              );
+              const chartScoped = row.backingSources.filter(
+                (s) => s.scope === "chart",
+              );
+              return (
+                <>
+                  {rowScoped.length > 0 && (
+                    <>
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          color: BRAND.slate500,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Backs this claim
+                      </div>
+                      {rowScoped.map((source, idx) => (
+                        <BackingSourceItem
+                          key={`row-${source.kind}-${idx}`}
+                          source={source}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {chartScoped.length > 0 && (
+                    <>
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          color: BRAND.slate500,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          marginTop: rowScoped.length > 0 ? 4 : 0,
+                        }}
+                      >
+                        {rowScoped.length > 0
+                          ? "Other chart-level evidence"
+                          : "Chart-level evidence (no row-specific match)"}
+                      </div>
+                      {chartScoped.map((source, idx) => (
+                        <BackingSourceItem
+                          key={`chart-${source.kind}-${idx}`}
+                          source={source}
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
+              );
+            })()
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BackingSourceItem({ source }: { source: ChartFactBackingSource }) {
+  const palette: Record<
+    ChartFactBackingSource["kind"],
+    { bg: string; fg: string; label: string }
+  > = {
+    drd: { bg: BRAND.bgMint, fg: BRAND.okayInk, label: "DRD" },
+    web: { bg: BRAND.bgLilac, fg: BRAND.purps, label: "Web" },
+    intel: { bg: BRAND.bgCool, fg: "#1F4FA8", label: "Intel" },
+    estimate: { bg: BRAND.candySoft, fg: BRAND.candy, label: "Estimate" },
+  };
+  const tone = palette[source.kind];
+  return (
+    <div className="flex items-start gap-2">
+      <span
+        style={{
+          background: tone.bg,
+          color: tone.fg,
+          borderRadius: 999,
+          padding: "2px 7px",
+          fontSize: 9,
+          fontWeight: 800,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          flexShrink: 0,
+          marginTop: 1,
+        }}
+      >
+        {tone.label}
+      </span>
+      <div className="min-w-0 flex-1">
+        {source.url ? (
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: BRAND.purps,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              wordBreak: "break-word",
             }}
           >
-            {row.sourceLabel}
-          </span>
+            {source.label}
+            <ExternalLink size={10} />
+          </a>
+        ) : (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: BRAND.slate900,
+              wordBreak: "break-word",
+            }}
+          >
+            {source.label}
+          </div>
+        )}
+        {source.detail && (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: BRAND.slate700,
+              lineHeight: 1.35,
+              marginTop: 2,
+            }}
+          >
+            {source.detail}
+          </div>
         )}
       </div>
     </div>
@@ -1187,16 +1749,126 @@ function FactTableRow({
 }
 
 function factStatusStyle(status: ChartFactStatus) {
+  if (status === "approved") {
+    return { label: "Approved", bg: BRAND.bgMint, fg: BRAND.okayInk };
+  }
+  if (status === "rejected") {
+    return { label: "Rejected", bg: BRAND.candySoft, fg: BRAND.candy };
+  }
   if (status === "verified") {
-    return { label: "Verified", bg: BRAND.bgMint, fg: "#0E8F4E" };
+    return { label: "Verified", bg: BRAND.bgMint, fg: BRAND.okayInk };
   }
   if (status === "source_backed") {
-    return { label: "Source backed", bg: "#F3EAFF", fg: BRAND.purps };
+    return { label: "Source backed", bg: BRAND.bgLilac, fg: BRAND.purps };
   }
   if (status === "needs_review") {
     return { label: "Needs review", bg: "#FFF6E0", fg: "#9A5B00" };
   }
   return { label: "Estimated", bg: BRAND.candySoft, fg: BRAND.candy };
+}
+
+function ghostPillBtn(): React.CSSProperties {
+  return {
+    border: `1px solid ${BRAND.slate200}`,
+    borderRadius: 999,
+    background: "white",
+    color: BRAND.slate900,
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "4px 9px",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+  };
+}
+
+function activePillBtn(bg: string, fg: string): React.CSSProperties {
+  return {
+    border: `1px solid ${fg}`,
+    borderRadius: 999,
+    background: bg,
+    color: fg,
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "4px 9px",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+  };
+}
+
+function ghostMiniBtn(): React.CSSProperties {
+  return {
+    border: `1px solid ${BRAND.slate200}`,
+    borderRadius: 8,
+    background: BRAND.slate50,
+    color: BRAND.slate900,
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "4px 7px",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    whiteSpace: "nowrap",
+  };
+}
+
+function primaryMiniBtn(color: string = BRAND.purps): React.CSSProperties {
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 8,
+    background: color,
+    color: "white",
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "4px 9px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+}
+
+function sourcePillStyle(): React.CSSProperties {
+  return {
+    borderRadius: 999,
+    padding: "3px 7px",
+    background: BRAND.bgLilac,
+    color: BRAND.purps,
+    fontSize: 10,
+    fontWeight: 800,
+    display: "inline-flex",
+    gap: 3,
+    alignItems: "center",
+    textDecoration: "none",
+  };
+}
+
+function editInputStyle(isClaim: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${BRAND.slate200}`,
+    borderRadius: 8,
+    padding: "5px 8px",
+    fontSize: isClaim ? 12 : 11,
+    fontWeight: isClaim ? 800 : 600,
+    color: isClaim ? BRAND.slate950 : BRAND.slate700,
+    fontFamily: "inherit",
+    width: "100%",
+  };
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diff = Date.now() - then;
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 function ProvenanceDisclosure({
@@ -1278,11 +1950,41 @@ function ProvenanceDisclosure({
       <div className="mt-3 flex flex-col gap-3">
         {drdSnippets.length > 0 && (
           <ProvenanceSection title="Facts we know">
-            {drdSnippets.slice(0, 3).map((snippet, index) => (
-              <p key={`${snippet}-${index}`} style={provenanceTextStyle}>
-                {snippet}
-              </p>
-            ))}
+            {drdSnippets.slice(0, 3).map((snippet, index) => {
+              const text =
+                typeof snippet === "string" ? snippet : (snippet?.text ?? "");
+              const kindRaw =
+                typeof snippet === "string" ? undefined : snippet?.kind;
+              const kind = (
+                kindRaw && kindRaw in EVIDENCE_KIND_META
+                  ? (kindRaw as EvidenceKind)
+                  : "unknown"
+              );
+              const meta = EVIDENCE_KIND_META[kind];
+              return (
+                <p key={`${text}-${index}`} style={provenanceTextStyle}>
+                  {kindRaw && (
+                    <span
+                      style={{
+                        background: meta.bg,
+                        color: meta.fg,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        marginRight: 6,
+                        verticalAlign: "middle",
+                      }}
+                    >
+                      {meta.label}
+                    </span>
+                  )}
+                  {text}
+                </p>
+              );
+            })}
           </ProvenanceSection>
         )}
 
@@ -1374,6 +2076,75 @@ function ProvenanceSection({
   );
 }
 
+const EVIDENCE_KIND_ORDER: readonly EvidenceKind[] = [
+  "official",
+  "marketplace",
+  "review",
+  "inferred",
+  "estimate",
+  "unknown",
+];
+
+/**
+ * Per-kind rollup chip group rendered next to the verify/publish actions in
+ * the writer review screen (Task #63). Shows a chip per EvidenceKind with a
+ * count, plus a small amber dot when the chart is "thin" — only generator
+ * estimates and/or review-tier sources, with no official, marketplace, or
+ * inferred-from-DRD evidence backing it.
+ */
+function EvidenceKindRollup({
+  provenance,
+}: {
+  provenance: ChartProvenanceLite | null;
+}) {
+  const counts = evidenceKindCounts(provenance);
+  const total = EVIDENCE_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
+  if (total === 0) return null;
+  const present = EVIDENCE_KIND_ORDER.filter((k) => counts[k] > 0);
+  const trustworthy = counts.official + counts.marketplace + counts.inferred;
+  const thin = trustworthy === 0 && (counts.review > 0 || counts.estimate > 0);
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 flex-wrap"
+      title="Evidence-kind rollup across DRD snippets, web sources, and estimates"
+    >
+      {thin && (
+        <span
+          aria-label="Thin sourcing — only review or estimate evidence"
+          title="Thin sourcing — only review or estimate evidence"
+          style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: "#E0A300",
+          }}
+        />
+      )}
+      {present.map((k) => {
+        const meta = EVIDENCE_KIND_META[k];
+        return (
+          <span
+            key={k}
+            style={{
+              background: meta.bg,
+              color: meta.fg,
+              padding: "3px 8px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {meta.label} {counts[k]}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
   const isDraft = status === "draft";
   return (
@@ -1400,16 +2171,19 @@ function RegenerateFeedbackDialog({
   isPending,
   onCancel,
   onSubmit,
+  summary,
 }: {
   title: string;
   description: string;
   isPending: boolean;
   onCancel: () => void;
   onSubmit: (feedback: string) => Promise<void>;
+  summary?: import("@workspace/api-client-react").RegenSummary | null;
 }) {
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState<string | null>(null);
   const trimmed = feedback.trim();
+  const showSummary = !!summary;
 
   async function handleSubmit() {
     if (trimmed.length < 8) {
@@ -1477,39 +2251,45 @@ function RegenerateFeedbackDialog({
           </button>
         </div>
 
-        <label className="mt-4 flex flex-col gap-2">
-          <span
-            style={{
-              color: BRAND.slate700,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            What should improve?
-          </span>
-          <textarea
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-            placeholder="Example: Make this more source-backed, avoid crowd estimates, include history timeline, remove generic ticket charts..."
-            rows={5}
-            autoFocus
-            style={{
-              width: "100%",
-              resize: "vertical",
-              minHeight: 120,
-              border: `1px solid ${BRAND.slate200}`,
-              borderRadius: 14,
-              padding: 12,
-              color: BRAND.slate950,
-              fontSize: 13,
-              fontWeight: 600,
-              lineHeight: 1.5,
-              outlineColor: BRAND.purps,
-            }}
-          />
-        </label>
+        {!showSummary && (
+          <label className="mt-4 flex flex-col gap-2">
+            <span
+              style={{
+                color: BRAND.slate700,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              What should improve?
+            </span>
+            <textarea
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              placeholder="Example: Make this more source-backed, avoid crowd estimates, include history timeline, remove generic ticket charts..."
+              rows={5}
+              autoFocus
+              style={{
+                width: "100%",
+                resize: "vertical",
+                minHeight: 120,
+                border: `1px solid ${BRAND.slate200}`,
+                borderRadius: 14,
+                padding: 12,
+                color: BRAND.slate950,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1.5,
+                outlineColor: BRAND.purps,
+              }}
+            />
+          </label>
+        )}
+
+        {showSummary && summary && (
+          <RegenSummaryPanel summary={summary} />
+        )}
 
         {error && (
           <p
@@ -1525,41 +2305,190 @@ function RegenerateFeedbackDialog({
         )}
 
         <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isPending}
-            style={ghostBtn(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending}
-            style={{
-              background: BRAND.purps,
-              color: "white",
-              border: "none",
-              padding: "9px 14px",
-              borderRadius: 10,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: isPending ? "wait" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RefreshCw size={14} />
-            )}
-            Regenerate
-          </button>
+          {!showSummary && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isPending}
+              style={ghostBtn(false)}
+            >
+              Cancel
+            </button>
+          )}
+          {showSummary ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isPending}
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: isPending ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Regenerate
+            </button>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RegenSummaryPanel({
+  summary,
+}: {
+  summary: import("@workspace/api-client-react").RegenSummary;
+}) {
+  const honored = summary.honoredFeedback ?? [];
+  const suppressed = summary.suppressedArchetypes ?? [];
+  const retired = summary.retiredTopics ?? [];
+  const overlap = summary.priorDeckOverlap ?? 0;
+  const priorSize = summary.priorDeckSize ?? 0;
+  const fresh = Math.max(0, priorSize - overlap);
+
+  const sectionTitle: React.CSSProperties = {
+    color: BRAND.slate700,
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  };
+  const chip = (label: string, tone: "purps" | "candy" | "slate"): React.CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "3px 8px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    marginRight: 6,
+    marginBottom: 6,
+    background:
+      tone === "purps"
+        ? BRAND.purpsSoft
+        : tone === "candy"
+          ? BRAND.candySoft
+          : BRAND.slate100,
+    color:
+      tone === "purps"
+        ? BRAND.purps
+        : tone === "candy"
+          ? BRAND.candy
+          : BRAND.slate950,
+  });
+
+  return (
+    <div
+      className="mt-4 rounded-2xl"
+      style={{
+        background: BRAND.slate50,
+        border: `1px solid ${BRAND.slate200}`,
+        padding: 14,
+      }}
+    >
+      <div
+        style={{
+          color: BRAND.slate950,
+          fontSize: 13,
+          fontWeight: 800,
+          marginBottom: 10,
+        }}
+      >
+        Regeneration applied
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={sectionTitle}>Deck change</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.slate700 }}>
+          {fresh} new · {overlap} kept (out of {priorSize} prior)
+        </div>
+      </div>
+
+      {honored.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={sectionTitle}>Honored feedback</div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 16,
+              color: BRAND.slate950,
+              fontSize: 12,
+              fontWeight: 600,
+              lineHeight: 1.5,
+            }}
+          >
+            {honored.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {suppressed.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={sectionTitle}>Suppressed archetypes</div>
+          <div>
+            {suppressed.map((a) => (
+              <span key={a} style={chip(a, "candy")}>
+                {a}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {retired.length > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <div style={sectionTitle}>Retired topics</div>
+          <div>
+            {retired.map((t) => (
+              <span key={t} style={chip(t, "slate")}>
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {honored.length === 0 &&
+        suppressed.length === 0 &&
+        retired.length === 0 && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.slate700 }}>
+            Feedback was applied without specific archetype or topic
+            suppressions.
+          </div>
+        )}
     </div>
   );
 }

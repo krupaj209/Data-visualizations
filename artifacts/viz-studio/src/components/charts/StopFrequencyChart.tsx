@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
+import { CHART_TYPE } from "@/lib/chart-system";
 import { Legend, LegendItem } from "@/components/charts/system";
 import { type StopFrequencySpec } from "@/lib/chart-spec";
 
@@ -32,6 +33,17 @@ export function StopFrequencyChart({ spec, context, compact = false }: Props) {
   const tickStep = maxHeadway >= 60 ? 15 : maxHeadway >= 30 ? 10 : 5;
   const ticks: number[] = [];
   for (let t = 0; t <= maxHeadway; t += tickStep) ticks.push(t);
+
+  // Smart label sampling — keep first, last, and ~every Nth so dense routes
+  // (10–30 stops) don't shred the x-axis row at any width.
+  const targetXLabels = compact ? 4 : stops.length > 18 ? 6 : stops.length > 10 ? 8 : stops.length;
+  const labelStride = Math.max(1, Math.ceil(stops.length / targetXLabels));
+  const showXLabel = (i: number) =>
+    i === 0 || i === stops.length - 1 || i % labelStride === 0;
+
+  // Numeric value labels above bars get crowded once you have many stops.
+  const showPeakValue = stops.length <= 14;
+  const showOffValue = !compact && stops.length <= 10;
 
   return (
     <ChartCard
@@ -155,23 +167,23 @@ export function StopFrequencyChart({ spec, context, compact = false }: Props) {
                           position: "relative",
                         }}
                       >
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: -13,
-                            left: 0,
-                            right: 0,
-                            textAlign: "center",
-                            fontSize: compact
-                              ? "clamp(9px, 1cqi, 11px)"
-                              : "clamp(9px, 1cqi, 11px)",
-                            fontWeight: 800,
-                            color: PEAK_COLOR,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {s.peak_headway_min}
-                        </div>
+                        {showPeakValue && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: -13,
+                              left: 0,
+                              right: 0,
+                              textAlign: "center",
+                              fontSize: CHART_TYPE.dotLabel.fontSize,
+                              fontWeight: 800,
+                              color: PEAK_COLOR,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {s.peak_headway_min}
+                          </div>
+                        )}
                       </motion.div>
                     </div>
                     <div
@@ -195,7 +207,7 @@ export function StopFrequencyChart({ spec, context, compact = false }: Props) {
                           position: "relative",
                         }}
                       >
-                        {!compact && (
+                        {showOffValue && (
                           <div
                             style={{
                               position: "absolute",
@@ -203,7 +215,7 @@ export function StopFrequencyChart({ spec, context, compact = false }: Props) {
                               left: 0,
                               right: 0,
                               textAlign: "center",
-                              fontSize: "clamp(9px, 1cqi, 11px)",
+                              fontSize: CHART_TYPE.dotLabel.fontSize,
                               fontWeight: 700,
                               color: BRAND.slate700,
                               lineHeight: 1,
@@ -225,59 +237,42 @@ export function StopFrequencyChart({ spec, context, compact = false }: Props) {
           className="grid mt-1"
           style={{
             gridTemplateColumns: compact
-              ? `32px repeat(${stops.length}, minmax(0, 1fr))`
+              ? `repeat(${stops.length}, minmax(0, 1fr))`
               : `32px repeat(${stops.length}, minmax(0, 1fr))`,
-            columnGap: compact ? 4 : 8,
-            borderTop: `1px solid ${BRAND.slate100}`,
-            paddingTop: 6,
+            columnGap: compact ? "clamp(3px, 0.6cqi, 8px)" : 8,
+            borderTop: compact ? "none" : `1px solid ${BRAND.slate100}`,
+            paddingTop: compact ? 2 : 6,
           }}
         >
+          {!compact && <div />}
           <div
             style={{
-              fontSize: "clamp(8px, 0.9cqi, 10px)",
-              color: BRAND.slate500,
-              fontWeight: 700,
-              textAlign: "right",
-              paddingRight: 4,
-            }}
-          >
-            {compact ? "min" : ""}
-          </div>
-          <div
-            style={{
-              gridColumn: `2 / span ${stops.length}`,
+              gridColumn: compact
+                ? `1 / span ${stops.length}`
+                : `2 / span ${stops.length}`,
               display: "grid",
               gridTemplateColumns: `repeat(${stops.length}, minmax(0, 1fr))`,
               columnGap: "clamp(3px, 0.6cqi, 8px)",
             }}
           >
-            {stops.map((s, i) => {
-              const showLabel = compact
-                ? stops.length <= 4 ||
-                  i % Math.ceil(stops.length / 4) === 0 ||
-                  i === stops.length - 1
-                : true;
-              return (
-                <div
-                  key={i}
-                  className="text-center"
-                  style={{
-                    fontSize: compact
-                      ? "clamp(8px, 0.9cqi, 10px)"
-                      : "clamp(9px, 1cqi, 11px)",
-                    fontWeight: 700,
-                    color: BRAND.slate700,
-                    lineHeight: 1.2,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={s.name}
-                >
-                  {showLabel ? s.name : ""}
-                </div>
-              );
-            })}
+            {stops.map((s, i) => (
+              <div
+                key={i}
+                className="text-center"
+                style={{
+                  fontSize: CHART_TYPE.axisTick.fontSize,
+                  fontWeight: CHART_TYPE.axisTick.fontWeight,
+                  color: CHART_TYPE.axisTick.color,
+                  lineHeight: 1.2,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={s.name}
+              >
+                {showXLabel(i) ? s.name : ""}
+              </div>
+            ))}
           </div>
         </div>
 

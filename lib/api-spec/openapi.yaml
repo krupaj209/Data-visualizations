@@ -90,12 +90,6 @@ paths:
           required: true
           schema:
             type: string
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: CE with charts
@@ -139,13 +133,19 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateCeInput"
       responses:
         "200":
           description: Regenerated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CeWithCharts"
+                $ref: "#/components/schemas/RegenerateCeResult"
         "404":
           description: Not found
           content:
@@ -354,6 +354,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /ce-intelligence/{ceSlug}/recheck-gap:
+    post:
+      operationId: recheckCeIntelligenceGap
+      tags: [ce-intelligence]
+      summary: Targeted multi-query recheck of a rejected planner idea
+      description: >-
+        Derives 1–3 missing-evidence buckets from the rejection reason and
+        archetype data shape, fans out one Gemini+googleSearch call per
+        bucket, merges findings, and re-scores the idea editorially. The
+        deterministic ship/hold/cut verdict drives whether the rejected
+        idea is promoted into the saved plan's recommended list.
+      parameters:
+        - in: path
+          name: ceSlug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecheckGapRequest"
+      responses:
+        "200":
+          description: Recheck outcome (and updated plan when applicable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecheckGapResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /ce-intelligence/{ceSlug}/sources/{source}:
     delete:
       operationId: deleteCeIntelligenceSource
@@ -400,12 +442,6 @@ paths:
           required: true
           schema:
             type: integer
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Chart
@@ -471,6 +507,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateFeedbackInput"
       responses:
         "200":
           description: Regenerated
@@ -613,6 +655,75 @@ paths:
       responses:
         "200":
           description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/fact-reviews:
+    post:
+      operationId: upsertChartFactReview
+      tags: [charts]
+      summary: Approve, reject, or flag a single fact-table row on a chart
+      description: |
+        Persists a writer's review decision for a single fact-table row onto
+        the chart's `provenance.fact_reviews` map. Use `claimOverride` and
+        `valueOverride` to override the auto-generated claim/value text.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartFactReviewInput"
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/fact-reviews/{rowId}:
+    delete:
+      operationId: clearChartFactReview
+      tags: [charts]
+      summary: Clear a single writer review decision from the fact table
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: rowId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated chart
           content:
             application/json:
               schema:
@@ -971,6 +1082,25 @@ components:
           type: boolean
         writerId:
           type: string
+    ChartFactReviewInput:
+      type: object
+      properties:
+        rowId:
+          type: string
+        status:
+          type: string
+          enum: [approved, rejected, needs_review]
+        reason:
+          type: string
+        claimOverride:
+          type: string
+        valueOverride:
+          type: string
+        writerId:
+          type: string
+      required:
+        - rowId
+        - status
     ChartPublishInput:
       type: object
       properties:
@@ -1092,6 +1222,90 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Chart"
+      required:
+        - ce
+        - charts
+    RegenerateCeInput:
+      type: object
+      properties:
+        feedback:
+          type: string
+          description: |
+            Optional free-text writer feedback. Parsed by the api-server
+            into structured constraints (banned archetypes / topics /
+            phrases, must-include topics) and merged with whatever was
+            persisted from prior regen runs on the same CE.
+      required: []
+    RegenSummary:
+      type: object
+      description: |
+        Surfaced by /ces/{slug}/regenerate so the writer can confirm the
+        run honored their feedback. Plain-English bullets first, then the
+        structured signals so the UI can render either.
+      properties:
+        honoredFeedback:
+          type: array
+          items:
+            type: string
+        suppressedArchetypes:
+          type: array
+          items:
+            type: string
+        retiredTopics:
+          type: array
+          items:
+            type: string
+        priorDeckOverlap:
+          type: integer
+          description: How many selected questions overlap the prior deck.
+        priorDeckSize:
+          type: integer
+          description: Total prior charts considered.
+        storedConstraints:
+          type: object
+          additionalProperties: true
+          description: |
+            Merged constraint set (parsed feedback ∪ prior persisted
+            constraints) re-persisted on the CE row this run. Surfaced so
+            the UI can show the writer what's "sticky" for next regen.
+      required:
+        - honoredFeedback
+        - suppressedArchetypes
+        - retiredTopics
+        - priorDeckOverlap
+        - priorDeckSize
+        - storedConstraints
+    RegenerateCeResult:
+      type: object
+      properties:
+        ce:
+          $ref: "#/components/schemas/Ce"
+        charts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chart"
+        publishedChartsKept:
+          type: integer
+          description: |
+            Count of `published` charts preserved across the run (only
+            `draft` rows are deleted by the research pipeline).
+        droppedQuestions:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              reason:
+                type: string
+            required: [question, reason]
+        proposedHeroQuestions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        regenSummary:
+          $ref: "#/components/schemas/RegenSummary"
       required:
         - ce
         - charts
@@ -1352,6 +1566,14 @@ components:
           type: integer
         fetched_at:
           type: string
+        evidence_type:
+          type: string
+          description: |
+            Optional evidence-type tag set by the source-specific adapter.
+            One of authoritative_fact, visitor_tip, wait_anecdote,
+            sentiment_theme, trip_report, product_offering, price_point,
+            bundle_pattern, operational_change, other. Older rows pre-date
+            this field and may omit it.
       required:
         - id
         - bucket
@@ -1404,6 +1626,97 @@ components:
         - sources
         - createdAt
         - updatedAt
+    EditorialJudgement:
+      type: object
+      properties:
+        verdict:
+          type: string
+          enum: [yes, weak, no]
+        rationale:
+          type: string
+      required: [verdict, rationale]
+    EditorialJudgements:
+      type: object
+      properties:
+        useful: { $ref: "#/components/schemas/EditorialJudgement" }
+        ce_specific: { $ref: "#/components/schemas/EditorialJudgement" }
+        better_than_existing:
+          { $ref: "#/components/schemas/EditorialJudgement" }
+        conversion_driven:
+          { $ref: "#/components/schemas/EditorialJudgement" }
+        visually_strong:
+          { $ref: "#/components/schemas/EditorialJudgement" }
+      required:
+        - useful
+        - ce_specific
+        - better_than_existing
+        - conversion_driven
+        - visually_strong
+    EditorialVerdict:
+      type: string
+      enum: [ship, hold, cut]
+    RecheckGapRequest:
+      type: object
+      properties:
+        question:
+          type: string
+        archetype:
+          type: string
+        reason:
+          type: string
+      required: [question]
+    RecheckGapBucket:
+      type: object
+      properties:
+        bucket: { type: string }
+        query: { type: string }
+        description: { type: string }
+      required: [bucket, query, description]
+    RecheckGapResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [found, partial, not_found]
+        recommended_archetype:
+          type: string
+        findings:
+          type: array
+          items: { type: string }
+        source_refs:
+          type: array
+          items: { type: string }
+        generation_context:
+          type: string
+        reason:
+          type: string
+        buckets:
+          type: array
+          items: { $ref: "#/components/schemas/RecheckGapBucket" }
+        editorial:
+          oneOf:
+            - $ref: "#/components/schemas/EditorialJudgements"
+            - type: "null"
+        editorial_verdict:
+          oneOf:
+            - $ref: "#/components/schemas/EditorialVerdict"
+            - type: "null"
+        plan:
+          description: >-
+            The full visualization plan after applying the recheck mutation
+            (promotion or in-place update). Null when no saved plan exists
+            or the rejected entry is no longer present.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+      required:
+        - status
+        - findings
+        - source_refs
+        - generation_context
+        - reason
+        - buckets
     CeIntelligenceRefreshInput:
       type: object
       properties:

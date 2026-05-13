@@ -113,6 +113,7 @@ export function OptimalDepartureChart({
                   })}
                 </div>
                 <div
+                  title={slot.name}
                   style={{
                     fontSize: compact
                       ? "clamp(10px, 1.1cqi, 12px)"
@@ -121,6 +122,10 @@ export function OptimalDepartureChart({
                     color: isRec ? BRAND.purps : BRAND.slate950,
                     textAlign: "center",
                     marginTop: 2,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {slot.name}

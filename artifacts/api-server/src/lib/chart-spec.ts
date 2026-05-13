@@ -1021,7 +1021,7 @@ export const historyTimelineSpec = z.object({
       z.object({
         date_label: z.string().max(24),
         sort_year: z.number().min(-5000).max(3000),
-        title: z.string().max(60),
+        title: z.string().max(30),
         era: z.enum([
           "origins",
           "construction",
@@ -1031,16 +1031,263 @@ export const historyTimelineSpec = z.object({
           "restoration",
           "modern",
         ]),
-        description: z.string().max(180),
+        description: z.string().max(140),
         metric_label: z.string().max(40).optional(),
         metric_value: z.string().max(32).optional(),
       }),
     )
-    .min(5)
+    .min(7)
     .max(9),
-  highlight_event: z.string().max(60).optional(),
-  callout: z.string().max(180).optional(),
+  highlight_event: z.string().max(40).optional(),
+  callout: z.string().max(160).optional(),
 });
+
+/* ========================================================================== */
+/* Task #67 — v3 promoted archetypes                                           */
+/* ========================================================================== */
+
+const accentEnum = z.enum(["purps", "candy", "hola", "okay", "slate"]);
+
+/**
+ * `ticket_access_matrix` — supersedes `ticket_ladder`. Tier × access-feature
+ * matrix where each cell shows the *kind* of access a tier grants for a
+ * feature, not just a yes/no. Cell states model the real ticket-page
+ * nuance writers see in the wild: full inclusion, paid add-on (e.g.
+ * "extra €5"), limited/timed access, or excluded.
+ */
+const ticketAccessCellSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("included") }),
+  z.object({ state: z.literal("excluded") }),
+  z.object({
+    state: z.literal("extra"),
+    extra_price: z.number().min(0).max(100000).optional(),
+    label: z.string().max(40).optional(),
+  }),
+  z.object({
+    state: z.literal("limited"),
+    label: z.string().max(40).optional(),
+  }),
+]);
+
+export const ticketAccessMatrixSpec = z.object({
+  type: z.literal("ticket_access_matrix"),
+  currency: z.string().min(1).max(8),
+  tiers: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        price: z.number().min(0).max(100000),
+        accent: accentEnum.optional(),
+        recommended: z.boolean().optional(),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(2)
+    .max(5),
+  features: z
+    .array(
+      z.object({
+        label: z.string().max(60),
+        cells: z.array(ticketAccessCellSchema).min(2).max(5),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(8),
+  insight: z.string().max(200).optional(),
+});
+
+/**
+ * `duration_budget` — supersedes `duration_stat`. Total visit budget split
+ * into 3-6 named blocks. Block minutes must sum within 5% of total_min.
+ * Optional per-block badge tells the visitor which block to drop on a
+ * tight schedule and which to extend on a deep-dive day.
+ */
+export const durationBudgetSpec = z.object({
+  type: z.literal("duration_budget"),
+  total_min: z.number().int().min(15).max(2880),
+  total_label: z.string().max(60).optional(),
+  blocks: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        minutes: z.number().int().min(1).max(2880),
+        accent: accentEnum,
+        badge: z
+          .enum(["skip_if_tight", "extend_if_deep_dive"])
+          .optional(),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(6),
+  tip: z.string().max(200).optional(),
+});
+
+/**
+ * `landmark_coverage` — supersedes `route_profile` for HOHO loops, sightseeing
+ * cruise routes, and photography tours. **Routes × landmarks matrix** where
+ * each cell shows the *kind* of coverage that route gives a landmark:
+ * `covered` (the route stops at it), `near` (stops within easy walking),
+ * `view_only` (passes by / visible from board), `none` (not on route).
+ * Lets the writer compare two or three operator routes side-by-side.
+ */
+export const landmarkCoverageSpec = z.object({
+  type: z.literal("landmark_coverage"),
+  route_label: z.string().max(60).optional(),
+  routes: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        accent: accentEnum.optional(),
+        recommended: z.boolean().optional(),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(2)
+    .max(4),
+  landmarks: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        kind: z.enum(["icon", "highlight", "standard"]),
+        coverage: z
+          .array(z.enum(["covered", "near", "view_only", "none"]))
+          .min(2)
+          .max(4),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(12),
+  best_for: z.array(z.string().max(40)).max(4).optional(),
+  callout: z.string().max(200).optional(),
+});
+
+/**
+ * `itinerary_flow` — supersedes `route_profile` for walking tours, day trips,
+ * food tours, and port-of-call shore tours. **Timed sequence** of stops
+ * with per-stop dwell minutes AND inter-stop transit minutes (so visitors
+ * can see "20 min stop, 8 min walk, 30 min stop, …"). FIRST stop must be
+ * `start` and LAST must be `end`. `transits.length === stops.length - 1`.
+ */
+export const itineraryFlowSpec = z.object({
+  type: z.literal("itinerary_flow"),
+  mode: z.enum(["walk", "bus", "boat", "mixed", "day_trip"]),
+  total_duration_min: z.number().int().min(15).max(2880).optional(),
+  stops: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        kind: z.enum(["start", "stop", "highlight", "end"]),
+        dwell_min: z.number().int().min(0).max(720).optional(),
+        note: z.string().max(140).optional(),
+      }),
+    )
+    .min(3)
+    .max(12),
+  transits: z
+    .array(
+      z.object({
+        minutes: z.number().int().min(0).max(360),
+        mode: z
+          .enum(["walk", "bus", "boat", "mixed", "transfer"])
+          .optional(),
+        note: z.string().max(80).optional(),
+      }),
+    )
+    .min(2)
+    .max(11),
+  callout: z.string().max(200).optional(),
+});
+
+/**
+ * `best_for_matrix` — audiences × facets numeric matrix. Each cell is a
+ * 0-100 score for how well an audience is served by a facet (pace,
+ * access, headline-payoff, kid-friendliness, photography, etc.). The
+ * top-scoring audience per facet is auto-marked in the renderer; an
+ * optional per-facet `top_audience_index` lets the writer override.
+ * Light-weight complement to `slot_compare` when the comparison is
+ * audience-fit rather than slot-vs-slot.
+ */
+export const bestForMatrixSpec = z.object({
+  type: z.literal("best_for_matrix"),
+  facets: z
+    .array(
+      z.object({
+        name: z.string().max(40),
+        note: z.string().max(120).optional(),
+        top_audience_index: z.number().int().min(0).max(5).optional(),
+      }),
+    )
+    .min(3)
+    .max(5),
+  audiences: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        accent: accentEnum,
+        scores: z.array(z.number().int().min(0).max(100)).min(3).max(5),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(6),
+  insight: z.string().max(200).optional(),
+});
+
+/**
+ * `season_weather_fit` — supersedes `conditions_calendar`. **12 months ×
+ * 3-5 named dimensions** (e.g. temperature, rainfall, daylight, crowd,
+ * operator availability) where every cell carries both a 0-100 score
+ * and a discrete status (`closed | poor | fair | good | optimal`). This
+ * is a richer signal than a single monthly `fit` rating and lets the
+ * heatmap show *why* a month is poor (e.g. closed lifts vs. heavy rain).
+ */
+const seasonFitStatusEnum = z.enum([
+  "closed",
+  "poor",
+  "fair",
+  "good",
+  "optimal",
+]);
+
+export const seasonWeatherFitSpec = z.object({
+  type: z.literal("season_weather_fit"),
+  activity_label: z.string().max(60),
+  dimensions: z
+    .array(
+      z.object({
+        name: z.string().max(30),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(5),
+  months: z
+    .array(
+      z.object({
+        month: monthEnum,
+        cells: z
+          .array(
+            z.object({
+              score: z.number().int().min(0).max(100),
+              status: seasonFitStatusEnum,
+            }),
+          )
+          .min(3)
+          .max(5),
+        overall_status: seasonFitStatusEnum.optional(),
+        temp_label: z.string().max(20).optional(),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .length(12),
+  best_months: z.array(z.string().max(20)).max(6),
+  worst_months: z.array(z.string().max(20)).max(6),
+  helper: z.string().max(200).optional(),
+});
+
 
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
@@ -1079,6 +1326,12 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   timeSplitSpec,
   historyTimelineSpec,
   slotCompareSpec,
+  ticketAccessMatrixSpec,
+  durationBudgetSpec,
+  landmarkCoverageSpec,
+  itineraryFlowSpec,
+  bestForMatrixSpec,
+  seasonWeatherFitSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -1380,6 +1633,132 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         path: ["slots"],
       });
     }
+  } else if (val.type === "ticket_access_matrix") {
+    if (val.tiers.filter((t) => t.recommended).length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At most one tier may be recommended",
+        path: ["tiers"],
+      });
+    }
+    val.features.forEach((f, i) => {
+      if (f.cells.length !== val.tiers.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `features[${i}].cells must have one entry per tier (${val.tiers.length})`,
+          path: ["features", i, "cells"],
+        });
+      }
+    });
+  } else if (val.type === "duration_budget") {
+    const sum = val.blocks.reduce((s, x) => s + x.minutes, 0);
+    const tol = Math.max(2, Math.round(val.total_min * 0.05));
+    if (Math.abs(sum - val.total_min) > tol) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `block minutes (${sum}) must sum to within ${tol}m of total_min (${val.total_min})`,
+        path: ["blocks"],
+      });
+    }
+    // Badge cardinality: at most one of each kind across all blocks.
+    const skipIdx: number[] = [];
+    const extendIdx: number[] = [];
+    val.blocks.forEach((b, i) => {
+      if (b.badge === "skip_if_tight") skipIdx.push(i);
+      if (b.badge === "extend_if_deep_dive") extendIdx.push(i);
+    });
+    if (skipIdx.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `At most one block may carry badge='skip_if_tight' (found on blocks: ${skipIdx.join(", ")})`,
+        path: ["blocks"],
+      });
+    }
+    if (extendIdx.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `At most one block may carry badge='extend_if_deep_dive' (found on blocks: ${extendIdx.join(", ")})`,
+        path: ["blocks"],
+      });
+    }
+  } else if (val.type === "landmark_coverage") {
+    val.landmarks.forEach((lm, i) => {
+      if (lm.coverage.length !== val.routes.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `landmarks[${i}].coverage must have one entry per route (${val.routes.length})`,
+          path: ["landmarks", i, "coverage"],
+        });
+      }
+    });
+    if (val.routes.filter((r) => r.recommended).length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At most one route may be recommended",
+        path: ["routes"],
+      });
+    }
+  } else if (val.type === "itinerary_flow") {
+    if (val.stops[0]?.kind !== "start") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "stops[0].kind must be 'start'",
+        path: ["stops", 0, "kind"],
+      });
+    }
+    if (val.stops[val.stops.length - 1]?.kind !== "end") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "last stop must have kind='end'",
+        path: ["stops", val.stops.length - 1, "kind"],
+      });
+    }
+    if (val.transits.length !== val.stops.length - 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `transits.length (${val.transits.length}) must equal stops.length - 1 (${val.stops.length - 1})`,
+        path: ["transits"],
+      });
+    }
+  } else if (val.type === "best_for_matrix") {
+    val.audiences.forEach((a, i) => {
+      if (a.scores.length !== val.facets.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `audiences[${i}].scores must have one entry per facet (${val.facets.length})`,
+          path: ["audiences", i, "scores"],
+        });
+      }
+    });
+    val.facets.forEach((f, i) => {
+      if (
+        f.top_audience_index != null &&
+        f.top_audience_index >= val.audiences.length
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `facets[${i}].top_audience_index out of range`,
+          path: ["facets", i, "top_audience_index"],
+        });
+      }
+    });
+  } else if (val.type === "season_weather_fit") {
+    if (new Set(val.months.map((m) => m.month)).size !== 12) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "season_weather_fit.months must contain jan..dec exactly once",
+        path: ["months"],
+      });
+    }
+    val.months.forEach((m, i) => {
+      if (m.cells.length !== val.dimensions.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `months[${i}].cells must have one entry per dimension (${val.dimensions.length})`,
+          path: ["months", i, "cells"],
+        });
+      }
+    });
   }
 });
 
@@ -1455,4 +1834,10 @@ export const CHART_TYPES = [
   "time_split",
   "history_timeline",
   "slot_compare",
+  "ticket_access_matrix",
+  "duration_budget",
+  "landmark_coverage",
+  "itinerary_flow",
+  "best_for_matrix",
+  "season_weather_fit",
 ] as const;

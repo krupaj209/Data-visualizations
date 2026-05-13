@@ -69,6 +69,24 @@ export interface ChartUpdateInput {
   writerId?: string;
 }
 
+export type ChartFactReviewInputStatus =
+  (typeof ChartFactReviewInputStatus)[keyof typeof ChartFactReviewInputStatus];
+
+export const ChartFactReviewInputStatus = {
+  approved: "approved",
+  rejected: "rejected",
+  needs_review: "needs_review",
+} as const;
+
+export interface ChartFactReviewInput {
+  rowId: string;
+  status: ChartFactReviewInputStatus;
+  reason?: string;
+  claimOverride?: string;
+  valueOverride?: string;
+  writerId?: string;
+}
+
 export type ChartPublishInputStatus =
   (typeof ChartPublishInputStatus)[keyof typeof ChartPublishInputStatus];
 
@@ -83,6 +101,7 @@ export interface ChartPublishInput {
 }
 
 export interface RegenerateFeedbackInput {
+  /** @maxLength 4000 */
   feedback?: string;
 }
 
@@ -145,6 +164,65 @@ export interface ChartWithCe {
 export interface CeWithCharts {
   ce: Ce;
   charts: Chart[];
+}
+
+export interface RegenerateCeInput {
+  /** Optional free-text writer feedback. Parsed by the api-server
+into structured constraints (banned archetypes / topics /
+phrases, must-include topics) and merged with whatever was
+persisted from prior regen runs on the same CE.
+ */
+  feedback?: string;
+}
+
+/**
+ * Merged constraint set (parsed feedback ∪ prior persisted
+constraints) re-persisted on the CE row this run. Surfaced so
+the UI can show the writer what's "sticky" for next regen.
+
+ */
+export type RegenSummaryStoredConstraints = { [key: string]: unknown };
+
+/**
+ * Surfaced by /ces/{slug}/regenerate so the writer can confirm the
+run honored their feedback. Plain-English bullets first, then the
+structured signals so the UI can render either.
+
+ */
+export interface RegenSummary {
+  honoredFeedback: string[];
+  suppressedArchetypes: string[];
+  retiredTopics: string[];
+  /** How many selected questions overlap the prior deck. */
+  priorDeckOverlap: number;
+  /** Total prior charts considered. */
+  priorDeckSize: number;
+  /** Merged constraint set (parsed feedback ∪ prior persisted
+constraints) re-persisted on the CE row this run. Surfaced so
+the UI can show the writer what's "sticky" for next regen.
+ */
+  storedConstraints: RegenSummaryStoredConstraints;
+}
+
+export type RegenerateCeResultDroppedQuestionsItem = {
+  question: string;
+  reason: string;
+};
+
+export type RegenerateCeResultProposedHeroQuestionsItem = {
+  [key: string]: unknown;
+};
+
+export interface RegenerateCeResult {
+  ce: Ce;
+  charts: Chart[];
+  /** Count of `published` charts preserved across the run (only
+`draft` rows are deleted by the research pipeline).
+ */
+  publishedChartsKept?: number;
+  droppedQuestions?: RegenerateCeResultDroppedQuestionsItem[];
+  proposedHeroQuestions?: RegenerateCeResultProposedHeroQuestionsItem[];
+  regenSummary?: RegenSummary;
 }
 
 export type DrdSourcesItem = { [key: string]: unknown };
@@ -266,6 +344,13 @@ export interface CeIntelligenceFact {
   source_url?: string;
   confidence: number;
   fetched_at: string;
+  /** Optional evidence-type tag set by the source-specific adapter.
+One of authoritative_fact, visitor_tip, wait_anecdote,
+sentiment_theme, trip_report, product_offering, price_point,
+bundle_pattern, operational_change, other. Older rows pre-date
+this field and may omit it.
+ */
+  evidence_type?: string;
 }
 
 export interface CeIntelligenceSource {
@@ -283,6 +368,77 @@ export interface CeIntelligence {
   sources: CeIntelligenceSource[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type EditorialJudgementVerdict =
+  (typeof EditorialJudgementVerdict)[keyof typeof EditorialJudgementVerdict];
+
+export const EditorialJudgementVerdict = {
+  yes: "yes",
+  weak: "weak",
+  no: "no",
+} as const;
+
+export interface EditorialJudgement {
+  verdict: EditorialJudgementVerdict;
+  rationale: string;
+}
+
+export interface EditorialJudgements {
+  useful: EditorialJudgement;
+  ce_specific: EditorialJudgement;
+  better_than_existing: EditorialJudgement;
+  conversion_driven: EditorialJudgement;
+  visually_strong: EditorialJudgement;
+}
+
+export type EditorialVerdict =
+  (typeof EditorialVerdict)[keyof typeof EditorialVerdict];
+
+export const EditorialVerdict = {
+  ship: "ship",
+  hold: "hold",
+  cut: "cut",
+} as const;
+
+export interface RecheckGapRequest {
+  question: string;
+  archetype?: string;
+  reason?: string;
+}
+
+export interface RecheckGapBucket {
+  bucket: string;
+  query: string;
+  description: string;
+}
+
+export type RecheckGapResponseStatus =
+  (typeof RecheckGapResponseStatus)[keyof typeof RecheckGapResponseStatus];
+
+export const RecheckGapResponseStatus = {
+  found: "found",
+  partial: "partial",
+  not_found: "not_found",
+} as const;
+
+/**
+ * The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present.
+ */
+export type RecheckGapResponsePlan = { [key: string]: unknown } | null;
+
+export interface RecheckGapResponse {
+  status: RecheckGapResponseStatus;
+  recommended_archetype?: string;
+  findings: string[];
+  source_refs: string[];
+  generation_context: string;
+  reason: string;
+  buckets: RecheckGapBucket[];
+  editorial?: EditorialJudgements | null;
+  editorial_verdict?: EditorialVerdict | null;
+  /** The full visualization plan after applying the recheck mutation (promotion or in-place update). Null when no saved plan exists or the rejected entry is no longer present. */
+  plan?: RecheckGapResponsePlan;
 }
 
 export interface CeIntelligenceRefreshInput {
