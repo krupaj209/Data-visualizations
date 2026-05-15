@@ -2,11 +2,12 @@ import { db, cesTable, chartsTable } from "@workspace/db";
 import { accademia } from "./data/accademia";
 import { uffizi } from "./data/uffizi";
 import { duomo } from "./data/duomo";
+import { colosseum } from "./data/colosseum";
 import type { CuratedCe } from "./types";
 
 export type { CuratedCe };
 
-export const CURATED_CES: CuratedCe[] = [accademia, uffizi, duomo];
+export const CURATED_CES: CuratedCe[] = [accademia, uffizi, duomo, colosseum];
 
 export interface SeedResult {
   inserted: string[];

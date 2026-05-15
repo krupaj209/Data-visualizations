@@ -56,7 +56,7 @@ export const STANDARD_QUESTIONS: BankQuestion[] = [
   },
   {
     question: "How long should I spend here?",
-    recommended_archetype: "duration_stat",
+    recommended_archetype: "duration_budget",
     kind: "standard",
     skip_if: { type: "fixed_duration" },
     notes:
@@ -414,7 +414,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which ticket unlocks the areas people care about?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "ticket_access_by_area" },
     }),
     sig({
@@ -436,7 +436,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which ticket unlocks the rooms people care about?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "tier_access_and_price" },
     }),
     sig({
@@ -471,7 +471,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which pass tier actually saves meaningful time?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: {
         type: "no_data_signal",
         signal: "wait_savings_by_pass_tier",
@@ -542,7 +542,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which ticket gets me the view I want?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "ticket_access_by_level" },
     }),
     sig({
@@ -580,7 +580,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which ticket or route gets me in fastest?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "queue_time_by_entry_type" },
     }),
     sig({
@@ -597,7 +597,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How long will I actually spend inside?",
-      recommended_archetype: "duration_stat",
+      recommended_archetype: "duration_budget",
       skip_if: { type: "fixed_duration" },
     }),
   ],
@@ -627,7 +627,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which stops define the day trip?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "itinerary_flow",
       skip_if: { type: "no_data_signal", signal: "ordered_day_trip_stops" },
     }),
     sig({
@@ -644,14 +644,14 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which route loop fits my day?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "landmark_coverage",
       skip_if: { type: "no_data_signal", signal: "loop_time_per_route" },
     }),
   ],
   walking_tours: [
     sig({
       question: "How demanding is the route?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "itinerary_flow",
       skip_if: { type: "no_data_signal", signal: "distance_elevation_route" },
     }),
     sig({
@@ -661,7 +661,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which months are most comfortable for walking?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: { type: "no_data_signal", signal: "walking_weather_by_month" },
     }),
   ],
@@ -677,7 +677,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which photo stops are actually covered?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "landmark_coverage",
       skip_if: { type: "no_data_signal", signal: "photo_stop_route" },
     }),
   ],
@@ -727,7 +727,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "What will I see on the main route?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "landmark_coverage",
       skip_if: {
         type: "no_data_signal",
         signal: "ordered_route_landmarks_or_piers",
@@ -796,13 +796,46 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       skip_if: { type: "no_data_signal", signal: "tour_time_breakdown" },
     }),
     // Light/visibility-by-slot — kept from v2 but now narrowly scoped.
+    // Task #80: notes broadened to surface the sunset-cruise-by-month case
+    // and the skip signal expanded so a CE whose sunset slot drifts across
+    // the year (and isn't named in the DRD) doesn't fall through unnoticed.
     sig({
       question: "Which departure time gives the best views?",
       recommended_archetype: "optimal_departure",
       skip_if: {
         type: "no_data_signal",
-        signal: "light_and_clarity_by_slot",
+        signal: "light_and_clarity_or_sunset_shift_by_slot",
       },
+      notes:
+        "Slots = named departures (morning / midday / sunset / after-dark). Score on light quality, conditions/visibility, and crowd. EXPLICITLY cover the sunset-cruise-by-month framing: golden hour shifts ~5pm in Dec to ~9pm in Jun in mid-latitude cities, so the 'sunset' slot's true clock time changes month-to-month — name the operator's actual sunset departures (or note 'shifts with season') rather than fabricating a fixed 19:00. Skip when the DRD doesn't surface light/clarity-by-slot AND doesn't describe a seasonal sunset-departure rotation.",
+    }),
+    // Task #80: cruise-framed BOOKING_WINDOW signature so the deck offers
+    // booking lead time as a CE-specific question — not only via the
+    // standards auto-restore branch. Anchored on the summer sell-out
+    // dynamic the Thames-style category CEs actually exhibit.
+    sig({
+      question: "How far ahead do summer slots actually sell out?",
+      recommended_archetype: "booking_window",
+      skip_if: {
+        type: "drd_flag",
+        flag: "unlimited_capacity",
+      },
+      notes:
+        "Cruise-specific framing of the standard booking-window: focus on the SUMMER and weekend lead-time picture (Greenwich/dinner cruises sell out 7-21 days ahead in peak; Uber Boat / commuter rides almost never sell out). Skip when the DRD flags unlimited capacity or no sell-out signal across any sub-product.",
+    }),
+    // Task #80: single-day crowd curve so the deck always carries at least
+    // one timing chart even when the LLM has biased toward sub-product
+    // comparisons. Lighter-weight than hourly_heatmap (no 7×24 grid
+    // required) — fits cruise piers where boarding pressure is the story.
+    sig({
+      question: "When during the day is the river quietest?",
+      recommended_archetype: "daily_pattern",
+      skip_if: {
+        type: "no_data_signal",
+        signal: "passenger_volume_by_hour",
+      },
+      notes:
+        "Single representative open-day curve of pier/boat boarding pressure (HH:MM × crowd 0-10) with 1-3 named windows (best / peak / second_best). Use when the DRD has any operator-grounded boarding-pressure or popular-times signal but lacks a full 7×24 grid; prefer hourly_heatmap when both day-of-week AND hour are grounded.",
     }),
   ],
   dinner_cruises: [
@@ -815,7 +848,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which dinner tier is worth the premium?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "inclusions_by_tier" },
     }),
     sig({
@@ -869,7 +902,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How quickly do premium sections sell out?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "days_to_sellout_per_tier" },
     }),
   ],
@@ -951,7 +984,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
   skiing: [
     sig({
       question: "When are snow conditions strongest?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "snow_depth_and_quality_by_month",
@@ -983,7 +1016,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
   outdoor_activities: [
     sig({
       question: "Which months are in the right conditions window?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: { type: "no_data_signal", signal: "weather_window_by_month" },
     }),
     sig({
@@ -1023,7 +1056,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which months give the clearest summit views?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "clear_summit_days_per_month",
@@ -1036,7 +1069,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "When is visibility and marine life best?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "visibility_and_species_by_month",
@@ -1052,7 +1085,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
   surfing: [
     sig({
       question: "When is the swell best for this break?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "swell_height_and_quality_by_month",
@@ -1069,7 +1102,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "When is the river safest and most fun?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: { type: "no_data_signal", signal: "river_flow_by_month" },
     }),
     sig({
@@ -1106,7 +1139,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "Which trail fits my fitness level?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "best_for_matrix",
       skip_if: {
         type: "no_data_signal",
         signal: "distance_elevation_duration_per_trail",
@@ -1114,7 +1147,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "When are trail conditions at their best?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "trail_condition_by_month",
@@ -1132,7 +1165,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which food stops are actually covered?",
-      recommended_archetype: "route_profile",
+      recommended_archetype: "itinerary_flow",
       skip_if: { type: "no_data_signal", signal: "food_stop_route" },
     }),
   ],
@@ -1140,7 +1173,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     sig({
       question:
         "When does harvest change the visit?",
-      recommended_archetype: "conditions_calendar",
+      recommended_archetype: "season_weather_fit",
       skip_if: {
         type: "no_data_signal",
         signal: "harvest_window_and_volume_by_month",
@@ -1148,7 +1181,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which tasting tier fits my visit?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "tasting_tier_inclusions_price" },
     }),
   ],
@@ -1165,7 +1198,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which class format fits my group?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "dish_count_and_price_by_tier" },
     }),
     sig({
@@ -1207,7 +1240,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which spa package fits my day?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "spa_package_inclusions_time" },
     }),
   ],
@@ -1219,7 +1252,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which entry tier gives the right access?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: {
         type: "no_data_signal",
         signal: "pool_access_inclusions_price",
@@ -1236,7 +1269,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "Which combo tier fits my itinerary?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "combo_tier_inclusions_value" },
     }),
     sig({
@@ -1269,7 +1302,7 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
     }),
     sig({
       question: "How fast do premium sections sell out?",
-      recommended_archetype: "ticket_ladder",
+      recommended_archetype: "ticket_access_matrix",
       skip_if: { type: "no_data_signal", signal: "days_to_sellout_per_tier" },
     }),
   ],

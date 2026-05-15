@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -12,6 +12,24 @@ export const cesTable = pgTable("ces", {
   summary: text("summary").notNull().default(""),
   emoji: text("emoji").notNull().default("📍"),
   status: text("status").notNull().default("ready"),
+  /**
+   * Sticky writer-feedback constraints carried across regen runs.
+   * Populated by `regen-constraints.ts` from the writer's free-text
+   * feedback box; cleared / merged on each regen call. Shape:
+   *   {
+   *     bannedArchetypes: string[],
+   *     bannedTopics: string[],
+   *     bannedQuestionPhrases: string[],
+   *     mustIncludeTopics: string[],
+   *     toneNotes: string[],
+   *     updatedAt: ISO string
+   *   }
+   * Loose typing because the shape may evolve (adding e.g. severity
+   * weights) without a schema migration.
+   */
+  regenConstraints: jsonb("regen_constraints").$type<
+    Record<string, unknown> | null
+  >(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

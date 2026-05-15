@@ -759,17 +759,238 @@ export type ChartSpec =
   | DailyProgrammeSpec
   | TimeSplitSpec
   | HistoryTimelineSpec
-  | SlotCompareSpec;
+  | SlotCompareSpec
+  | TicketAccessMatrixSpec
+  | DurationBudgetSpec
+  | LandmarkCoverageSpec
+  | ItineraryFlowSpec
+  | BestForMatrixSpec
+  | SeasonWeatherFitSpec;
+
+/* ========================================================================== */
+/* Task #67 v3 promoted archetypes                                             */
+/* ========================================================================== */
+
+export type TicketAccessCell =
+  | { state: "included" }
+  | { state: "excluded" }
+  | { state: "extra"; extra_price?: number; label?: string }
+  | { state: "limited"; label?: string };
+
+export interface TicketAccessMatrixSpec {
+  type: "ticket_access_matrix";
+  currency: string;
+  tiers: {
+    name: string;
+    price: number;
+    accent?: AccentKey;
+    recommended?: boolean;
+    note?: string;
+  }[];
+  features: {
+    label: string;
+    /** One cell per tier, in tier order. */
+    cells: TicketAccessCell[];
+    note?: string;
+  }[];
+  insight?: string;
+}
+
+export type DurationBudgetBadge = "skip_if_tight" | "extend_if_deep_dive";
+
+export interface DurationBudgetSpec {
+  type: "duration_budget";
+  total_min: number;
+  total_label?: string;
+  blocks: {
+    label: string;
+    minutes: number;
+    accent: AccentKey;
+    badge?: DurationBudgetBadge;
+    note?: string;
+  }[];
+  tip?: string;
+}
+
+export type LandmarkCoverageCell =
+  | "covered"
+  | "near"
+  | "view_only"
+  | "none";
+
+export interface LandmarkCoverageSpec {
+  type: "landmark_coverage";
+  route_label?: string;
+  routes: {
+    name: string;
+    accent?: AccentKey;
+    recommended?: boolean;
+    note?: string;
+  }[];
+  landmarks: {
+    name: string;
+    kind: "icon" | "highlight" | "standard";
+    /** One coverage state per route, in route order. */
+    coverage: LandmarkCoverageCell[];
+    note?: string;
+  }[];
+  best_for?: string[];
+  callout?: string;
+}
+
+export interface ItineraryFlowSpec {
+  type: "itinerary_flow";
+  mode: "walk" | "bus" | "boat" | "mixed" | "day_trip";
+  total_duration_min?: number;
+  stops: {
+    name: string;
+    kind: "start" | "stop" | "highlight" | "end";
+    dwell_min?: number;
+    note?: string;
+  }[];
+  /** EXACTLY stops.length - 1 entries — one per gap between consecutive stops. */
+  transits: {
+    minutes: number;
+    mode?: "walk" | "bus" | "boat" | "mixed" | "transfer";
+    note?: string;
+  }[];
+  callout?: string;
+}
+
+export interface BestForMatrixSpec {
+  type: "best_for_matrix";
+  facets: {
+    name: string;
+    note?: string;
+    /** Optional override of the auto-computed top audience for this facet. */
+    top_audience_index?: number;
+  }[];
+  audiences: {
+    label: string;
+    accent: AccentKey;
+    /** One score 0-100 per facet, in facet order. */
+    scores: number[];
+    note?: string;
+  }[];
+  insight?: string;
+}
+
+export type SeasonStatus = "closed" | "poor" | "fair" | "good" | "optimal";
+
+export interface SeasonWeatherFitSpec {
+  type: "season_weather_fit";
+  activity_label: string;
+  dimensions: { name: string; note?: string }[];
+  months: {
+    month:
+      | "jan" | "feb" | "mar" | "apr" | "may" | "jun"
+      | "jul" | "aug" | "sep" | "oct" | "nov" | "dec";
+    /** One cell per dimension, in dimension order. */
+    cells: { score: number; status: SeasonStatus }[];
+    overall_status?: SeasonStatus;
+    temp_label?: string;
+    note?: string;
+  }[];
+  best_months: string[];
+  worst_months: string[];
+  helper?: string;
+}
+
+/**
+ * Evidence-kind taxonomy (Task #63). Mirrors `EvidenceKind` on the server
+ * — kept as a string union here so the viz-studio package doesn't need to
+ * depend on api-server internals. Legacy provenance rows have no kind
+ * tags; renderers must treat missing/unrecognised kinds as "unknown".
+ */
+export type EvidenceKind =
+  | "official"
+  | "marketplace"
+  | "review"
+  | "inferred"
+  | "estimate"
+  | "unknown";
 
 /** Subset of the chart provenance object the renderers may surface to users. */
 export interface ChartProvenanceLite {
   status?: "drd_grounded" | "web_grounded" | "estimated" | string;
-  drd_snippets?: string[];
-  web_sources?: { title?: string; url?: string }[];
-  estimates?: { field?: string; reasoning?: string }[];
+  /**
+   * Legacy rows store bare strings; new rows from the Task #63 pipeline
+   * store the tagged shape. Renderers must accept both.
+   */
+  drd_snippets?: (string | { text?: string; kind?: string })[];
+  web_sources?: { title?: string; url?: string; kind?: string }[];
+  estimates?: { field?: string; reasoning?: string; kind?: string }[];
   verifier_notes?: string;
-  intelligence_refs?: string[];
+  /**
+   * Either bare fact ids (legacy) or tagged refs `{ id, kind }` (Task #63).
+   * Both shapes coexist in the wild — counts/UI must accept either.
+   */
+  intelligence_refs?: (string | { id: string; kind?: string })[];
 }
+
+const EVIDENCE_KIND_VALUES: readonly EvidenceKind[] = [
+  "official",
+  "marketplace",
+  "review",
+  "inferred",
+  "estimate",
+  "unknown",
+];
+
+function asKind(v: unknown): EvidenceKind {
+  return typeof v === "string" && (EVIDENCE_KIND_VALUES as readonly string[]).includes(v)
+    ? (v as EvidenceKind)
+    : "unknown";
+}
+
+/**
+ * Aggregate provenance citations into per-kind counts so writer/embed UIs
+ * can render a compact rollup chip group without re-walking the structure
+ * in every component. Counts ALL citations across web sources, DRD
+ * snippets, and explicit estimates. Legacy untagged citations bucket into
+ * "unknown".
+ */
+export function evidenceKindCounts(
+  provenance: ChartProvenanceLite | null | undefined,
+): Record<EvidenceKind, number> {
+  const counts: Record<EvidenceKind, number> = {
+    official: 0,
+    marketplace: 0,
+    review: 0,
+    inferred: 0,
+    estimate: 0,
+    unknown: 0,
+  };
+  if (!provenance) return counts;
+  for (const s of provenance.web_sources ?? []) {
+    counts[asKind(s.kind)] += 1;
+  }
+  for (const d of provenance.drd_snippets ?? []) {
+    if (typeof d === "string") counts.unknown += 1;
+    else counts[asKind(d.kind)] += 1;
+  }
+  for (const e of provenance.estimates ?? []) {
+    counts[asKind(e.kind ?? "estimate")] += 1;
+  }
+  for (const r of provenance.intelligence_refs ?? []) {
+    if (typeof r === "string") counts.unknown += 1;
+    else counts[asKind(r.kind)] += 1;
+  }
+  return counts;
+}
+
+/** Display metadata for each evidence kind — label + chip colours. */
+export const EVIDENCE_KIND_META: Record<
+  EvidenceKind,
+  { label: string; bg: string; fg: string }
+> = {
+  official:    { label: "Official",    bg: "#E6F4EA", fg: "#0E8F4E" },
+  marketplace: { label: "Marketplace", bg: "#EFE5FF", fg: "#5B21B6" },
+  review:      { label: "Review",      bg: "#FFE9F2", fg: "#A8235C" },
+  inferred:    { label: "Inferred",    bg: "#FFF4DD", fg: "#A65A00" },
+  estimate:    { label: "Estimate",    bg: "#F2F2F4", fg: "#54545C" },
+  unknown:     { label: "Unknown",     bg: "#F2F2F4", fg: "#54545C" },
+};
 
 export interface ChartHeader {
   title: string;
