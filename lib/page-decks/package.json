@@ -1,0 +1,17 @@
+{
+  "name": "@headout/page-decks",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.25.63"
+  },
+  "peerDependencies": {
+    "@headout/api-spec": "workspace:*"
+  }
+}
