@@ -1,0 +1,295 @@
+/**
+ * Deck Builder
+ *
+ * Takes a CE, a page type, and a DRD. Returns a complete ResolvedDeck.
+ *
+ * This is the brain of the system. It:
+ * 1. Loads the page deck template
+ * 2. For each section, scores and selects the best question
+ * 3. Resolves conflicts and dependencies
+ * 4. Generates editorial overlays
+ * 5. Returns a complete narrative deck
+ */
+
+import {
+  PageType,
+  ResolvedDeck,
+  ResolvedSection,
+  PageDeckTemplate,
+  SectionDefinition,
+  QuestionGraphNode,
+} from "./types";
+import { getDeckTemplate } from "./templates";
+import { getQuestionById, resolveConflicts, questionGraph } from "./question-graph";
+
+// ─────────────────────────────────────────────────────────────
+// CE Intelligence (from DRD + your existing CE data)
+// ─────────────────────────────────────────────────────────────
+
+export interface CEIntelligence {
+  slug: string;
+  name: string;
+  category: string;
+  visitorVolume: "low" | "medium" | "high" | "very-high";
+  hasSeasonalVariation: boolean;
+  hasMultipleEntrances: boolean;
+  hasSkipTheLine: boolean;
+  hasAudioGuide: boolean;
+  hasGuidedTours: boolean;
+  hasRestrictedItems: boolean;
+  hasAccessibilityNeeds: boolean;
+  typicalVisitDurationMin: number;
+  typicalVisitDurationMax: number;
+  subProductCount: number;
+  drdConfidence: Record<string, number>; // topic -> confidence 0-1
+}
+
+// ─────────────────────────────────────────────────────────────
+// Question Scorer
+// ─────────────────────────────────────────────────────────────
+
+interface QuestionScore {
+  questionId: string;
+  score: number;
+  reasons: string[];
+}
+
+function scoreQuestionForSection(
+  question: QuestionGraphNode,
+  section: SectionDefinition,
+  ce: CEIntelligence,
+  pageType: PageType
+): QuestionScore {
+  let score = 50;
+  const reasons: string[] = ["Base relevance"];
+
+  const variant = question.pageVariants?.[pageType];
+  if (variant) {
+    score += (10 - variant.priority) * 5;
+    reasons.push(`Page priority: ${variant.priority}/10`);
+  } else {
+    score -= 30;
+    reasons.push("No page-type variant");
+  }
+
+  const signals = question.ceSignals;
+  if (ce.hasSeasonalVariation && signals.hasSeasonalVariation) {
+    score += 10;
+    reasons.push("CE has seasonal variation");
+  }
+  if (ce.hasMultipleEntrances && signals.hasMultipleEntrances) {
+    score += 15;
+    reasons.push("CE has multiple entrances");
+  }
+  if (ce.hasSkipTheLine && signals.hasSkipTheLine) {
+    score += 15;
+    reasons.push("CE has skip-the-line");
+  }
+  if (ce.hasRestrictedItems && signals.hasRestrictedItems) {
+    score += 10;
+    reasons.push("CE has security restrictions");
+  }
+  if (ce.visitorVolume === "very-high" && signals.minVisitorVolume && signals.minVisitorVolume > 1000) {
+    score += 10;
+    reasons.push("High-volume CE matches high-volume question");
+  }
+
+  const drdConf = ce.drdConfidence[question.archetype] || 0.5;
+  score += drdConf * 20;
+  reasons.push(`DRD confidence: ${(drdConf * 100).toFixed(0)}%`);
+
+  if (question.archetype === section.archetype) {
+    score += 15;
+    reasons.push("Direct archetype match");
+  } else if (section.questionPool.includes(question.questionId)) {
+    score += 5;
+    reasons.push("In section question pool");
+  }
+
+  if (section.preferredChartTypes?.some(ct => question.chartTypes.includes(ct))) {
+    score += 10;
+    reasons.push("Preferred chart type available");
+  }
+
+  for (const req of question.requires) {
+    score -= 5;
+    reasons.push(`Requires ${req} (dependency)`);
+  }
+
+  return { questionId: question.questionId, score, reasons };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Editorial Generator
+// ─────────────────────────────────────────────────────────────
+
+function generateEditorial(
+  question: QuestionGraphNode,
+  pageType: PageType,
+  ce: CEIntelligence,
+  chartData: any
+): ResolvedSection["editorial"] {
+  const variant = question.pageVariants?.[pageType];
+  const defaults = question.editorialDefaults;
+
+  const replaceVars = (str: string) => {
+    return str
+      .replace(/{ceName}/g, ce.name)
+      .replace(/{bestDay}/g, chartData?.bestDay || "Tuesday")
+      .replace(/{bestTime}/g, chartData?.bestTime || "9 AM")
+      .replace(/{price}/g, chartData?.price || "25")
+      .replace(/{months}/g, "6");
+  };
+
+  return {
+    headline: replaceVars(variant?.headline || defaults.ctaTemplate || question.headlineTemplate),
+    subheadline: replaceVars(variant?.subheadline || question.subheadlineTemplate),
+    cta: defaults.ctaTemplate ? replaceVars(defaults.ctaTemplate) : undefined,
+    confidenceBadge: defaults.confidenceBadge || "medium",
+    lastUpdated: new Date().toISOString(),
+    personalizationNote: undefined,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Main Deck Builder
+// ─────────────────────────────────────────────────────────────
+
+export async function buildDeck(
+  ce: CEIntelligence,
+  pageType: PageType,
+  drdContent: string,
+  existingCharts?: any[]
+): Promise<ResolvedDeck> {
+
+  const template = getDeckTemplate(pageType);
+  const sections: ResolvedSection[] = [];
+  const missingSections: ResolvedDeck["missingSections"] = [];
+  const usedQuestionIds = new Set<string>();
+
+  for (const sectionDef of template.sections) {
+    const candidates = sectionDef.questionPool
+      .map(id => getQuestionById(id))
+      .filter((q): q is QuestionGraphNode => !!q && !usedQuestionIds.has(q.questionId));
+
+    if (candidates.length === 0) {
+      missingSections.push({
+        archetype: sectionDef.archetype,
+        reason: `No eligible questions for section "${sectionDef.name}"`,
+        fallbackMessage: `We're still gathering data for ${sectionDef.name.toLowerCase()}. Check back soon.`,
+      });
+      continue;
+    }
+
+    const scored = candidates.map(q =>
+      scoreQuestionForSection(q, sectionDef, ce, pageType)
+    ).sort((a, b) => b.score - a.score);
+
+    const toSelect = Math.min(sectionDef.maxQuestions, scored.length);
+    const selectedIds = scored.slice(0, toSelect).map(s => s.questionId);
+    const resolvedIds = resolveConflicts(selectedIds);
+
+    for (const questionId of resolvedIds) {
+      const question = getQuestionById(questionId)!;
+      usedQuestionIds.add(questionId);
+
+      const chartSpec = existingCharts?.find(c => c.questionId === questionId) || {
+        type: question.chartTypes[0],
+        status: "pending-generation",
+      };
+
+      const editorial = generateEditorial(question, pageType, ce, chartSpec);
+
+      sections.push({
+        id: `${sectionDef.id}-${questionId}`,
+        archetype: sectionDef.archetype,
+        name: sectionDef.name,
+        question,
+        chartType: question.chartTypes[0],
+        chartSpec,
+        editorial,
+        layout: sectionDef.layout,
+        generationMetadata: {
+          drdConfidence: ce.drdConfidence[question.archetype] || 0.5,
+          aiRationale: `Selected for ${sectionDef.name}: ${scored.find(s => s.questionId === questionId)?.reasons.join(", ")}`,
+          dataFreshness: "monthly",
+        },
+      });
+    }
+  }
+
+  if (sections.length < template.minTotalSections) {
+    console.warn(`Deck for ${ce.slug} has only ${sections.length} sections, minimum is ${template.minTotalSections}`);
+  }
+
+  return {
+    ceSlug: ce.slug,
+    pageType,
+    sections,
+    metadata: {
+      totalSections: sections.length,
+      totalCharts: sections.length,
+      estimatedReadTime: sections.length * 45,
+      personalizationApplied: false,
+      lastGenerated: new Date().toISOString(),
+      drdVersion: "1.0",
+    },
+    missingSections,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Personalization
+// ─────────────────────────────────────────────────────────────
+
+export interface PersonalizationContext {
+  visitMonth?: number;
+  visitDayOfWeek?: number;
+  groupSize?: number;
+  hasChildren?: boolean;
+  hasMobilityNeeds?: boolean;
+  preferredTimeOfDay?: "morning" | "afternoon" | "evening";
+  budgetPriority?: "low" | "medium" | "high";
+  interestLevel?: "casual" | "enthusiast" | "expert";
+}
+
+export function personalizeDeck(
+  deck: ResolvedDeck,
+  context: PersonalizationContext
+): ResolvedDeck {
+  const personalizedSections = deck.sections.map(section => {
+    let note: string | undefined;
+
+    if (section.archetype === "timing" && context.visitMonth) {
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      note = `Showing data for ${monthNames[context.visitMonth - 1]}`;
+    }
+
+    if (section.archetype === "value" && context.budgetPriority) {
+      if (context.budgetPriority === "low") {
+        note = "Sorted by best value";
+      }
+    }
+
+    if (section.archetype === "logistics" && context.hasMobilityNeeds) {
+      note = "Showing step-free and accessible options";
+    }
+
+    return {
+      ...section,
+      editorial: {
+        ...section.editorial,
+        personalizationNote: note,
+      },
+    };
+  });
+
+  return {
+    ...deck,
+    sections: personalizedSections,
+    metadata: {
+      ...deck.metadata,
+      personalizationApplied: true,
+    },
+  };
+}
