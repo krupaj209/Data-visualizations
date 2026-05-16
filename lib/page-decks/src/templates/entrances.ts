@@ -1,0 +1,78 @@
+/**
+ * Entrances — Page Deck Template
+ *
+ * Map-focused. Every entrance, with wait times, accessibility, and best-for-whom.
+ */
+
+import { PageDeckTemplate } from "../types";
+
+export const entrancesTemplate: PageDeckTemplate = {
+  id: "entrances",
+  name: "Entrances & Access",
+  description: "Complete entrance guide with maps, wait times, and accessibility",
+
+  narrativeContext: {
+    visitorState: "arriving soon, needs exact location and logistics",
+    goal: "eliminate arrival confusion and choose optimal entrance",
+    tone: "precise, map-oriented, stress-reducing",
+    priority: "wait times > location > accessibility > rules",
+  },
+
+  sections: [
+    {
+      id: "navigation-entrance-map",
+      archetype: "navigation",
+      name: "Entrance Locations",
+      description: "Interactive map of all entrances with landmarks",
+      questionPool: ["entrance_map", "transit_options"],
+      maxQuestions: 1,
+      preferredChartTypes: ["entrance_map"],
+      layout: "hero",
+    },
+    {
+      id: "timing-wait-by-entrance",
+      archetype: "timing",
+      name: "Wait Times by Entrance",
+      description: "Current and typical queue length per entrance",
+      questionPool: ["entrance_queue_map", "hourly_heatmap"],
+      maxQuestions: 1,
+      preferredChartTypes: ["entrance_queue_map"],
+      layout: "full",
+      supportsPersonalization: true,
+    },
+    {
+      id: "practical-accessibility",
+      archetype: "practical",
+      name: "Accessibility by Entrance",
+      description: "Wheelchair access, elevators, step-free routes",
+      questionPool: ["accessibility_guide", "entrance_map"],
+      maxQuestions: 1,
+      preferredChartTypes: ["accessibility_guide"],
+      layout: "half",
+    },
+    {
+      id: "value-best-for-whom",
+      archetype: "value",
+      name: "Which Entrance for You",
+      description: "Entrance recommendation by visitor type",
+      questionPool: ["best_for_matrix", "entrance_queue_map"],
+      maxQuestions: 1,
+      preferredChartTypes: ["best_for_matrix"],
+      layout: "half",
+    },
+    {
+      id: "logistics-rules",
+      archetype: "logistics",
+      name: "Security & Bag Check",
+      description: "What to expect at each entrance security point",
+      questionPool: ["rules_checklist"],
+      maxQuestions: 1,
+      layout: "third",
+    },
+  ],
+
+  maxTotalSections: 5,
+  maxTotalCharts: 5,
+  minTotalSections: 3,
+  requiredArchetypes: ["navigation"],
+};
