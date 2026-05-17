@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   ArrowLeft,
   Check,
@@ -1202,26 +1203,74 @@ function ChartRow({
 
       <SuggestedContentPanel spec={spec} />
 
-      {mode === "edit" && (
-        <ChartEditor
-          chart={chart}
-          ceSlug={ceSlug}
-          onCancel={() => {
+      <DialogPrimitive.Root
+        open={mode === "edit"}
+        onOpenChange={(open) => {
+          if (!open) {
             setMode("view");
             setEditorSeed(null);
             setEditFocus(null);
-          }}
-          onSaved={() => {
-            qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
-            setMode("view");
-            setEditorSeed(null);
-            setEditFocus(null);
-          }}
-          updateMut={updateMut}
-          initialSpec={editorSeed ?? undefined}
-          focusPath={editFocus ?? undefined}
-        />
-      )}
+          }
+        }}
+      >
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.55)",
+              backdropFilter: "blur(2px)",
+              zIndex: 60,
+            }}
+          />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={(e) => {
+              // Don't auto-focus the close button; let the form land.
+              e.preventDefault();
+            }}
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "min(1400px, 96vw)",
+              height: "min(900px, 92vh)",
+              zIndex: 70,
+              background: "white",
+              borderRadius: 20,
+              boxShadow: "0 30px 60px -20px rgba(15, 23, 42, 0.45)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <DialogPrimitive.Title className="sr-only">
+              Edit chart — {headline}
+            </DialogPrimitive.Title>
+            {mode === "edit" && (
+              <ChartEditor
+                chart={chart}
+                ceSlug={ceSlug}
+                onCancel={() => {
+                  setMode("view");
+                  setEditorSeed(null);
+                  setEditFocus(null);
+                }}
+                onSaved={() => {
+                  qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+                  setMode("view");
+                  setEditorSeed(null);
+                  setEditFocus(null);
+                }}
+                updateMut={updateMut}
+                initialSpec={editorSeed ?? undefined}
+                focusPath={editFocus ?? undefined}
+              />
+            )}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
     </section>
   );
 }
@@ -3150,12 +3199,16 @@ function ChartEditor({
 
   return (
     <div
-      className="mt-5 rounded-2xl p-5"
-      style={{ background: "white", border: `1px solid ${BRAND.slate200}` }}
+      className="flex flex-col"
+      style={{ height: "100%", background: "white" }}
     >
       <div
-        className="flex items-center justify-between gap-3 mb-4"
-        style={{ borderBottom: `1px solid ${BRAND.slate100}`, paddingBottom: 12 }}
+        className="flex items-center justify-between gap-3"
+        style={{
+          borderBottom: `1px solid ${BRAND.slate100}`,
+          padding: "14px 20px",
+          flexShrink: 0,
+        }}
       >
         <div
           style={{
@@ -3199,12 +3252,50 @@ function ChartEditor({
             )}
             {savedAt ? "Saved" : "Save changes"}
           </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Close editor"
+            title="Close"
+            style={{
+              background: "white",
+              border: `1px solid ${BRAND.slate200}`,
+              borderRadius: 10,
+              padding: 8,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: BRAND.slate700,
+            }}
+          >
+            <X size={16} />
+          </button>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-5">
-        <div className="flex flex-col gap-3">
-          <EditField label="Visitor question" value={question} onChange={setQuestion} />
+      <div
+        className="flex flex-col-reverse lg:flex-row chart-editor-body"
+        style={{
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <div
+          className="flex flex-col gap-3"
+          style={{
+            flex: "1 1 0",
+            minWidth: 0,
+            padding: 20,
+            overflowY: "auto",
+          }}
+        >
+          <EditField
+            label="Visitor question"
+            value={question}
+            onChange={setQuestion}
+            autoFocus
+          />
           <EditField label="Title" value={title} onChange={setTitle} />
           <EditField label="Subtitle" value={subtitle} onChange={setSubtitle} />
           <EditField
@@ -3374,47 +3465,63 @@ function ChartEditor({
           )}
         </div>
 
-        <div>
+        <div
+          style={{
+            flex: "1 1 0",
+            minWidth: 0,
+            padding: 20,
+            overflowY: "auto",
+            background: BRAND.slate50,
+            borderLeft: `1px solid ${BRAND.slate100}`,
+          }}
+        >
           <div
             style={{
-              fontSize: 10,
-              fontWeight: 800,
-              color: BRAND.slate700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 8,
+              position: "sticky",
+              top: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
             }}
           >
-            Live preview
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <EditorialOverlay overlay={editorOverlay} />
-          </div>
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: BRAND.slate100 }}
-          >
             <div
-              className="w-full"
               style={{
-                aspectRatio: previewFrame.aspectRatio,
-                minHeight: previewFrame.minHeight,
-                maxHeight: previewFrame.maxHeight,
+                fontSize: 10,
+                fontWeight: 800,
+                color: BRAND.slate700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
               }}
             >
-              <ChartRenderer
-                spec={spec}
-                provenance={chart.provenance as ChartProvenanceLite | null}
-                header={{
-                  title,
-                  subtitle: subtitle || undefined,
-                  question,
-                  insight: insight || undefined,
+              Live preview
+            </div>
+            <EditorialOverlay overlay={editorOverlay} />
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ background: BRAND.slate100 }}
+            >
+              <div
+                className="w-full"
+                style={{
+                  aspectRatio: previewFrame.aspectRatio,
+                  minHeight: previewFrame.minHeight,
+                  maxHeight: previewFrame.maxHeight,
                 }}
-                variant={
-                  spec.type === "queue_compare" ? "comparison" : undefined
-                }
-              />
+              >
+                <ChartRenderer
+                  spec={spec}
+                  provenance={chart.provenance as ChartProvenanceLite | null}
+                  header={{
+                    title,
+                    subtitle: subtitle || undefined,
+                    question,
+                    insight: insight || undefined,
+                  }}
+                  variant={
+                    spec.type === "queue_compare" ? "comparison" : undefined
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -3428,11 +3535,13 @@ function EditField({
   value,
   onChange,
   multiline,
+  autoFocus,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
+  autoFocus?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -3453,12 +3562,14 @@ function EditField({
           onChange={(e) => onChange(e.target.value)}
           style={inputStyle()}
           rows={3}
+          autoFocus={autoFocus}
         />
       ) : (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           style={inputStyle()}
+          autoFocus={autoFocus}
         />
       )}
     </label>
