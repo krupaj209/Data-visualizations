@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -2147,6 +2147,8 @@ function ProvenanceDisclosure({
       </summary>
 
       <div className="mt-3 flex flex-col gap-3">
+        <VerifierVerdict notes={verifierNotes} />
+
         {drdSnippets.length > 0 && (
           <ProvenanceSection title="Facts we know">
             {drdSnippets.slice(0, 3).map((snippet, index) => {
@@ -2197,49 +2199,349 @@ function ProvenanceDisclosure({
           </ProvenanceSection>
         )}
 
-        {webSources.length > 0 && (
-          <ProvenanceSection title="Sources">
-            {webSources.slice(0, 4).map((source, index) => (
-              <a
-                key={`${source.url ?? source.title}-${index}`}
-                href={source.url || undefined}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  ...provenanceTextStyle,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  color: BRAND.purps,
-                  fontWeight: 700,
-                  textDecoration: "none",
-                }}
-              >
-                {source.title || source.url || "Source"}
-                {source.url && <ExternalLink size={11} />}
-              </a>
-            ))}
-          </ProvenanceSection>
-        )}
-
         {estimates.length > 0 && (
           <ProvenanceSection title="Claims inferred or estimated">
-            {estimates.slice(0, 4).map((estimate, index) => (
-              <p key={`${estimate.field}-${index}`} style={provenanceTextStyle}>
-                <strong>{estimate.field || "Estimated field"}:</strong>{" "}
-                {estimate.reasoning || "Marked as estimated by the generator."}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(110px, auto) 1fr",
+                gap: "6px 10px",
+                alignItems: "start",
+              }}
+            >
+              {estimates.slice(0, 6).map((estimate, index) => (
+                <React.Fragment key={`${estimate.field}-${index}`}>
+                  <span
+                    style={{
+                      background: BRAND.slate100,
+                      color: BRAND.slate900,
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: "0.02em",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: "100%",
+                      justifySelf: "start",
+                    }}
+                    title={estimate.field || "Estimated field"}
+                  >
+                    {estimate.field || "Estimated field"}
+                  </span>
+                  <span style={provenanceTextStyle}>
+                    {estimate.reasoning ||
+                      "Marked as estimated by the generator."}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+            {estimates.length > 6 && (
+              <p
+                style={{
+                  ...provenanceTextStyle,
+                  color: BRAND.slate500,
+                  marginTop: 4,
+                }}
+              >
+                +{estimates.length - 6} more
               </p>
-            ))}
+            )}
           </ProvenanceSection>
         )}
 
-        {verifierNotes && (
-          <ProvenanceSection title="Verifier note">
-            <p style={provenanceTextStyle}>{verifierNotes}</p>
+        {webSources.length > 0 && (
+          <ProvenanceSection title="Sources">
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: "6px 8px" }}
+            >
+              {dedupeSources(webSources)
+                .slice(0, 4)
+                .map((source, index) => (
+                  <a
+                    key={`${source.url ?? source.title}-${index}`}
+                    href={source.url || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      ...provenanceTextStyle,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      color: BRAND.purps,
+                      fontWeight: 700,
+                      textDecoration: "none",
+                      background: BRAND.bgShell,
+                      border: `1px solid ${BRAND.slate200}`,
+                      borderRadius: 999,
+                      padding: "2px 8px",
+                    }}
+                  >
+                    {source.title || source.url || "Source"}
+                    {source.url && <ExternalLink size={11} />}
+                  </a>
+                ))}
+            </div>
           </ProvenanceSection>
         )}
       </div>
     </details>
+  );
+}
+
+function dedupeSources<T extends { title?: string; url?: string }>(
+  sources: T[],
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const s of sources) {
+    const key = (s.url || s.title || "").trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+type VerdictKind = "ok" | "issues" | "skipped" | "failed";
+
+interface ParsedVerifier {
+  kind: VerdictKind;
+  issueCount: number;
+  issues: string[];
+  suggestions: string[];
+  rawMessage?: string;
+}
+
+/**
+ * Split the persisted single-line verifier_notes back into structured
+ * issues + suggestions. The pipeline writes:
+ *   "verifier: ok"
+ *   "verifier: N issue(s) — a | b | c | suggestions: x | y"
+ *   "verifier failed: <error>"
+ *   "skipped: openai not configured"
+ * Empty/missing notes return null so the verdict row is suppressed.
+ */
+function parseVerifierNotes(raw: string | undefined | null): ParsedVerifier | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^verifier:\s*ok\b/i.test(text)) {
+    return { kind: "ok", issueCount: 0, issues: [], suggestions: [] };
+  }
+  if (/^skipped/i.test(text)) {
+    return {
+      kind: "skipped",
+      issueCount: 0,
+      issues: [],
+      suggestions: [],
+      rawMessage: text,
+    };
+  }
+  if (/^verifier\s+failed/i.test(text)) {
+    return {
+      kind: "failed",
+      issueCount: 0,
+      issues: [],
+      suggestions: [],
+      rawMessage: text.replace(/^verifier\s+failed:\s*/i, ""),
+    };
+  }
+  const countMatch = text.match(/^verifier:\s*(\d+)\s*issue\(s\)/i);
+  let body = text.replace(/^verifier:\s*\d+\s*issue\(s\)\s*/i, "");
+  body = body.replace(/^[\u2014\u2013\-—–]\s*/, "");
+  const splitIdx = body.search(/\|\s*suggestions:\s*/i);
+  let issuesPart = body;
+  let suggestionsPart = "";
+  if (splitIdx >= 0) {
+    issuesPart = body.slice(0, splitIdx);
+    suggestionsPart = body.slice(splitIdx).replace(/^\|\s*suggestions:\s*/i, "");
+  }
+  const split = (s: string) =>
+    s
+      .split("|")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  const issues = split(issuesPart);
+  const suggestions = split(suggestionsPart);
+  const issueCount = countMatch ? parseInt(countMatch[1], 10) : issues.length;
+  if (issueCount === 0 && issues.length === 0 && suggestions.length === 0) {
+    return { kind: "ok", issueCount: 0, issues: [], suggestions: [] };
+  }
+  return {
+    kind: "issues",
+    issueCount: issueCount || issues.length,
+    issues,
+    suggestions,
+  };
+}
+
+const VERDICT_META: Record<
+  VerdictKind,
+  { icon: string; label: (n: number) => string; bg: string; fg: string }
+> = {
+  ok: {
+    icon: "✓",
+    label: () => "Verified",
+    bg: BRAND.bgMint,
+    fg: "#0E8F4E",
+  },
+  issues: {
+    icon: "⚠",
+    label: (n) => `${n} issue${n === 1 ? "" : "s"} found`,
+    bg: BRAND.candySoft,
+    fg: BRAND.candy,
+  },
+  skipped: {
+    icon: "⏭",
+    label: () => "Skipped",
+    bg: BRAND.slate100,
+    fg: BRAND.slate700,
+  },
+  failed: {
+    icon: "✗",
+    label: () => "Verifier failed",
+    bg: BRAND.holaSoft,
+    fg: "#A65A00",
+  },
+};
+
+function VerifierVerdict({ notes }: { notes: string | undefined }) {
+  const parsed = parseVerifierNotes(notes);
+  if (!parsed) return null;
+  const meta = VERDICT_META[parsed.kind];
+  const pill = (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        background: meta.bg,
+        color: meta.fg,
+        borderRadius: 999,
+        padding: "3px 10px",
+        fontSize: 11,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 12, lineHeight: 1 }}>
+        {meta.icon}
+      </span>
+      {meta.label(parsed.issueCount)}
+    </span>
+  );
+
+  // Compact single-row states: ok / skipped / failed — pill only, with the
+  // raw detail tucked into a `title` tooltip so it stays accessible without
+  // cluttering the row.
+  if (parsed.kind === "ok") {
+    return <div>{pill}</div>;
+  }
+  if (parsed.kind === "skipped" || parsed.kind === "failed") {
+    return (
+      <div title={parsed.rawMessage || undefined}>{pill}</div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {pill}
+      {parsed.issues.length > 0 && (
+        <VerifierBulletList items={parsed.issues} tone="issues" />
+      )}
+      {parsed.suggestions.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <div
+            style={{
+              color: BRAND.slate500,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span aria-hidden>💡</span> Suggested fixes
+          </div>
+          <VerifierBulletList items={parsed.suggestions} tone="suggestions" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerifierBulletList({
+  items,
+  tone,
+}: {
+  items: string[];
+  tone: "issues" | "suggestions";
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const visibleLimit = 6;
+  const overflow = items.length - visibleLimit;
+  const visible = expanded ? items : items.slice(0, visibleLimit);
+  const bulletColor = tone === "issues" ? BRAND.candy : BRAND.purps;
+  return (
+    <ul
+      style={{
+        listStyle: "none",
+        padding: 0,
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+      }}
+    >
+      {visible.map((item, index) => (
+        <li
+          key={`${tone}-${index}`}
+          style={{
+            ...provenanceTextStyle,
+            display: "flex",
+            gap: 6,
+            alignItems: "flex-start",
+            wordBreak: "break-word",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              color: bulletColor,
+              fontWeight: 800,
+              lineHeight: 1.45,
+              flex: "0 0 auto",
+            }}
+          >
+            •
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>{item}</span>
+        </li>
+      ))}
+      {overflow > 0 && (
+        <li>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              ...provenanceTextStyle,
+              color: BRAND.purps,
+              fontWeight: 800,
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+            }}
+          >
+            {expanded ? "Show fewer" : `+${overflow} more`}
+          </button>
+        </li>
+      )}
+    </ul>
   );
 }
 
