@@ -45,6 +45,12 @@ import { LandmarkCoverageChart } from "./LandmarkCoverageChart";
 import { ItineraryFlowChart } from "./ItineraryFlowChart";
 import { BestForMatrixChart } from "./BestForMatrixChart";
 import { SeasonWeatherFitChart } from "./SeasonWeatherFitChart";
+import { EntranceMapChart } from "./EntranceMapChart";
+import { FloorPlanFlowChart } from "./FloorPlanFlowChart";
+import { RulesChecklistChart } from "./RulesChecklistChart";
+import { TransitOptionsChart } from "./TransitOptionsChart";
+import { TimeValueMatrixChart } from "./TimeValueMatrixChart";
+import { AccessibilityGuideChart } from "./AccessibilityGuideChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 
@@ -314,24 +320,32 @@ export function ChartRenderer({
         />
       );
     case "entrance_map":
+      return (
+        <EntranceMapChart spec={spec} context={context} compact={compact} />
+      );
     case "floor_plan_flow":
+      return (
+        <FloorPlanFlowChart spec={spec} context={context} compact={compact} />
+      );
     case "rules_checklist":
+      return (
+        <RulesChecklistChart spec={spec} context={context} compact={compact} />
+      );
     case "transit_options":
+      return (
+        <TransitOptionsChart spec={spec} context={context} compact={compact} />
+      );
     case "time_value_matrix":
+      return (
+        <TimeValueMatrixChart spec={spec} context={context} compact={compact} />
+      );
     case "accessibility_guide":
       return (
-        <div
-          className="h-full w-full flex items-center justify-center text-sm"
-          style={{
-            background: BRAND.slate100,
-            borderRadius: 24,
-            color: BRAND.slate700,
-          }}
-        >
-          <span>
-            {spec.type} renderer coming soon
-          </span>
-        </div>
+        <AccessibilityGuideChart
+          spec={spec}
+          context={context}
+          compact={compact}
+        />
       );
     default: {
       const exhaustive: never = spec;

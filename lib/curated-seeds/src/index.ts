@@ -4,11 +4,18 @@ import { accademia } from "./data/accademia";
 import { uffizi } from "./data/uffizi";
 import { duomo } from "./data/duomo";
 import { colosseum } from "./data/colosseum";
+import { vaticanMuseums } from "./data/vatican-museums";
 import type { CuratedCe } from "./types";
 
 export type { CuratedCe };
 
-export const CURATED_CES: CuratedCe[] = [accademia, uffizi, duomo, colosseum];
+export const CURATED_CES: CuratedCe[] = [
+  accademia,
+  uffizi,
+  duomo,
+  colosseum,
+  vaticanMuseums,
+];
 
 export interface SeedResult {
   inserted: string[];

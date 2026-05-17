@@ -46,9 +46,38 @@ export default defineConfig({
       : []),
   ],
   resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-    },
+    alias: [
+      {
+        find: "@/components/ChartCard",
+        replacement: path.resolve(
+          import.meta.dirname,
+          "../viz-studio/src/components/ChartCard",
+        ),
+      },
+      {
+        find: "@/lib/brand",
+        replacement: path.resolve(
+          import.meta.dirname,
+          "../viz-studio/src/lib/brand",
+        ),
+      },
+      {
+        find: "@/lib/chart-spec",
+        replacement: path.resolve(
+          import.meta.dirname,
+          "../viz-studio/src/lib/chart-spec",
+        ),
+      },
+      {
+        find: /^@viz\/(.*)$/,
+        replacement:
+          path.resolve(import.meta.dirname, "../viz-studio/src") + "/$1",
+      },
+      {
+        find: /^@\/(.*)$/,
+        replacement: path.resolve(import.meta.dirname, "src") + "/$1",
+      },
+    ],
   },
   root: path.resolve(import.meta.dirname),
   build: {
