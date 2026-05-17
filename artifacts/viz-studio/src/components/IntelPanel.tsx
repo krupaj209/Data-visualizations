@@ -296,6 +296,34 @@ export function IntelPanel({
   const [bulkErrors, setBulkErrors] = useState<Record<string, string>>(
     () => ({}),
   );
+  // Task #131: Context & sources disclosure (collapsed by default, persisted
+  // per-CE in localStorage so writers can keep their preference between
+  // visits).
+  const [contextOpen, setContextOpen] = useSectionOpen(
+    `viz-studio:intel-context-open:${slug}`,
+    false,
+  );
+  // Task #131: one-time browser-wide hint pointing writers at the new
+  // Context & sources disclosure. Stored in localStorage so it shows once
+  // per browser (not per CE).
+  const CONTEXT_HINT_KEY = "intelPanel.contextHintDismissed";
+  const [contextHintDismissed, setContextHintDismissed] = useState<boolean>(
+    () => {
+      try {
+        return window.localStorage.getItem(CONTEXT_HINT_KEY) === "1";
+      } catch {
+        return false;
+      }
+    },
+  );
+  function dismissContextHint() {
+    setContextHintDismissed(true);
+    try {
+      window.localStorage.setItem(CONTEXT_HINT_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
 
   function toggleSelectedIdea(question: string) {
     setSelectedIdeas((prev) => {
@@ -997,34 +1025,84 @@ export function IntelPanel({
         </button>
       </header>
 
-      <button
-        type="button"
-        onClick={handleRefreshAll}
-        disabled={refreshingSource !== null}
-        style={{
-          background: BRAND.purps,
-          color: "white",
-          border: "none",
-          padding: "8px 12px",
-          borderRadius: 10,
-          fontWeight: 800,
-          fontSize: 12,
-          cursor: refreshingSource ? "not-allowed" : "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          opacity: refreshingSource ? 0.7 : 1,
-        }}
-      >
-        {refreshingSource === "__all__" ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <RefreshCw size={14} />
-        )}
-        Refresh all sources
-      </button>
+      {/* Task #131: Primary action row — Refresh all sources sits next to
+          the Context & sources disclosure toggle so the decision surface
+          ("To create") becomes the dominant visual element on first scroll. */}
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+        <button
+          type="button"
+          onClick={handleRefreshAll}
+          disabled={refreshingSource !== null}
+          style={{
+            flex: 1,
+            background: BRAND.purps,
+            color: "white",
+            border: "none",
+            padding: "8px 12px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: refreshingSource ? "not-allowed" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            opacity: refreshingSource ? 0.7 : 1,
+          }}
+        >
+          {refreshingSource === "__all__" ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RefreshCw size={14} />
+          )}
+          Refresh all sources
+        </button>
+        <button
+          type="button"
+          onClick={() => setContextOpen(!contextOpen)}
+          aria-expanded={contextOpen}
+          title="Show DRD, evidence, and sources"
+          style={{
+            background: contextOpen ? BRAND.purpsSoft : "white",
+            color: BRAND.slate950,
+            border: `1px solid ${contextOpen ? BRAND.purps : BRAND.slate200}`,
+            padding: "8px 10px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 11,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span>Context & sources</span>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: BRAND.slate500,
+            }}
+          >
+            {(intel?.sources ?? []).filter(
+              (s) => s.status === "ok" || s.fact_count > 0,
+            ).length}
+            {" sources · "}
+            {drdStatus ? "DRD attached" : "no DRD"}
+          </span>
+          <ChevronDown
+            size={12}
+            color={BRAND.slate500}
+            style={{
+              transform: contextOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 140ms ease",
+            }}
+          />
+        </button>
+      </div>
 
+      {contextOpen && (
       <section
         style={{
           border: `1px solid ${BRAND.slate200}`,
@@ -1145,6 +1223,7 @@ export function IntelPanel({
           </div>
         )}
       </section>
+      )}
 
       <button
         type="button"
@@ -1356,7 +1435,10 @@ export function IntelPanel({
           </div>
         )}
 
-        {plan && (
+        {/* Task #131: plan summary + evidence chips + coverage matrix live
+            inside the Context & sources disclosure so the To-create cards
+            below dominate the panel by default. */}
+        {contextOpen && plan && (
           <section>
             <h4 style={sectionLabel()}>Visualization plan</h4>
             <div
@@ -1395,128 +1477,12 @@ export function IntelPanel({
                     categories={plan.evidence_inventory_detailed.categories}
                   />
                 )}
-              {(() => {
-                const toCreate: typeof plan.recommended_visualizations = [];
-                const done: {
-                  item: (typeof plan.recommended_visualizations)[number];
-                  chartId: number;
-                }[] = [];
-                for (const item of plan.recommended_visualizations) {
-                  const chartId = existingChartIdFor(item.question);
-                  if (chartId != null) {
-                    done.push({ item, chartId });
-                  } else {
-                    toCreate.push(item);
-                  }
-                }
-                // Bulk-select (Task #114) is scoped to the "To create" list
-                // since "Done" items already have a chart and nothing to
-                // generate.
-                const selectedInToCreate = toCreate.filter((i) =>
-                  selectedIdeas.has(i.question),
-                ).length;
-                return (
-                  <>
-                    <PlanList
-                      title={`To create (${toCreate.length})`}
-                      selectAll={
-                        toCreate.length > 0
-                          ? {
-                              state:
-                                selectedInToCreate === 0
-                                  ? "none"
-                                  : selectedInToCreate === toCreate.length
-                                    ? "all"
-                                    : "some",
-                              eligibleCount: toCreate.length,
-                              disabled: isBusyGenerating,
-                              onToggle: () => {
-                                if (selectedInToCreate === toCreate.length) {
-                                  clearSelectedIdeas();
-                                } else {
-                                  setSelectedIdeas(
-                                    new Set(toCreate.map((i) => i.question)),
-                                  );
-                                }
-                              },
-                            }
-                          : undefined
-                      }
-                      items={toCreate.map((item) => {
-                        const question = questionsByText.get(item.question);
-                        const checkboxDisabled = isBusyGenerating;
-                        return {
-                          key: `${item.priority}-${item.question}`,
-                          title: item.question,
-                          meta: item.archetype,
-                          body: item.why_it_matters,
-                          tone: "good" as const,
-                          // Drop separate evidenceStatus chip — merged into
-                          // the single qualityScore pill (Recommended · N).
-                          confidence: question?.confidence,
-                          sourceRefs: [
-                            ...(question?.source_refs ?? []),
-                            ...(item.evidence_refs ?? []),
-                          ],
-                          qualityScore: item.quality_score,
-                          editorial: item.quality_score?.editorial,
-                          editorialVerdict:
-                            item.quality_score?.editorial_verdict,
-                          promotedBadge: item.promoted_from_rejected
-                            ? "Found by recheck"
-                            : undefined,
-                          actionLabel: "Create chart",
-                          actionDisabled: isBusyGenerating,
-                          actionBusy: creatingQuestions.has(item.question),
-                          onAction: () => handleCreateFromPlan(item),
-                          cardError: bulkErrors[item.question],
-                          selectable: true,
-                          selectDisabled: checkboxDisabled,
-                          selected: selectedIdeas.has(item.question),
-                          onSelectToggle: !checkboxDisabled
-                            ? () => toggleSelectedIdea(item.question)
-                            : undefined,
-                        };
-                      })}
-                    />
-                    <DoneSection
-                      slug={slug}
-                      items={done}
-                      onViewChart={onViewChart}
-                    />
-                    <RejectedSection
-                      slug={slug}
-                      items={plan.rejected_visualizations.slice(0, 8)}
-                      totalCount={plan.rejected_visualizations.length}
-                      createdCharts={createdCharts}
-                      existingChartIdFor={existingChartIdFor}
-                      onViewChart={onViewChart}
-                      rejectedContext={rejectedContext}
-                      rejectedArchetype={rejectedArchetype}
-                      creatingQuestions={creatingQuestions}
-                      setRejectedContext={setRejectedContext}
-                      setRejectedArchetype={setRejectedArchetype}
-                      onAddContext={(item) =>
-                        handleCreateRejected(item, "context")
-                      }
-                      onSearchMore={(item) =>
-                        handleSearchMoreForRejected(item)
-                      }
-                      onCreateEstimate={(item) =>
-                        handleCreateRejected(item, "estimate")
-                      }
-                      onChangeType={(item) =>
-                        handleCreateRejected(item, "changed_archetype")
-                      }
-                    />
-                  </>
-                );
-              })()}
             </div>
           </section>
         )}
 
         {/* Sources strip */}
+        {contextOpen && (
         <section>
           <h4 style={sectionLabel()}>Sources</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1653,17 +1619,18 @@ export function IntelPanel({
             })}
           </div>
         </section>
+        )}
 
-        {facts.length > 0 && <MergedFactsSection facts={facts} />}
+        {contextOpen && facts.length > 0 && <MergedFactsSection facts={facts} />}
 
         {/* Loading / error */}
-        {isLoading && (
+        {contextOpen && isLoading && (
           <div style={{ color: BRAND.slate500, fontSize: 12 }}>
             <Loader2 size={14} className="animate-spin inline-block mr-1" />
             Loading profile…
           </div>
         )}
-        {error && !intel && (
+        {contextOpen && error && !intel && (
           <div
             style={{
               color: BRAND.slate700,
@@ -1678,34 +1645,35 @@ export function IntelPanel({
         )}
 
         {/* Buckets */}
-        {Object.keys(BUCKET_LABELS).map((bucket) => {
-          const items = factsByBucket.get(bucket) ?? [];
-          if (items.length === 0) return null;
-          return (
-            <section key={bucket}>
-              <h4 style={sectionLabel()}>
-                {BUCKET_LABELS[bucket]}{" "}
-                <span style={{ color: BRAND.slate500 }}>· {items.length}</span>
-              </h4>
-              <ul
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  listStyle: "none",
-                  padding: 0,
-                  margin: 0,
-                }}
-              >
-                {items.map((f) => (
-                  <FactListItem key={f.id} fact={f} />
-                ))}
-              </ul>
-            </section>
-          );
-        })}
+        {contextOpen &&
+          Object.keys(BUCKET_LABELS).map((bucket) => {
+            const items = factsByBucket.get(bucket) ?? [];
+            if (items.length === 0) return null;
+            return (
+              <section key={bucket}>
+                <h4 style={sectionLabel()}>
+                  {BUCKET_LABELS[bucket]}{" "}
+                  <span style={{ color: BRAND.slate500 }}>· {items.length}</span>
+                </h4>
+                <ul
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                  }}
+                >
+                  {items.map((f) => (
+                    <FactListItem key={f.id} fact={f} />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
 
-        {intel && facts.length === 0 && !isLoading && (
+        {contextOpen && intel && facts.length === 0 && !isLoading && (
           <div
             style={{
               color: BRAND.slate700,
@@ -1717,6 +1685,172 @@ export function IntelPanel({
           >
             No facts yet — refresh sources above to populate.
           </div>
+        )}
+
+        {/* Task #131: first-run hint pointing writers at the relocated
+            context. Shows once per browser. Sits directly above the
+            To-create cards so the decision surface is unambiguous. */}
+        {!contextHintDismissed && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 10px",
+              borderRadius: 10,
+              background: BRAND.bgLilac,
+              border: `1px solid ${BRAND.purpsSoft}`,
+              color: BRAND.purps,
+              fontSize: 11,
+              fontWeight: 750,
+              lineHeight: 1.35,
+            }}
+          >
+            <Sparkles size={12} />
+            <span style={{ flex: 1 }}>
+              Context, evidence, and sources moved into the disclosure above —
+              open it any time.
+            </span>
+            <button
+              type="button"
+              onClick={dismissContextHint}
+              aria-label="Dismiss hint"
+              style={{
+                border: "none",
+                background: "transparent",
+                color: BRAND.purps,
+                cursor: "pointer",
+                padding: 2,
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {/* Task #131: To-create cards live outside the Context & sources
+            disclosure and sit at the bottom of the panel so they remain
+            the dominant scroll content when context is collapsed. */}
+        {plan && (
+          <>
+            {(() => {
+              const toCreate: typeof plan.recommended_visualizations = [];
+              const done: {
+                item: (typeof plan.recommended_visualizations)[number];
+                chartId: number;
+              }[] = [];
+              for (const item of plan.recommended_visualizations) {
+                const chartId = existingChartIdFor(item.question);
+                if (chartId != null) {
+                  done.push({ item, chartId });
+                } else {
+                  toCreate.push(item);
+                }
+              }
+              // Bulk-select (Task #114) is scoped to the "To create" list
+              // since "Done" items already have a chart and nothing to
+              // generate.
+              const selectedInToCreate = toCreate.filter((i) =>
+                selectedIdeas.has(i.question),
+              ).length;
+              return (
+                <>
+                  <PlanList
+                    title={`To create (${toCreate.length})`}
+                    selectAll={
+                      toCreate.length > 0
+                        ? {
+                            state:
+                              selectedInToCreate === 0
+                                ? "none"
+                                : selectedInToCreate === toCreate.length
+                                  ? "all"
+                                  : "some",
+                            eligibleCount: toCreate.length,
+                            disabled: isBusyGenerating,
+                            onToggle: () => {
+                              if (selectedInToCreate === toCreate.length) {
+                                clearSelectedIdeas();
+                              } else {
+                                setSelectedIdeas(
+                                  new Set(toCreate.map((i) => i.question)),
+                                );
+                              }
+                            },
+                          }
+                        : undefined
+                    }
+                    items={toCreate.map((item) => {
+                      const question = questionsByText.get(item.question);
+                      const checkboxDisabled = isBusyGenerating;
+                      return {
+                        key: `${item.priority}-${item.question}`,
+                        title: item.question,
+                        meta: item.archetype,
+                        body: item.why_it_matters,
+                        tone: "good" as const,
+                        confidence: question?.confidence,
+                        sourceRefs: [
+                          ...(question?.source_refs ?? []),
+                          ...(item.evidence_refs ?? []),
+                        ],
+                        qualityScore: item.quality_score,
+                        editorial: item.quality_score?.editorial,
+                        editorialVerdict:
+                          item.quality_score?.editorial_verdict,
+                        promotedBadge: item.promoted_from_rejected
+                          ? "Found by recheck"
+                          : undefined,
+                        actionLabel: "Create chart",
+                        actionDisabled: isBusyGenerating,
+                        actionBusy: creatingQuestions.has(item.question),
+                        onAction: () => handleCreateFromPlan(item),
+                        cardError: bulkErrors[item.question],
+                        selectable: true,
+                        selectDisabled: checkboxDisabled,
+                        selected: selectedIdeas.has(item.question),
+                        onSelectToggle: !checkboxDisabled
+                          ? () => toggleSelectedIdea(item.question)
+                          : undefined,
+                      };
+                    })}
+                  />
+                  <DoneSection
+                    slug={slug}
+                    items={done}
+                    onViewChart={onViewChart}
+                  />
+                  <RejectedSection
+                    slug={slug}
+                    items={plan.rejected_visualizations.slice(0, 8)}
+                    totalCount={plan.rejected_visualizations.length}
+                    createdCharts={createdCharts}
+                    existingChartIdFor={existingChartIdFor}
+                    onViewChart={onViewChart}
+                    rejectedContext={rejectedContext}
+                    rejectedArchetype={rejectedArchetype}
+                    creatingQuestions={creatingQuestions}
+                    setRejectedContext={setRejectedContext}
+                    setRejectedArchetype={setRejectedArchetype}
+                    onAddContext={(item) =>
+                      handleCreateRejected(item, "context")
+                    }
+                    onSearchMore={(item) =>
+                      handleSearchMoreForRejected(item)
+                    }
+                    onCreateEstimate={(item) =>
+                      handleCreateRejected(item, "estimate")
+                    }
+                    onChangeType={(item) =>
+                      handleCreateRejected(item, "changed_archetype")
+                    }
+                  />
+                </>
+              );
+            })()}
+          </>
         )}
       </div>
     </aside>
@@ -2451,9 +2585,64 @@ function PlanListItem({
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  // Task #131: card collapses to a single-row decision surface
+  // (archetype chip · title · primary pill · action + checkbox) and reveals
+  // body/editorial/score/sources via a `Details ▾` toggle. The card error
+  // banner stays visible even when collapsed.
   const [showWhyScore, setShowWhyScore] = useState(false);
   const toneBg = item.tone === "good" ? BRAND.bgMint : BRAND.holaSoft;
   const toneFg = item.tone === "good" ? BRAND.okayInk : BRAND.hola;
+  const primaryAction =
+    item.onAction && !item.createdChart ? (
+      <button
+        type="button"
+        onClick={item.onAction}
+        disabled={item.actionDisabled}
+        style={{
+          border: "none",
+          borderRadius: 8,
+          padding: "5px 9px",
+          background: item.actionDisabled ? BRAND.slate100 : BRAND.purps,
+          color: item.actionDisabled ? BRAND.slate500 : "white",
+          fontSize: 11,
+          fontWeight: 850,
+          cursor: item.actionDisabled ? "not-allowed" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {item.actionBusy ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : (
+          <Plus size={12} />
+        )}
+        {item.actionLabel ?? "Create chart"}
+      </button>
+    ) : item.createdChart ? (
+      <a
+        href={`?edit=${item.createdChart.chartId}`}
+        style={{
+          border: `1px solid ${BRAND.slate200}`,
+          borderRadius: 8,
+          padding: "5px 9px",
+          background: "white",
+          color: BRAND.slate950,
+          fontSize: 11,
+          fontWeight: 850,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <ExternalLink size={12} />
+        View chart
+      </a>
+    ) : null;
+
   return (
     <li
       style={{
@@ -2468,142 +2657,126 @@ function PlanListItem({
         }`,
         overflow: "hidden",
         display: "flex",
-        flexDirection: "row",
-        alignItems: "stretch",
+        flexDirection: "column",
       }}
     >
-      {item.selectable && (
-        <label
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            paddingTop: 11,
-            paddingLeft: 10,
-            cursor: item.selectDisabled ? "not-allowed" : "pointer",
-            opacity: item.selectDisabled ? 0.4 : 1,
-          }}
-          title={
-            item.selectDisabled
-              ? "Wait for the current generation to finish"
-              : "Select to generate in bulk"
-          }
-        >
-          <input
-            type="checkbox"
-            checked={!!item.selected}
-            onChange={item.onSelectToggle ?? (() => {})}
-            disabled={item.selectDisabled || !item.onSelectToggle}
-            aria-label={`Select "${item.title}" for bulk generation`}
-            style={{
-              width: 14,
-              height: 14,
-              accentColor: BRAND.purps,
-              cursor: item.selectDisabled ? "not-allowed" : "pointer",
-              margin: 0,
-            }}
-          />
-        </label>
-      )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-      <button
-        type="button"
-        onClick={onToggle}
+      <div
         style={{
-          width: "100%",
-          border: "none",
-          background: "transparent",
-          padding: "8px 10px",
-          cursor: "pointer",
-          textAlign: "left",
           display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: 8,
-          alignItems: "start",
+          gridTemplateColumns: `${item.selectable ? "auto " : ""}auto minmax(0, 1fr) auto auto auto`,
+          alignItems: "center",
+          gap: 7,
+          padding: "7px 9px",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div
+        {item.selectable && (
+          <label
             style={{
-              fontSize: 12,
-              color: BRAND.slate950,
-              fontWeight: 750,
-              lineHeight: 1.35,
-            }}
-          >
-            {item.title}
-          </div>
-          <div
-            style={{
-              marginTop: 5,
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
-              gap: 5,
-              flexWrap: "wrap",
+              cursor: item.selectDisabled ? "not-allowed" : "pointer",
+              opacity: item.selectDisabled ? 0.4 : 1,
             }}
+            title={
+              item.selectDisabled
+                ? "Wait for the current generation to finish"
+                : "Select to generate in bulk"
+            }
           >
-            <span
+            <input
+              type="checkbox"
+              checked={!!item.selected}
+              onChange={item.onSelectToggle ?? (() => {})}
+              disabled={item.selectDisabled || !item.onSelectToggle}
+              aria-label={`Select "${item.title}" for bulk generation`}
               style={{
-                borderRadius: 999,
-                padding: "2px 6px",
-                fontSize: 9,
-                fontWeight: 900,
-                color: toneFg,
-                background: toneBg,
+                width: 14,
+                height: 14,
+                accentColor: BRAND.purps,
+                cursor: item.selectDisabled ? "not-allowed" : "pointer",
+                margin: 0,
               }}
-            >
-              {item.meta}
-            </span>
-            {item.createdChart && (
-              <span
-                style={{
-                  color: verifyTone(item.createdChart.verifyStatus).fg,
-                  background: verifyTone(item.createdChart.verifyStatus).bg,
-                  borderRadius: 999,
-                  padding: "2px 6px",
-                  fontSize: 9,
-                  fontWeight: 850,
-                }}
-              >
-                {item.createdChart.verifyLabel}
-              </span>
-            )}
-            {item.editorialVerdict && (
-              <EditorialVerdictPill
-                verdict={item.editorialVerdict}
-                compact
-              />
-            )}
-            {item.qualityScore && (
-              <QualityScorePill score={item.qualityScore} compact />
-            )}
-            {item.promotedBadge && (
-              <span
-                style={{
-                  borderRadius: 999,
-                  padding: "2px 7px",
-                  background: BRAND.purpsSoft,
-                  color: BRAND.purps,
-                  fontSize: 9,
-                  fontWeight: 900,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                }}
-              >
-                {item.promotedBadge}
-              </span>
-            )}
-          </div>
-        </div>
-        <ChevronDown
-          size={14}
-          color={BRAND.slate500}
+            />
+          </label>
+        )}
+        <span
           style={{
-            marginTop: 2,
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 140ms ease",
+            borderRadius: 999,
+            padding: "2px 6px",
+            fontSize: 9,
+            fontWeight: 900,
+            color: toneFg,
+            background: toneBg,
+            whiteSpace: "nowrap",
           }}
-        />
-      </button>
+          title={item.meta}
+        >
+          {item.meta}
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          title={item.title}
+          style={{
+            minWidth: 0,
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            textAlign: "left",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 750,
+            color: BRAND.slate950,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            lineHeight: 1.3,
+          }}
+        >
+          {item.title}
+        </button>
+        {item.qualityScore ? (
+          <QualityScorePill score={item.qualityScore} compact />
+        ) : item.editorialVerdict ? (
+          <EditorialVerdictPill
+            verdict={item.editorialVerdict}
+            compact
+          />
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isOpen}
+          aria-label={isOpen ? "Hide details" : "Show details"}
+          style={{
+            border: "none",
+            background: "transparent",
+            padding: "3px 5px",
+            cursor: "pointer",
+            color: BRAND.slate500,
+            fontSize: 10,
+            fontWeight: 850,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Details
+          <ChevronDown
+            size={11}
+            style={{
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 140ms ease",
+            }}
+          />
+        </button>
+        {primaryAction}
+      </div>
 
       {isOpen && (
         <div
@@ -2623,6 +2796,64 @@ function PlanListItem({
               }}
             >
               {item.body}
+            </div>
+          )}
+          {item.createdChart && (
+            <div
+              style={{
+                marginTop: 7,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  color: verifyTone(item.createdChart.verifyStatus).fg,
+                  background: verifyTone(item.createdChart.verifyStatus).bg,
+                  borderRadius: 999,
+                  padding: "2px 6px",
+                  fontSize: 9,
+                  fontWeight: 850,
+                }}
+              >
+                {item.createdChart.verifyLabel}
+              </span>
+              {item.actionDisabled && (
+                <span
+                  style={{
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    background: BRAND.bgMint,
+                    color: BRAND.okayInk,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {item.actionLabel ?? "Created"}
+                </span>
+              )}
+            </div>
+          )}
+          {item.promotedBadge && (
+            <div style={{ marginTop: 6 }}>
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: "2px 7px",
+                  background: BRAND.purpsSoft,
+                  color: BRAND.purps,
+                  fontSize: 9,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {item.promotedBadge}
+              </span>
             </div>
           )}
           {item.confidence !== undefined && (
@@ -2681,99 +2912,7 @@ function PlanListItem({
           {item.sourceRefs && item.sourceRefs.length > 0 && (
             <SourcesDisclosure sourceRefs={item.sourceRefs} />
           )}
-          {item.createdChart && (
-            // Task #97: any time an idea has a corresponding chart on this
-            // CE (whether created in this session or already linked from a
-            // previous session), surface a ghost "View chart" link to the
-            // editor. This replaces the older plain "Open draft" text link.
-            // The in-session "Created" disabled pill below is preserved so
-            // writers still get the immediate post-create confirmation.
-            <div
-              style={{
-                marginTop: 7,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <a
-                href={`?edit=${item.createdChart.chartId}`}
-                style={{
-                  border: `1px solid ${BRAND.slate200}`,
-                  borderRadius: 9,
-                  padding: "5px 8px",
-                  background: "white",
-                  color: BRAND.slate950,
-                  fontSize: 11,
-                  fontWeight: 850,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  textDecoration: "none",
-                }}
-              >
-                <ExternalLink size={12} />
-                View chart
-              </a>
-              {item.actionDisabled && (
-                // Preserve the in-session "Created" confirmation so writers
-                // get immediate feedback after clicking Create chart, even
-                // though the primary CTA is now the View chart link above.
-                <span
-                  style={{
-                    borderRadius: 999,
-                    padding: "3px 8px",
-                    background: BRAND.bgMint,
-                    color: BRAND.okayInk,
-                    fontSize: 10,
-                    fontWeight: 900,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {item.actionLabel ?? "Created"}
-                </span>
-              )}
-            </div>
-          )}
           {item.extra}
-          {item.onAction && !item.createdChart && (
-            // Task #97: only render the primary "Create chart" CTA for
-            // pending ideas. Once an idea has a corresponding chart on the
-            // CE (via createdChart), the ghost "View chart" link above is
-            // the only call-to-action — no dead "Created" pill, no chance
-            // of accidentally re-creating the same chart.
-            <button
-              type="button"
-              onClick={item.onAction}
-              disabled={item.actionDisabled}
-              style={{
-                marginTop: 8,
-                border: "none",
-                borderRadius: 9,
-                padding: "6px 9px",
-                background: item.actionDisabled
-                  ? BRAND.slate100
-                  : BRAND.purps,
-                color: item.actionDisabled ? BRAND.slate500 : "white",
-                fontSize: 11,
-                fontWeight: 850,
-                cursor: item.actionDisabled ? "not-allowed" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              {item.actionBusy ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Plus size={12} />
-              )}
-              {item.actionLabel ?? "Create chart"}
-            </button>
-          )}
         </div>
       )}
       {item.cardError && (
@@ -2793,7 +2932,6 @@ function PlanListItem({
           {item.cardError}
         </div>
       )}
-      </div>
     </li>
   );
 }
