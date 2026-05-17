@@ -52,6 +52,27 @@ export const weeklyPatternSpec = z.object({
     .optional(),
 });
 
+export const hourlyHighlightKindEnum = z.enum([
+  "quietest_hours",
+  "best_photography",
+  "best_weather",
+  "fastest_entry",
+  "best_evening",
+  "best_off_season",
+]);
+
+export const hourlyHighlightCardSchema = z.object({
+  kind: hourlyHighlightKindEnum,
+  headline: z.string().min(1).max(40),
+  detail: z.string().min(1).max(140),
+});
+
+export const hourlyHighlightCardsSchema = z
+  .array(hourlyHighlightCardSchema)
+  .max(6);
+
+export type HourlyHighlightCard = z.infer<typeof hourlyHighlightCardSchema>;
+
 export const hourlyHeatmapSpec = z.object({
   type: z.literal("hourly_heatmap"),
   open_hour: z.number().int().min(0).max(23),
@@ -78,23 +99,7 @@ export const hourlyHeatmapSpec = z.object({
    * heatmap. Curated-only for now; AI-generated heatmaps may omit. Hidden
    * in compact mode so the grid + legend stay legible at small sizes.
    */
-  highlight_cards: z
-    .array(
-      z.object({
-        kind: z.enum([
-          "quietest_hours",
-          "best_photography",
-          "best_weather",
-          "fastest_entry",
-          "best_evening",
-          "best_off_season",
-        ]),
-        headline: z.string().max(40),
-        detail: z.string().max(140),
-      }),
-    )
-    .max(6)
-    .optional(),
+  highlight_cards: hourlyHighlightCardsSchema.optional(),
 });
 
 export const monthCalendarSpec = z.object({

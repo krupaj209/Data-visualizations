@@ -2421,6 +2421,95 @@ export const useRegenerateChart = <
 };
 
 /**
+ * Ask Gemini for a fresh `highlight_cards` array for an
+`hourly_heatmap` chart, grounded in the CE's DRD. Validates against
+the `HourlyHeatmapSpec.highlight_cards` schema and persists in
+place. Returns the full updated chart. Locked CEs return 409.
+
+ * @summary Regenerate the hourly_heatmap highlight_cards via Gemini + DRD
+ */
+export const getRegenerateSuggestedContentUrl = (id: number) => {
+  return `/api/charts/${id}/regenerate-suggested-content`;
+};
+
+export const regenerateSuggestedContent = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChartWithCe> => {
+  return customFetch<ChartWithCe>(getRegenerateSuggestedContentUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRegenerateSuggestedContentMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateSuggestedContent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof regenerateSuggestedContent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["regenerateSuggestedContent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof regenerateSuggestedContent>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return regenerateSuggestedContent(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegenerateSuggestedContentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof regenerateSuggestedContent>>
+>;
+
+export type RegenerateSuggestedContentMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Regenerate the hourly_heatmap highlight_cards via Gemini + DRD
+ */
+export const useRegenerateSuggestedContent = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateSuggestedContent>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof regenerateSuggestedContent>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRegenerateSuggestedContentMutationOptions(options));
+};
+
+/**
  * @summary Re-verify the chart against the CE's DRD + a fresh web check
  */
 export const getVerifyChartUrl = (id: number) => {

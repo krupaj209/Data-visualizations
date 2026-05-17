@@ -1746,6 +1746,86 @@ export const RegenerateChartResponse = zod.object({
 });
 
 /**
+ * Ask Gemini for a fresh `highlight_cards` array for an
+`hourly_heatmap` chart, grounded in the CE's DRD. Validates against
+the `HourlyHeatmapSpec.highlight_cards` schema and persists in
+place. Returns the full updated chart. Locked CEs return 409.
+
+ * @summary Regenerate the hourly_heatmap highlight_cards via Gemini + DRD
+ */
+export const RegenerateSuggestedContentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RegenerateSuggestedContentResponse = zod.object({
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    lastEditedByWriterAt: zod.string().nullish(),
+    interactive: zod
+      .boolean()
+      .describe(
+        "Whether interactive affordances render in embeds. Default true.",
+      ),
+    overlayHeadline: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+      ),
+    overlaySubhead: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+      ),
+    overlayInsight: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+      ),
+    sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+  }),
+});
+
+/**
  * @summary Re-verify the chart against the CE's DRD + a fresh web check
  */
 export const VerifyChartParams = zod.object({
@@ -2383,6 +2463,24 @@ export const PostIdeationGenerateChartResponse = zod.object({
       .boolean()
       .describe(
         "Whether interactive affordances render in embeds. Default true.",
+      ),
+    overlayHeadline: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+      ),
+    overlaySubhead: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+      ),
+    overlayInsight: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),

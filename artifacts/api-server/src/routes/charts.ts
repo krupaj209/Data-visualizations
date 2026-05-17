@@ -11,7 +11,13 @@ import {
   type Ce,
 } from "@workspace/db";
 import { GetChartParams } from "@workspace/api-zod";
-import { chartSpecSchema, type ChartSpec } from "../lib/chart-spec";
+import {
+  chartSpecSchema,
+  hourlyHighlightCardsSchema,
+  type ChartSpec,
+  type HourlyHighlightCard,
+} from "../lib/chart-spec";
+import { ai } from "@workspace/integrations-gemini-ai";
 import {
   generateOneChart,
   verifyChartStructured,
@@ -150,12 +156,22 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [existing] = await db
-    .select()
+  const [existingRow] = await db
+    .select({ chart: chartsTable, ce: cesTable })
     .from(chartsTable)
+    .innerJoin(cesTable, eq(cesTable.id, chartsTable.ceId))
     .where(eq(chartsTable.id, params.data.id));
-  if (!existing) {
+  if (!existingRow) {
     res.status(404).json({ error: "Chart not found" });
+    return;
+  }
+  const existing = existingRow.chart;
+
+  if (LOCKED_CE_SLUGS.has(existingRow.ce.slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and its charts cannot be edited.",
+    });
     return;
   }
 
@@ -681,6 +697,265 @@ router.post("/charts/:id/verify", async (req, res): Promise<void> => {
     });
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* POST /charts/:id/regenerate-suggested-content                              */
+/* Fresh hourly_heatmap.highlight_cards via Gemini grounded in the CE's DRD. */
+/* -------------------------------------------------------------------------- */
+
+const SUGGESTED_CONTENT_MODEL = "gemini-2.5-pro";
+
+router.post(
+  "/charts/:id/regenerate-suggested-content",
+  async (req, res): Promise<void> => {
+    const params = GetChartParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const [chart] = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.id, params.data.id));
+    if (!chart) {
+      res.status(404).json({ error: "Chart not found" });
+      return;
+    }
+    if (chart.chartType !== "hourly_heatmap") {
+      res.status(422).json({
+        error:
+          "Suggested content regeneration is only supported for hourly_heatmap charts.",
+      });
+      return;
+    }
+
+    const [row] = await db
+      .select({
+        ce: cesTable,
+        chartCount: sql<number>`(SELECT COUNT(*)::int FROM ${chartsTable} WHERE ${chartsTable.ceId} = ${cesTable.id})`,
+        draftCount: sql<number>`(SELECT COUNT(*)::int FROM ${chartsTable} WHERE ${chartsTable.ceId} = ${cesTable.id} AND ${chartsTable.status} = 'draft')`,
+        publishedCount: sql<number>`(SELECT COUNT(*)::int FROM ${chartsTable} WHERE ${chartsTable.ceId} = ${cesTable.id} AND ${chartsTable.status} = 'published')`,
+      })
+      .from(cesTable)
+      .where(eq(cesTable.id, chart.ceId));
+    if (!row) {
+      res.status(404).json({ error: "CE not found for chart" });
+      return;
+    }
+    const ce = row.ce;
+
+    if (LOCKED_CE_SLUGS.has(ce.slug)) {
+      res.status(409).json({
+        error:
+          "This CE has a hand-curated chart set; suggested content cannot be regenerated.",
+      });
+      return;
+    }
+
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    if (!drd) {
+      res.status(412).json({
+        error: `No DRD uploaded for "${ce.slug}". Upload one before regenerating suggested content.`,
+      });
+      return;
+    }
+
+    const existingSpec = chart.spec as Record<string, unknown>;
+    const existingCards = Array.isArray(existingSpec.highlight_cards)
+      ? (existingSpec.highlight_cards as HourlyHighlightCard[])
+      : [];
+    const drdBlock =
+      drd.markdown.length > 14000
+        ? drd.markdown.slice(0, 14000) + "\n\n…[truncated]"
+        : drd.markdown;
+
+    const prompt = `You are writing supplementary CMS copy for an hourly crowd heatmap on a Headout listing page for ${ce.name} (${ce.city}, ${ce.country}).
+
+The heatmap itself shows hourly crowd intensity Mon–Sun. Underneath the chart, writers surface 3–6 short "highlight cards" — each a single concrete tip a visitor can act on (e.g. "Quietest hours: arrive before 10am Tue–Thu for the shortest waits").
+
+Return a JSON object of shape:
+{ "highlight_cards": [ { "kind": "...", "headline": "...", "detail": "..." }, ... ] }
+
+Rules:
+- 3 to 6 cards. Each "kind" must be one of: quietest_hours, best_photography, best_weather, fastest_entry, best_evening, best_off_season. Do NOT repeat a kind.
+- "headline" ≤ 40 chars, sentence case, no trailing period, concrete (e.g. "Tue–Thu before 10am").
+- "detail" ≤ 140 chars, one sentence, sentence case, ends with a period. Explain WHY in plain language the visitor can act on.
+- Ground every card in the Deep Research Doc and the chart spec below. Do not invent facts (weather, prices, evening programmes) that the DRD doesn't support — drop that card kind instead.
+- Headout voice: warm, confident, never academic. No marketing fluff.
+- Output ONLY the JSON object, no markdown.
+
+Current hourly_heatmap spec (for context — open/close hours, busy/quiet rows, best_window):
+"""
+${JSON.stringify(
+  {
+    open_hour: existingSpec.open_hour,
+    close_hour: existingSpec.close_hour,
+    best_window: existingSpec.best_window,
+    rows: existingSpec.rows,
+  },
+  null,
+  2,
+)}
+"""
+
+Existing highlight cards (the writer asked for a fresh take — feel free to replace, reword, or change which kinds appear):
+"""
+${JSON.stringify(existingCards, null, 2)}
+"""
+
+Deep Research Doc:
+"""
+${drdBlock}
+"""`;
+
+    let parsedCards: HourlyHighlightCard[] | null = null;
+    let lastError: string | null = null;
+    for (let attempt = 0; attempt < 2 && !parsedCards; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model: SUGGESTED_CONTENT_MODEL,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text:
+                    attempt === 0
+                      ? prompt
+                      : `${prompt}\n\nThe previous response was invalid: ${lastError}. Regenerate the FULL JSON object, fixing the issues. Output ONLY the JSON object.`,
+                },
+              ],
+            },
+          ],
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.7,
+            maxOutputTokens: 1536,
+          },
+        });
+        const raw = (response.text ?? "").trim();
+        if (!raw) {
+          lastError = "empty response";
+          continue;
+        }
+        let json: unknown;
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          const fence = raw.match(/```(?:json)?\s*([\s\S]+?)```/);
+          if (!fence?.[1]) {
+            lastError = "invalid JSON";
+            continue;
+          }
+          try {
+            json = JSON.parse(fence[1]);
+          } catch {
+            lastError = "invalid JSON";
+            continue;
+          }
+        }
+        const cards = (json as { highlight_cards?: unknown })?.highlight_cards;
+        const check = hourlyHighlightCardsSchema
+          .min(1)
+          .safeParse(cards);
+        if (!check.success) {
+          lastError = check.error.issues
+            .slice(0, 4)
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; ");
+          continue;
+        }
+        // Dedupe kinds: keep the first occurrence of each.
+        const seen = new Set<string>();
+        const deduped: HourlyHighlightCard[] = [];
+        for (const card of check.data) {
+          if (seen.has(card.kind)) continue;
+          seen.add(card.kind);
+          deduped.push(card);
+        }
+        if (deduped.length === 0) {
+          lastError = "all cards dropped during dedupe";
+          continue;
+        }
+        parsedCards = deduped;
+      } catch (err) {
+        req.log.error(
+          { err, chartId: chart.id },
+          "Gemini suggested-content regeneration failed",
+        );
+        lastError =
+          err instanceof Error ? err.message : "Gemini call failed";
+      }
+    }
+
+    if (!parsedCards) {
+      res.status(502).json({
+        error: `Suggested content regeneration failed: ${lastError ?? "unknown error"}`,
+      });
+      return;
+    }
+
+    const nextSpec = { ...existingSpec, highlight_cards: parsedCards };
+    const specCheck = chartSpecSchema.safeParse(nextSpec);
+    if (!specCheck.success) {
+      res.status(502).json({
+        error: `Regenerated cards produced an invalid spec: ${specCheck.error.issues
+          .slice(0, 4)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; ")}`,
+      });
+      return;
+    }
+
+    try {
+      const [updated] = await db
+        .update(chartsTable)
+        .set({ spec: specCheck.data as unknown as Record<string, unknown> })
+        .where(eq(chartsTable.id, chart.id))
+        .returning();
+      if (!updated) {
+        res
+          .status(500)
+          .json({ error: "Failed to persist regenerated suggested content" });
+        return;
+      }
+
+      await db.insert(chartEditsTable).values({
+        chartId: updated.id,
+        writerId: "anonymous",
+        action: "edit",
+        before: { highlight_cards: existingCards },
+        after: { highlight_cards: parsedCards },
+        note: "regenerate suggested content",
+      });
+
+      res.json({
+        chart: serializeChart(updated),
+        ce: serializeCe(
+          ce,
+          Number(row.chartCount),
+          Number(row.draftCount),
+          Number(row.publishedCount),
+        ),
+      });
+    } catch (err) {
+      req.log.error(
+        { err, chartId: chart.id },
+        "Failed to persist regenerated suggested content",
+      );
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Failed to persist: ${err.message}`
+            : "Failed to persist regenerated suggested content",
+      });
+    }
+  },
+);
 
 /* -------------------------------------------------------------------------- */
 /* POST /ces/:slug/charts — topic-to-chart                                     */

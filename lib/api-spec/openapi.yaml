@@ -761,6 +761,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE has a hand-curated chart set and cannot be edited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /charts/{id}/regenerate:
     post:
       operationId: regenerateChart
@@ -808,6 +814,59 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "502":
           description: Pipeline failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/regenerate-suggested-content:
+    post:
+      operationId: regenerateSuggestedContent
+      tags: [charts]
+      summary: Regenerate the hourly_heatmap highlight_cards via Gemini + DRD
+      description: |
+        Ask Gemini for a fresh `highlight_cards` array for an
+        `hourly_heatmap` chart, grounded in the CE's DRD. Validates against
+        the `HourlyHeatmapSpec.highlight_cards` schema and persists in
+        place. Returns the full updated chart. Locked CEs return 409.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartWithCe"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is locked from automated regeneration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "412":
+          description: No DRD uploaded for this CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Chart is not an hourly_heatmap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Generation failed
           content:
             application/json:
               schema:

@@ -31,6 +31,7 @@ import {
   useGetCe,
   useRegenerateCe,
   useUpdateChart,
+  useRegenerateSuggestedContent,
   usePublishChart,
   usePublishAllDrafts,
   useVerifyChart,
@@ -85,6 +86,18 @@ import { assembleHybridOverlay } from "@workspace/editorial";
 const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
 const LOCKED_SLUGS = new Set(["galleria-dellaccademia"]);
+
+// Mirrors LOCKED_CE_SLUGS on the api-server (artifacts/api-server/src/lib/locked-ces.ts).
+// Used to hide writer actions (Edit / Regenerate) on the Suggested content panel for
+// hand-curated CEs whose chart specs are immutable. The server still enforces this
+// with a 409 response — this is purely a UI hint.
+const LOCKED_CE_SLUGS_CLIENT = new Set([
+  "galleria-dellaccademia",
+  "galleria-degli-uffizi",
+  "duomo-di-firenze",
+  "colosseum",
+  "vatican-museums",
+]);
 
 const CHART_FRAME: Record<
   ChartSpec["type"],
@@ -1204,7 +1217,12 @@ function ChartRow({
         </aside>
       </div>
 
-      <SuggestedContentPanel spec={spec} />
+      <SuggestedContentPanel
+        chartId={chart.id}
+        ceSlug={ceSlug}
+        spec={spec}
+        isLocked={LOCKED_CE_SLUGS_CLIENT.has(ceSlug)}
+      />
 
       <DialogPrimitive.Root
         open={mode === "edit"}
@@ -5258,14 +5276,35 @@ const HOURLY_HIGHLIGHT_LABELS: Record<string, string> = {
   best_off_season: "Best off-season months",
 };
 
-function SuggestedContentPanel({ spec }: { spec: ChartSpec }) {
-  const [copied, setCopied] = useState(false);
+type HighlightCardKind =
+  | "quietest_hours"
+  | "best_photography"
+  | "best_weather"
+  | "fastest_entry"
+  | "best_evening"
+  | "best_off_season";
 
-  if (spec.type !== "hourly_heatmap") return null;
-  const cards = spec.highlight_cards ?? [];
-  if (cards.length === 0) return null;
+type HighlightCard = {
+  kind: HighlightCardKind;
+  headline: string;
+  detail: string;
+};
 
-  const htmlSnippet = [
+const HIGHLIGHT_KINDS: HighlightCardKind[] = [
+  "quietest_hours",
+  "best_photography",
+  "best_weather",
+  "fastest_entry",
+  "best_evening",
+  "best_off_season",
+];
+
+const HEADLINE_MAX = 40;
+const DETAIL_MAX = 140;
+const MAX_CARDS = 6;
+
+function buildHtmlSnippet(cards: HighlightCard[]): string {
+  return [
     "<ul>",
     ...cards.map((card) => {
       const label = HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind;
@@ -5273,16 +5312,184 @@ function SuggestedContentPanel({ spec }: { spec: ChartSpec }) {
     }),
     "</ul>",
   ].join("\n");
+}
 
-  async function copy() {
+function buildPlainText(cards: HighlightCard[]): string {
+  return cards
+    .map((card) => {
+      const label = HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind;
+      return `• ${label} — ${card.headline}. ${card.detail}`;
+    })
+    .join("\n");
+}
+
+function SuggestedContentPanel({
+  chartId,
+  ceSlug,
+  spec,
+  isLocked,
+}: {
+  chartId: number;
+  ceSlug: string;
+  spec: ChartSpec;
+  isLocked: boolean;
+}) {
+  const qc = useQueryClient();
+  const updateMut = useUpdateChart();
+  const regenMut = useRegenerateSuggestedContent();
+
+  const [copyState, setCopyState] = useState<"idle" | "html" | "rich">("idle");
+  const [editing, setEditing] = useState(false);
+  const [draftCards, setDraftCards] = useState<HighlightCard[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  if (spec.type !== "hourly_heatmap") return null;
+  const cards = (spec.highlight_cards ?? []) as HighlightCard[];
+  if (cards.length === 0 && !editing) return null;
+
+  const htmlSnippet = buildHtmlSnippet(cards);
+  const plainText = buildPlainText(cards);
+
+  function flashCopied(kind: "html" | "rich") {
+    setCopyState(kind);
+    setTimeout(() => setCopyState("idle"), 1800);
+  }
+
+  async function copyHtml() {
     try {
       await navigator.clipboard.writeText(htmlSnippet);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      flashCopied("html");
     } catch {
       /* noop */
     }
   }
+
+  async function copyRichText() {
+    try {
+      if (typeof window !== "undefined" && "ClipboardItem" in window) {
+        const item = new window.ClipboardItem({
+          "text/html": new Blob([htmlSnippet], { type: "text/html" }),
+          "text/plain": new Blob([plainText], { type: "text/plain" }),
+        });
+        await navigator.clipboard.write([item]);
+      } else {
+        // Older browsers: fall back to the plain-text bullet list. Some
+        // WYSIWYG editors auto-format `• `-prefixed lines as bullets.
+        await navigator.clipboard.writeText(plainText);
+      }
+      flashCopied("rich");
+    } catch {
+      // Last-ditch: at least put SOMETHING on the clipboard.
+      try {
+        await navigator.clipboard.writeText(plainText);
+        flashCopied("rich");
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
+  function startEditing() {
+    setDraftCards(cards.map((card) => ({ ...card })));
+    setEditing(true);
+    setSaveError(null);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraftCards([]);
+    setSaveError(null);
+  }
+
+  function updateDraftCard(index: number, patch: Partial<HighlightCard>) {
+    setDraftCards((prev) =>
+      prev.map((card, i) => (i === index ? { ...card, ...patch } : card)),
+    );
+  }
+
+  function addDraftCard() {
+    if (draftCards.length >= MAX_CARDS) return;
+    const usedKinds = new Set(draftCards.map((c) => c.kind));
+    const nextKind =
+      HIGHLIGHT_KINDS.find((k) => !usedKinds.has(k)) ?? HIGHLIGHT_KINDS[0]!;
+    setDraftCards((prev) => [
+      ...prev,
+      { kind: nextKind, headline: "", detail: "" },
+    ]);
+  }
+
+  function removeDraftCard(index: number) {
+    setDraftCards((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function validateDraft(): string | null {
+    if (draftCards.length === 0) return "Add at least one card before saving.";
+    if (draftCards.length > MAX_CARDS) return `At most ${MAX_CARDS} cards.`;
+    for (let i = 0; i < draftCards.length; i++) {
+      const card = draftCards[i]!;
+      if (!HIGHLIGHT_KINDS.includes(card.kind)) {
+        return `Card ${i + 1}: pick a category.`;
+      }
+      const headline = card.headline.trim();
+      const detail = card.detail.trim();
+      if (!headline) return `Card ${i + 1}: headline is required.`;
+      if (headline.length > HEADLINE_MAX) {
+        return `Card ${i + 1}: headline must be ≤ ${HEADLINE_MAX} chars.`;
+      }
+      if (!detail) return `Card ${i + 1}: detail is required.`;
+      if (detail.length > DETAIL_MAX) {
+        return `Card ${i + 1}: detail must be ≤ ${DETAIL_MAX} chars.`;
+      }
+    }
+    return null;
+  }
+
+  async function saveEdits() {
+    const error = validateDraft();
+    if (error) {
+      setSaveError(error);
+      return;
+    }
+    setSaveError(null);
+    const cleaned = draftCards.map((card) => ({
+      kind: card.kind,
+      headline: card.headline.trim(),
+      detail: card.detail.trim(),
+    }));
+    const nextSpec = { ...spec, highlight_cards: cleaned };
+    try {
+      await updateMut.mutateAsync({
+        id: chartId,
+        data: { spec: nextSpec as unknown as Record<string, unknown> },
+      });
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+      setEditing(false);
+      setDraftCards([]);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to save suggested content",
+      );
+    }
+  }
+
+  async function regenerate() {
+    setRegenError(null);
+    try {
+      await regenMut.mutateAsync({ id: chartId });
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+    } catch (err) {
+      setRegenError(
+        err instanceof Error
+          ? err.message
+          : "Failed to regenerate suggested content",
+      );
+    }
+  }
+
+  const usedKinds = new Set(draftCards.map((c) => c.kind));
+  const isSaving = updateMut.isPending;
+  const isRegenerating = regenMut.isPending;
 
   return (
     <section
@@ -5323,85 +5530,351 @@ function SuggestedContentPanel({ spec }: { spec: ChartSpec }) {
             won't ship inside the chart itself.
           </span>
         </div>
-        <button
-          type="button"
-          onClick={copy}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "8px 14px",
-            borderRadius: 10,
-            background: copied ? BRAND.purps : "white",
-            color: copied ? "white" : BRAND.slate950,
-            border: `1px solid ${copied ? BRAND.purps : BRAND.slate200}`,
-            fontWeight: 700,
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? "Copied" : "Copy as HTML"}
-        </button>
+        {!editing && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <SuggestedActionButton
+              onClick={copyHtml}
+              active={copyState === "html"}
+              icon={copyState === "html" ? <Check size={14} /> : <Copy size={14} />}
+              label={copyState === "html" ? "Copied" : "Copy as HTML"}
+            />
+            <SuggestedActionButton
+              onClick={copyRichText}
+              active={copyState === "rich"}
+              icon={copyState === "rich" ? <Check size={14} /> : <Copy size={14} />}
+              label={copyState === "rich" ? "Copied" : "Copy as rich text"}
+            />
+            {!isLocked && (
+              <>
+                <SuggestedActionButton
+                  onClick={startEditing}
+                  icon={<Pencil size={14} />}
+                  label="Edit"
+                />
+                <SuggestedActionButton
+                  onClick={regenerate}
+                  disabled={isRegenerating}
+                  icon={
+                    isRegenerating ? (
+                      <Loader2
+                        size={14}
+                        style={{ animation: "spin 1s linear infinite" }}
+                      />
+                    ) : (
+                      <RefreshCw size={14} />
+                    )
+                  }
+                  label={isRegenerating ? "Regenerating…" : "Regenerate"}
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
 
-      <ul
-        style={{
-          margin: 0,
-          paddingLeft: 18,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        {cards.map((card) => (
-          <li
-            key={card.kind}
+      {regenError && (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FCA5A5",
+            color: "#991B1B",
+            borderRadius: 10,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {regenError}
+        </div>
+      )}
+
+      {!editing ? (
+        <>
+          <ul
             style={{
-              fontSize: 13,
-              lineHeight: 1.5,
-              color: BRAND.slate900,
+              margin: 0,
+              paddingLeft: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            <strong style={{ color: BRAND.slate950 }}>
-              {HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind} —{" "}
-              {card.headline}.
-            </strong>{" "}
-            <span style={{ color: BRAND.slate700 }}>{card.detail}</span>
-          </li>
-        ))}
-      </ul>
+            {cards.map((card, i) => (
+              <li
+                key={`${card.kind}-${i}`}
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  color: BRAND.slate900,
+                }}
+              >
+                <strong style={{ color: BRAND.slate950 }}>
+                  {HOURLY_HIGHLIGHT_LABELS[card.kind] ?? card.kind} —{" "}
+                  {card.headline}.
+                </strong>{" "}
+                <span style={{ color: BRAND.slate700 }}>{card.detail}</span>
+              </li>
+            ))}
+          </ul>
 
-      <details>
-        <summary
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: BRAND.slate500,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            cursor: "pointer",
-          }}
-        >
-          Preview HTML
-        </summary>
-        <pre
-          style={{
-            marginTop: 8,
-            padding: 12,
-            background: BRAND.slate100,
-            borderRadius: 10,
-            fontSize: 11,
-            lineHeight: 1.5,
-            color: BRAND.slate900,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {htmlSnippet}
-        </pre>
-      </details>
+          <details>
+            <summary
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: BRAND.slate500,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              Preview HTML
+            </summary>
+            <pre
+              style={{
+                marginTop: 8,
+                padding: 12,
+                background: BRAND.slate100,
+                borderRadius: 10,
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: BRAND.slate900,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {htmlSnippet}
+            </pre>
+          </details>
+        </>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {draftCards.map((card, i) => (
+            <div
+              key={i}
+              style={{
+                border: `1px solid ${BRAND.slate200}`,
+                borderRadius: 12,
+                padding: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                background: BRAND.slate100,
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <select
+                  value={card.kind}
+                  onChange={(e) =>
+                    updateDraftCard(i, {
+                      kind: e.target.value as HighlightCardKind,
+                    })
+                  }
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${BRAND.slate200}`,
+                    background: "white",
+                    color: BRAND.slate950,
+                  }}
+                >
+                  {HIGHLIGHT_KINDS.map((kind) => (
+                    <option
+                      key={kind}
+                      value={kind}
+                      disabled={kind !== card.kind && usedKinds.has(kind)}
+                    >
+                      {HOURLY_HIGHLIGHT_LABELS[kind] ?? kind}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeDraftCard(i)}
+                  aria-label="Remove card"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    background: "white",
+                    border: `1px solid ${BRAND.slate200}`,
+                    color: BRAND.slate700,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Trash2 size={12} /> Remove
+                </button>
+              </div>
+              <input
+                value={card.headline}
+                maxLength={HEADLINE_MAX + 20}
+                placeholder="Headline (e.g. Tue–Thu before 10am)"
+                onChange={(e) =>
+                  updateDraftCard(i, { headline: e.target.value })
+                }
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${BRAND.slate200}`,
+                  background: "white",
+                  color: BRAND.slate950,
+                }}
+              />
+              <textarea
+                value={card.detail}
+                maxLength={DETAIL_MAX + 40}
+                placeholder="Detail — one short sentence explaining why."
+                rows={2}
+                onChange={(e) =>
+                  updateDraftCard(i, { detail: e.target.value })
+                }
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${BRAND.slate200}`,
+                  background: "white",
+                  color: BRAND.slate900,
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
+              <div
+                style={{
+                  fontSize: 10,
+                  color: BRAND.slate500,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>
+                  Headline {card.headline.trim().length}/{HEADLINE_MAX}
+                </span>
+                <span>
+                  Detail {card.detail.trim().length}/{DETAIL_MAX}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={addDraftCard}
+              disabled={draftCards.length >= MAX_CARDS}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 12px",
+                borderRadius: 10,
+                background: "white",
+                border: `1px dashed ${BRAND.slate200}`,
+                color: BRAND.slate700,
+                fontWeight: 700,
+                fontSize: 12,
+                cursor:
+                  draftCards.length >= MAX_CARDS ? "not-allowed" : "pointer",
+                opacity: draftCards.length >= MAX_CARDS ? 0.5 : 1,
+              }}
+            >
+              <Plus size={14} /> Add card
+              {draftCards.length >= MAX_CARDS
+                ? ` (max ${MAX_CARDS})`
+                : ""}
+            </button>
+            <div className="flex items-center gap-2">
+              <SuggestedActionButton
+                onClick={cancelEditing}
+                disabled={isSaving}
+                icon={<X size={14} />}
+                label="Cancel"
+              />
+              <SuggestedActionButton
+                onClick={saveEdits}
+                disabled={isSaving}
+                active
+                icon={
+                  isSaving ? (
+                    <Loader2
+                      size={14}
+                      style={{ animation: "spin 1s linear infinite" }}
+                    />
+                  ) : (
+                    <Check size={14} />
+                  )
+                }
+                label={isSaving ? "Saving…" : "Save"}
+              />
+            </div>
+          </div>
+
+          {saveError && (
+            <div
+              style={{
+                background: "#FEF2F2",
+                border: "1px solid #FCA5A5",
+                color: "#991B1B",
+                borderRadius: 10,
+                padding: "8px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {saveError}
+            </div>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+function SuggestedActionButton({
+  onClick,
+  icon,
+  label,
+  active = false,
+  disabled = false,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "8px 14px",
+        borderRadius: 10,
+        background: active ? BRAND.purps : "white",
+        color: active ? "white" : BRAND.slate950,
+        border: `1px solid ${active ? BRAND.purps : BRAND.slate200}`,
+        fontWeight: 700,
+        fontSize: 12,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
