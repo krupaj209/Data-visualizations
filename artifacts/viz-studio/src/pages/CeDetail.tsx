@@ -573,27 +573,6 @@ function CeDetailInner({
             Ideate
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowNewChart((v) => !v)}
-            style={{
-              background: showNewChart ? BRAND.purps : "white",
-              color: showNewChart ? "white" : BRAND.slate950,
-              border: `1px solid ${showNewChart ? BRAND.purps : BRAND.slate200}`,
-              padding: "8px 12px",
-              borderRadius: 12,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Plus size={14} />
-            New chart
-          </button>
-
           {draftCount > 0 && (
             <button
               type="button"
@@ -4876,6 +4855,12 @@ function NewChartForm({
 /* Ideation panel                                                              */
 /* -------------------------------------------------------------------------- */
 
+const TOPIC_EXAMPLE_CHIPS = [
+  "weekend vs weekday wait times",
+  "best months to visit",
+  "how long people actually spend inside",
+];
+
 function IdeationPanel({
   slug,
   onClose,
@@ -4902,6 +4887,7 @@ function IdeationPanel({
   const abortRef = useRef<AbortController | null>(null);
   const cancelledByUserRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const topicTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -5343,6 +5329,18 @@ function IdeationPanel({
 
       <form onSubmit={handleSend} className="flex flex-col gap-2">
         <div
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: BRAND.slate700,
+            lineHeight: 1.45,
+          }}
+        >
+          {mode === "topic"
+            ? "Start here when you already know roughly what you want to show — we'll sanity-check the topic against the research doc before generating a chart."
+            : "Switch to free-form chat to brainstorm ideas, critique existing charts, or ask which archetype fits a question."}
+        </div>
+        <div
           className="flex items-center gap-1"
           style={{
             background: BRAND.slate50,
@@ -5381,7 +5379,7 @@ function IdeationPanel({
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
               mode === "topic"
-                ? 'Topic for a new chart — e.g. "weekend vs weekday wait times"'
+                ? "What should this chart answer? Try a question or angle — e.g. how long visitors actually stay inside, or whether mornings are quieter than afternoons."
                 : "Ask for chart ideas, critique, archetype matches…"
             }
             rows={2}
@@ -5404,6 +5402,7 @@ function IdeationPanel({
               fontFamily: "inherit",
               resize: "none",
             }}
+            ref={topicTextareaRef}
           />
           <button
             type="submit"
@@ -5422,6 +5421,47 @@ function IdeationPanel({
             <Send size={14} />
           </button>
         </div>
+        {mode === "topic" && (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {TOPIC_EXAMPLE_CHIPS.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() => {
+                    setDraft(example);
+                    topicTextareaRef.current?.focus();
+                  }}
+                  disabled={isSending}
+                  style={{
+                    background: BRAND.slate50,
+                    color: BRAND.slate700,
+                    border: `1px solid ${BRAND.slate200}`,
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: isSending ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                  title="Use this as a starting point"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: BRAND.slate700,
+                lineHeight: 1.45,
+              }}
+            >
+              We'll check if the topic is answerable from the research doc before generating anything.
+            </div>
+          </>
+        )}
         <button
           type="button"
           onClick={() => setShowContext((v) => !v)}
