@@ -1,0 +1,249 @@
+You're right. The current question bank is **a flat registry with page-type variants bolted on** — not an intelligent system that understands *why* a question matters for a specific CE in a specific context.
+
+Let me diagnose the weakness and redesign it.
+
+---
+
+## What's Wrong With the Current Bank
+
+| Problem | Example | Why It Weakens Output |
+|---------|---------|----------------------|
+| **Questions are generic** | "Which entrance should I head to?" applies to ALL monuments | Doesn't distinguish Colosseum (1 gate, 4 lanes) from Vatican (6 entrances, 2 countries) |
+| **No CE-signal depth** | `hasMultipleEntrances: true` is binary | Doesn't capture *how many* entrances, *how different* they are, *what the DRD actually says* about them |
+| **Page-type variants are just reworded headlines** | "Best Day to Visit" vs "When Skip-the-Line Saves Most" | Same underlying chart, different wrapper — not a different *question* |
+| **No cross-question intelligence** | `weekly_pattern` and `hourly_heatmap` are selected independently | Should be one *timing* decision, not two separate questions |
+| **No "so what" layer** | Questions ask *what* data exists, not *why* the visitor cares | Results in charts that show data but don't drive action |
+| **Subcategory is too coarse** | "Tickets" covers Eiffel Tower, Vatican, cooking class, F1 | Wildly different visitor needs, same question pool |
+
+---
+
+## The Redesign: From Question Bank to **Visitor Intent Engine**
+
+Instead of:
+```
+Subcategory → Questions[] → Charts
+```
+
+Use:
+```
+Visitor Intent → Context Signals → Question Bundle → Chart Deck
+```
+
+### Layer 1: Visitor Intents (the "why")
+
+These are universal across all CEs:
+
+| Intent | What the Visitor Needs | Example Question |
+|--------|----------------------|------------------|
+| **When** | Timing optimization | "When should I arrive to avoid waiting?" |
+| **How Long** | Duration planning | "How much time should I budget?" |
+| **Which** | Choice optimization | "Which option is best for me?" |
+| **What If** | Risk mitigation | "What happens if I'm late / it rains / it's closed?" |
+| **How** | Logistics | "How do I get there / get in / get around?" |
+| **Why** | Value justification | "Is the premium ticket worth it?" |
+| **What** | Preparation | "What do I need to bring / know / book?" |
+
+### Layer 2: Context Signals (the "what makes this CE unique")
+
+These come from DRD + live search + CE metadata:
+
+| Signal | Source | How It Changes Questions |
+|--------|--------|-------------------------|
+| `queue_complexity` | DRD: describes lane types, security, ticket desk | Simple (1 lane) → skip queue question. Complex (4 lanes + security) → `queue_compare` + `rules_checklist` |
+| `accessibility_profile` | DRD: ramps, elevators, cobblestones | Full accessibility → `accessibility_guide`. Partial → warning in `entrance_map`. None → skip entirely |
+| `transport_richness` | DRD: metro, bus, walk, taxi, bike | 1 option → skip. 3+ options with tradeoffs → `transit_options` |
+| `seasonal_dramatic` | DRD: peak vs off-peak crowd difference | 2x difference → `seasonal_curve`. 10x difference → `seasonal_curve` + `price_curve` + `booking_window` |
+| `historical_depth` | DRD: founding date, key events, significance | 3+ turning points → `history_timeline`. 1 date → skip or brief text |
+| `spatial_complexity` | DRD: named zones, floors, wings | Simple (1 room) → skip. Complex (3+ zones with different crowds) → `zone_crowd_heatmap` + `floor_plan_flow` |
+| `ticket_tier_complexity` | DRD: standard, skip-line, guided, combo, membership | 2 tiers → `ticket_ladder`. 5+ tiers with access differences → `ticket_access_matrix` |
+| `group_dynamics` | DRD: family-friendly, solo-traveler, large-group | Family-friendly → `best_for_matrix` with family scores. Business-traveler → time-value focus |
+| `weather_sensitivity` | Live search: outdoor, seasonal closure, best months | Outdoor + seasonal → `season_weather_fit`. Indoor + climate-controlled → skip |
+
+### Layer 3: Question Bundles (the "what to generate")
+
+A bundle is **1-3 questions that together answer a visitor intent**. Not isolated charts.
+
+| Intent | Bundle | Questions | When to Use |
+|--------|--------|-----------|-------------|
+| **When** | Timing Bundle | `weekly_pattern` + `hourly_heatmap` + `booking_window` | DRD shows crowd variability OR sell-out risk |
+| **How Long** | Duration Bundle | `duration_stat` + `itinerary_flow` | Fixed runtime → skip. Variable → include |
+| **Which** | Choice Bundle | `best_for_matrix` + `compare_zones` + `slot_compare` | 2+ options with material differences |
+| **What If** | Risk Bundle | `departure_reliability` + `return_buffer_rank` + `rules_checklist` | Weather cancellation OR strict timing OR strict rules |
+| **How** | Logistics Bundle | `entrance_map` + `transit_options` + `rules_checklist` | Complex arrival OR multiple entrances OR strict security |
+| **Why** | Value Bundle | `time_value_matrix` + `savings_breakdown` + `ticket_access_matrix` | Premium tier exists AND price gap > 30% |
+| **What** | Prep Bundle | `rules_checklist` + `daily_programme` + `booking_window` | Restricted items OR timed events OR advance booking required |
+
+### Layer 4: Page-Type Assembly (the "where this lives")
+
+A page type assembles **2-4 bundles**, not individual questions:
+
+| Page Type | Bundles | Why These |
+|-----------|---------|-----------|
+| **Plan Your Visit** | Timing + Duration + Logistics + Prep | Answers "when, how long, how do I get in, what do I bring" |
+| **Skip the Line** | Value + Timing + Risk | Answers "is it worth it, when does it help most, what if I'm late" |
+| **Entrances** | Logistics + Choice + Risk | Answers "which door, which lane, what if something goes wrong" |
+| **History** | Duration (story) + Choice (highlights) | Answers "what happened here, what should I see" |
+| **Map / Floor Plan** | Logistics + Choice | Answers "where am I going, what should I prioritize" |
+
+---
+
+## How the Engine Works
+
+```
+Input: CE slug + Page type + DRD + Live search results
+
+Step 1: Extract context signals from DRD
+  → queue_complexity: "complex" (4 lanes, security, ticket desk)
+  → accessibility_profile: "partial" (ramp at main gate, stairs inside)
+  → transport_richness: "high" (metro, bus, taxi, walk, bike)
+  → historical_depth: "deep" (5+ turning points)
+  → spatial_complexity: "simple" (1 arena, no zones)
+  → ticket_tier_complexity: "high" (standard, skip-line, guided, combo, membership)
+
+Step 2: Score bundles for this CE
+  Timing Bundle:     95/100 (high crowd variability, sell-out risk)
+  Duration Bundle:   30/100 (fixed visit, ~2-3 hours)
+  Logistics Bundle:  98/100 (complex arrival, multiple lanes, strict security)
+  Value Bundle:      90/100 (skip-line saves 60-180 min, price gap 2x)
+  Prep Bundle:       85/100 (prohibited items, timed entry, ID required)
+  Risk Bundle:       70/100 (strict timing, no re-entry, security delays)
+
+Step 3: Assemble page deck from top bundles
+  Plan Your Visit: Timing (95) + Logistics (98) + Prep (85) + Value (90)
+  Skip the Line: Value (90) + Timing (95) + Risk (70)
+  Entrances: Logistics (98) + Risk (70) + Choice (60)
+
+Step 4: Generate questions within each bundle
+  Logistics Bundle → entrance_map (complex, 4 lanes) + transit_options (5 modes) + rules_checklist (strict security)
+  Value Bundle → time_value_matrix (6 scenarios) + queue_compare (3 lanes)
+
+Step 5: Generate editorial overlays
+  Each bundle gets a narrative headline: "Getting In: The Complete Guide"
+  Each question gets a contextual subheadline: "4 lanes, 5 transport modes, 1 strict security check"
+```
+
+---
+
+## What Changes in the Code
+
+### New File: `lib/question-bank/src/intents.ts`
+
+```typescript
+export const VisitorIntents = {
+  WHEN: { id: 'when', label: 'When should I go?', bundles: ['timing'] },
+  HOW_LONG: { id: 'how_long', label: 'How long will it take?', bundles: ['duration'] },
+  WHICH: { id: 'which', label: 'Which option is best for me?', bundles: ['choice'] },
+  WHAT_IF: { id: 'what_if', label: 'What if something goes wrong?', bundles: ['risk'] },
+  HOW: { id: 'how', label: 'How do I get there / in / around?', bundles: ['logistics'] },
+  WHY: { id: 'why', label: 'Is the premium worth it?', bundles: ['value'] },
+  WHAT: { id: 'what', label: 'What do I need to prepare?', bundles: ['prep'] },
+} as const;
+```
+
+### New File: `lib/question-bank/src/signals.ts`
+
+```typescript
+export interface ContextSignals {
+  queue_complexity: 'none' | 'simple' | 'complex';
+  accessibility_profile: 'full' | 'partial' | 'none';
+  transport_richness: number; // 0-5
+  seasonal_dramatic: number; // 1-10 (peak/off-peak ratio)
+  historical_depth: number; // 0-10 (turning points)
+  spatial_complexity: number; // 0-10 (named zones)
+  ticket_tier_complexity: number; // 0-10 (tiers with access differences)
+  group_dynamics: string[]; // ['family', 'solo', 'business']
+  weather_sensitivity: 'high' | 'medium' | 'low';
+}
+```
+
+### New File: `lib/question-bank/src/bundles.ts`
+
+```typescript
+export const QuestionBundles: Record<string, {
+  intent: string;
+  questions: string[];
+  minSignals: Partial<ContextSignals>;
+  score: (signals: ContextSignals, drd: string) => number;
+}> = {
+  timing: {
+    intent: 'when',
+    questions: ['weekly_pattern', 'hourly_heatmap', 'booking_window'],
+    minSignals: { seasonal_dramatic: 2 },
+    score: (s, drd) => Math.min(100, s.seasonal_dramatic * 10 + (drd.includes('sell-out') ? 20 : 0)),
+  },
+  logistics: {
+    intent: 'how',
+    questions: ['entrance_map', 'transit_options', 'rules_checklist'],
+    minSignals: { queue_complexity: 'simple' },
+    score: (s, drd) => {
+      let score = 0;
+      if (s.queue_complexity === 'complex') score += 40;
+      if (s.transport_richness > 2) score += 30;
+      if (drd.includes('security') || drd.includes('prohibited')) score += 30;
+      return Math.min(100, score);
+    },
+  },
+  // ... etc
+};
+```
+
+### Updated: `lib/page-decks/src/builder.ts`
+
+Replace flat question selection with bundle scoring:
+
+```typescript
+// Instead of: scoreQuestionForSection()
+// Use: scoreBundleForCE()
+
+function buildDeck(ce: CEIntelligence, pageType: PageType, drd: string) {
+  const signals = extractSignals(ce, drd);
+  const bundleScores = Object.entries(QuestionBundles)
+    .map(([id, bundle]) => ({
+      id,
+      score: bundle.score(signals, drd),
+      questions: bundle.questions,
+    }))
+    .sort((a, b) => b.score - a.score);
+  
+  // Assemble page from top bundles
+  const template = getDeckTemplate(pageType);
+  const selectedBundles = bundleScores
+    .filter(b => template.requiredBundles.includes(b.id))
+    .slice(0, template.maxBundles);
+  
+  // Generate questions within bundles
+  // ... with editorial overlays
+}
+```
+
+---
+
+## The Key Difference
+
+| Before | After |
+|--------|-------|
+| "Which entrance should I head to?" for ALL monuments | "Logistics Bundle" scored 98 for Colosseum (complex), 30 for cooking class (simple) |
+| Page-type variants are headline rewrites | Page-type assembles different *bundles* with different *depth* |
+| `hasMultipleEntrances: true` is binary | `queue_complexity: 'complex'` with 4 lanes, security, ticket desk |
+| Questions selected independently | Questions bundled by *intent* — timing is one decision, not two charts |
+| Editorial is generic | Editorial is contextual: "4 lanes, 5 transport modes, 1 strict security check" |
+
+---
+
+## What to Tell Replit Agent
+
+> "Redesign the question bank from flat questions to an **intent-driven bundle system**:
+> 
+> 1. Define 7 visitor intents: WHEN, HOW_LONG, WHICH, WHAT_IF, HOW, WHY, WHAT
+> 2. Create question bundles that group 1-3 questions per intent (e.g., Timing Bundle = weekly_pattern + hourly_heatmap + booking_window)
+> 3. Add context signal extraction from DRD: queue_complexity, accessibility_profile, transport_richness, seasonal_dramatic, historical_depth, spatial_complexity, ticket_tier_complexity, group_dynamics, weather_sensitivity
+> 4. Score bundles per CE based on signals + DRD content
+> 5. Assemble page decks from top-scoring bundles, not individual questions
+> 6. Update `buildDeck()` to use bundle scoring instead of flat question scoring
+> 7. Keep existing chart specs and renderers — this is the selection logic, not the visualization layer"
+
+---
+
+This makes the bank **intelligent** because it understands *why* a visitor is asking, *what makes this CE unique*, and *which combination of charts answers the complete question* — not just "show me data about entrances."
+
+Want me to write the full files for this redesign?

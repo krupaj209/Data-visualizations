@@ -1,0 +1,444 @@
+Exactly. The intelligence is in **knowing which questions apply to which CE, and why**. Let me design the system that captures this.
+
+---
+
+## The Core Insight
+
+| Question | Applies to Colosseum? | Applies to Cooking Class? | Why Different |
+|-----------|----------------------|--------------------------|-------------|
+| "Which entrance do I use?" | Yes (4 lanes, 1 gate) | No (studio door, walk in) | Physical entry complexity |
+| "How do I get there?" | Yes (metro, bus, taxi, walk) | Maybe (address only) | Transport richness |
+| "What time is quietest?" | Yes (massive crowd variation) | No (fixed class size) | Crowd variability |
+| "Which ticket tier?" | Yes (5+ tiers) | No (one price) | Ticket complexity |
+| "What should I see first?" | Yes (multiple rooms) | No (one kitchen) | Spatial complexity |
+| "Is skip-the-line worth it?" | Yes (saves 60-180 min) | No (no queue) | Queue existence |
+| "What's the dress code?" | No | Yes (apron, closed shoes) | Activity type |
+
+**The tool must know: not just *what* questions exist, but *why* they apply to *this* CE.**
+
+---
+
+## The Intelligence Model: Three Layers
+
+### Layer 1: Universal Questions (Apply to Most CEs)
+
+These are the "safe" questions that appear unless explicitly blocked:
+
+| Question | Default | Block When |
+|----------|---------|-----------|
+| "When is it quietest?" | Include | `crowd_variability: none` |
+| "How long should I spend?" | Include | `fixed_duration: true` |
+| "How far ahead should I book?" | Include | `unlimited_capacity: true` |
+| "What do I need to bring?" | Include | `no_restrictions: true` |
+
+### Layer 2: Category-Specific Questions (Apply to Subcategories)
+
+These are gated by subcategory:
+
+| Question | Subcategories | Trigger Signal |
+|----------|-------------|----------------|
+| "Which entrance do I use?" | Landmarks, Museums, Theme Parks | `entry_points > 1` |
+| "Which ride should I do first?" | Theme Parks, Water Parks | `has_headline_attraction: true` |
+| "Which seat is worth the premium?" | Entertainment, Sports | `has_seated_venue: true` |
+| "Which dive site fits my skill?" | Scuba Diving | `has_multiple_sites: true` |
+| "Which trail fits my fitness?" | Hiking | `has_multiple_trails: true` |
+| "Which class format fits my group?" | Cooking Classes | `has_multiple_formats: true` |
+
+### Layer 3: CE-Specific Questions (Apply to This Exact CE)
+
+These are triggered by **DRD intelligence**:
+
+| Question | DRD Signal | Example CE |
+|----------|-----------|-----------|
+| "Is skip-the-line worth it?" | DRD: "standard queue 60-180 min, skip-line 5-10 min" | Colosseum |
+| "Should I book the underground tour?" | DRD: "underground requires separate add-on" | Colosseum |
+| "Can I visit the Tribune room?" | DRD: "Tribune is the main draw, often crowded" | Accademia |
+| "Is the sunset cruise actually at sunset?" | DRD: "sunset departure shifts 5pm-9pm seasonally" | Seine Cruise |
+| "Will I see the Big Five?" | DRD: "sighting probability 85% in July, 40% in January" | Safari |
+
+---
+
+## The Decision Engine
+
+```
+Input: CE + DRD + Subcategory
+
+Step 1: Start with universal questions (all included by default)
+Step 2: Add category-specific questions (if subcategory matches)
+Step 3: Add CE-specific questions (if DRD signals match)
+Step 4: Remove questions blocked by CE signals
+Step 5: Score remaining questions by DRD confidence
+Step 6: Select top N questions for the page type
+Step 7: Generate fallback text + embed for each
+```
+
+---
+
+## The Question Registry: Intelligent Structure
+
+```typescript
+// lib/question-bank/src/questions.ts
+
+export const QuestionRegistry = {
+  
+  // ─────────────────────────────────────────
+  // UNIVERSAL (default: included)
+  // ─────────────────────────────────────────
+  
+  when_quietest: {
+    id: 'when_quietest',
+    question: "When is it quietest?",
+    chartType: 'hourly_heatmap',
+    default: 'include',
+    blockWhen: {
+      crowd_variability: 'none',
+      fixed_capacity: true,
+    },
+    categoryOverride: {
+      'Entertainment': { chartType: 'weekly_pattern' }, // shows sell-out by day
+      'Transportation': { chartType: 'hourly_heatmap', question: "When is the journey fastest?" },
+    },
+  },
+  
+  how_long_spend: {
+    id: 'how_long_spend',
+    question: "How long should I spend here?",
+    chartType: 'duration_stat',
+    default: 'include',
+    blockWhen: {
+      fixed_duration: true,
+    },
+    categoryOverride: {
+      'Tours': { question: "How much time is actually at the site?" },
+      'Cruises': { question: "How long is the cruise route?" },
+    },
+  },
+  
+  how_far_ahead_book: {
+    id: 'how_far_ahead_book',
+    question: "How far ahead should I book?",
+    chartType: 'booking_window',
+    default: 'include',
+    blockWhen: {
+      unlimited_capacity: true,
+      no_sell_out_risk: true,
+    },
+  },
+  
+  what_to_bring: {
+    id: 'what_to_bring',
+    question: "What do I need to bring or know?",
+    chartType: 'rules_checklist',
+    default: 'include',
+    blockWhen: {
+      no_restrictions: true,
+    },
+    categoryOverride: {
+      'Religious Sites': { question: "What's the dress code and what's prohibited?", priority: 'high' },
+      'Museums': { question: "What are the bag, photography, and security rules?" },
+    },
+  },
+  
+  // ─────────────────────────────────────────
+  // CATEGORY-SPECIFIC (gated by subcategory)
+  // ─────────────────────────────────────────
+  
+  which_entrance: {
+    id: 'which_entrance',
+    question: "Which entrance should I head to?",
+    chartType: 'entrance_map',
+    applicableSubcategories: ['Landmarks', 'Museums', 'Theme Parks', 'Religious Sites'],
+    trigger: { entry_points: '>1' },
+    blockWhen: { single_entry_lane: true },
+  },
+  
+  which_ride_first: {
+    id: 'which_ride_first',
+    question: "Which ride should I do first?",
+    chartType: 'opening_hour_rank',
+    applicableSubcategories: ['Theme Parks', 'Water Parks'],
+    trigger: { has_headline_attraction: true },
+  },
+  
+  which_seat_worth_premium: {
+    id: 'which_seat_worth_premium',
+    question: "Which seat is worth the premium?",
+    chartType: 'seat_value_map',
+    applicableSubcategories: ['Entertainment', 'Sports', 'Plays', 'Musicals', 'Opera', 'Rock Concerts'],
+    trigger: { has_seated_venue: true, has_price_tiers: true },
+  },
+  
+  which_dive_site: {
+    id: 'which_dive_site',
+    question: "Which dive site fits my skill level?",
+    chartType: 'compare_zones',
+    applicableSubcategories: ['Scuba Diving', 'Snorkeling'],
+    trigger: { has_multiple_sites: true },
+  },
+  
+  which_trail_fitness: {
+    id: 'which_trail_fitness',
+    question: "Which trail fits my fitness level?",
+    chartType: 'best_for_matrix',
+    applicableSubcategories: ['Hiking & Trails'],
+    trigger: { has_multiple_trails: true },
+  },
+  
+  which_class_format: {
+    id: 'which_class_format',
+    question: "Which class format fits my group?",
+    chartType: 'slot_compare',
+    applicableSubcategories: ['Cooking Classes', 'Workshops'],
+    trigger: { has_multiple_formats: true },
+  },
+  
+  // ─────────────────────────────────────────
+  // CE-SPECIFIC (gated by DRD signals)
+  // ─────────────────────────────────────────
+  
+  is_skip_line_worth_it: {
+    id: 'is_skip_line_worth_it',
+    question: "Is skip-the-line actually worth the extra cost?",
+    chartType: 'time_value_matrix',
+    trigger: {
+      'DRD:queue_times': { standard_wait: '>30min', skip_wait: '<15min' },
+      'DRD:ticket_tiers': { has_skip_line: true, price_gap: '>20%' },
+    },
+    categoryOverride: {
+      'Museums': { question: "Does 'skip-the-line' really let me skip all the queues?" },
+    },
+  },
+  
+  should_i_book_underground: {
+    id: 'should_i_book_underground',
+    question: "Should I book the underground / arena floor add-on?",
+    chartType: 'ticket_access_matrix',
+    trigger: {
+      'DRD:access': { has_underground: true, requires_add_on: true },
+    },
+  },
+  
+  will_i_see_wildlife: {
+    id: 'will_i_see_wildlife',
+    question: "Will I actually see wildlife?",
+    chartType: 'sighting_probability',
+    trigger: {
+      'DRD:wildlife': { sighting_probability: 'exists' },
+    },
+    applicableSubcategories: ['Safari', 'Whale Watching'],
+  },
+  
+  is_sunset_cruise_at_sunset: {
+    id: 'is_sunset_cruise_at_sunset',
+    question: "Is the 'sunset' cruise actually at sunset?",
+    chartType: 'optimal_departure',
+    trigger: {
+      'DRD:departures': { has_sunset_slot: true, seasonal_shift: true },
+    },
+  },
+  
+  which_gallery_first: {
+    id: 'which_gallery_first',
+    question: "Which gallery should I visit first, and when?",
+    chartType: 'zone_crowd_heatmap',
+    trigger: {
+      'DRD:layout': { has_named_galleries: true, crowd_varies_by_gallery: true },
+    },
+  },
+  
+  // ─────────────────────────────────────────
+  // CATEGORY: SIGHTSEEING CRUISES (complex)
+  // ─────────────────────────────────────────
+  
+  which_cruise_type: {
+    id: 'which_cruise_type',
+    question: "Which cruise type fits my day?",
+    chartType: 'slot_compare',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises'],
+    trigger: { has_multiple_products: true },
+  },
+  
+  what_will_i_see: {
+    id: 'what_will_i_see',
+    question: "What will I actually see on the route?",
+    chartType: 'landmark_coverage',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises', 'Day Trips'],
+    trigger: { has_named_route: true },
+  },
+  
+  short_loop_or_destination: {
+    id: 'short_loop_or_destination',
+    question: "Short loop or destination cruise?",
+    chartType: 'slot_compare',
+    applicableSubcategories: ['Sightseeing Cruises'],
+    trigger: { has_route_variants: true },
+  },
+  
+  day_or_night_cruise: {
+    id: 'day_or_night_cruise',
+    question: "Day cruise or after-dark cruise?",
+    chartType: 'slot_compare',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises'],
+    trigger: { has_day_and_night: true },
+  },
+  
+  where_should_i_sit: {
+    id: 'where_should_i_sit',
+    question: "Where should I sit for the best view?",
+    chartType: 'compare_zones',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises'],
+    trigger: { has_deck_zones: true },
+  },
+  
+  when_do_prices_change: {
+    id: 'when_do_prices_change',
+    question: "When do cruise prices actually change?",
+    chartType: 'month_calendar',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises'],
+    trigger: { has_dynamic_pricing: true },
+  },
+  
+  single_or_hop_on_off: {
+    id: 'single_or_hop_on_off',
+    question: "Single cruise or hop-on hop-off pass?",
+    chartType: 'slot_compare',
+    applicableSubcategories: ['Sightseeing Cruises'],
+    trigger: { has_hop_on_off_variant: true },
+  },
+  
+  how_is_time_used: {
+    id: 'how_is_time_used',
+    question: "How is the cruise time actually used?",
+    chartType: 'time_split',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises', 'Day Trips'],
+    trigger: { has_multiple_segments: true },
+  },
+  
+  which_departure_best_views: {
+    id: 'which_departure_best_views',
+    question: "Which departure time gives the best views?",
+    chartType: 'optimal_departure',
+    applicableSubcategories: ['Sightseeing Cruises', 'Helicopter Tours', 'Hot Air Balloon'],
+    trigger: { has_multiple_departures: true, light_quality_varies: true },
+  },
+  
+  how_far_ahead_summer_sells_out: {
+    id: 'how_far_ahead_summer_sells_out',
+    question: "How far ahead do summer slots actually sell out?",
+    chartType: 'booking_window',
+    applicableSubcategories: ['Sightseeing Cruises', 'Dinner Cruises'],
+    trigger: { has_sell_out_risk: true },
+    categoryOverride: {
+      'Sightseeing Cruises': { question: "How far ahead do summer slots actually sell out?" },
+    },
+  },
+  
+  when_is_river_quietest: {
+    id: 'when_is_river_quietest',
+    question: "When during the day is the river quietest?",
+    chartType: 'daily_pattern',
+    applicableSubcategories: ['Sightseeing Cruises'],
+    trigger: { has_boarding_pressure_data: true },
+  },
+  
+};
+```
+
+---
+
+## The Intelligence Flow
+
+```
+CE: Colosseum
+Subcategory: Landmarks
+DRD: {
+  entry_points: 1,
+  lanes: 4,
+  queue_times: { standard: '60-180min', skip: '5-10min' },
+  ticket_tiers: ['standard', 'skip-line', 'guided', 'combo', 'membership'],
+  has_underground: true,
+  requires_add_on: true,
+  has_headline_attraction: false, // not a theme park
+  crowd_variability: 'high',
+  historical_depth: 'deep',
+}
+
+Step 1: Universal questions
+  ✓ when_quietest (crowd_variability: high)
+  ✓ how_long_spend (fixed_duration: false)
+  ✓ how_far_ahead_book (unlimited_capacity: false)
+  ✓ what_to_bring (no_restrictions: false)
+
+Step 2: Category questions (Landmarks)
+  ✓ which_entrance (entry_points: 1, but lanes: 4 → complex entry)
+  ✗ which_ride_first (not Theme Parks)
+  ✗ which_seat_worth_premium (not Entertainment)
+
+Step 3: CE-specific questions (DRD signals)
+  ✓ is_skip_line_worth_it (standard_wait: 60-180min, skip_wait: 5-10min)
+  ✓ should_i_book_underground (has_underground: true, requires_add_on: true)
+  ✗ will_i_see_wildlife (not Safari)
+  ✗ is_sunset_cruise_at_sunset (not Cruise)
+
+Step 4: Score by DRD confidence
+  when_quietest: 95 (strong crowd data)
+  how_long_spend: 70 (estimates only)
+  how_far_ahead_book: 85 (sell-out data)
+  what_to_bring: 90 (security rules well-documented)
+  which_entrance: 98 (complex, well-documented)
+  is_skip_line_worth_it: 95 (strong queue data)
+  should_i_book_underground: 80 (DRD mentions but limited detail)
+
+Step 5: Select top 5 for Plan Your Visit page
+  1. which_entrance (98)
+  2. when_quietest (95)
+  3. is_skip_line_worth_it (95)
+  4. what_to_bring (90)
+  5. how_far_ahead_book (85)
+
+Step 6: Generate
+  - Fallback text for each
+  - Embed spec for each
+  - Editorial overlay for each
+```
+
+---
+
+## What to Tell Replit Agent
+
+> "Redesign the question bank with **three-layer intelligence**:
+> 
+> 1. **Universal questions**: Included by default, blocked by CE signals (crowd_variability, fixed_duration, unlimited_capacity, no_restrictions)
+> 
+> 2. **Category-specific questions**: Gated by subcategory + trigger signals. Examples:
+>    - which_entrance: Landmarks/Museums/Theme Parks, trigger: entry_points > 1 OR lanes > 1
+>    - which_ride_first: Theme Parks/Water Parks, trigger: has_headline_attraction
+>    - which_seat_worth_premium: Entertainment/Sports, trigger: has_seated_venue + has_price_tiers
+>    - which_dive_site: Scuba Diving/Snorkeling, trigger: has_multiple_sites
+>    - which_gallery_first: Museums, trigger: has_named_galleries + crowd_varies_by_gallery
+> 
+> 3. **CE-specific questions**: Gated by DRD signals. Examples:
+>    - is_skip_line_worth_it: DRD shows standard_wait > 30min AND skip_wait < 15min AND price_gap > 20%
+>    - should_i_book_underground: DRD shows has_underground + requires_add_on
+>    - will_i_see_wildlife: DRD shows sighting_probability
+>    - is_sunset_cruise_at_sunset: DRD shows has_sunset_slot + seasonal_shift
+> 
+> 4. **Category overrides**: Same chart type, different question text by subcategory. Example:
+>    - rules_checklist for Museums: 'What are the bag, photography, and security rules?'
+>    - rules_checklist for Religious Sites: 'What's the dress code and what's prohibited inside?'
+>    - rules_checklist for Cooking Classes: 'What should I wear and what equipment is provided?'
+> 
+> 5. **Scoring**: Each question gets a score 0-100 based on DRD confidence. Select top N for the page.
+> 
+> 6. **Output**: For each selected question, generate fallback text (SEO) + embed spec (iframe) + editorial overlay (CTA)."
+
+---
+
+This makes the tool **intelligent** because it understands:
+- **What** questions exist
+- **Which** apply to this CE
+- **Why** they apply (DRD signals)
+- **How** they should be framed (category overrides)
+- **When** to include them (scoring)
+
+Want me to write the full registry file?
