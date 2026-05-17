@@ -18,10 +18,16 @@ import {
 import { ChartTooltip } from "@/components/charts/system";
 import { type DailyPatternSpec } from "@/lib/chart-spec";
 
+import {
+  resolvePalette,
+  type PresentationOverrides,
+} from "@/lib/presentation";
+
 interface Props {
   spec: DailyPatternSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 // Map this chart's spec-level zone tones onto the shared BAND_TONE family

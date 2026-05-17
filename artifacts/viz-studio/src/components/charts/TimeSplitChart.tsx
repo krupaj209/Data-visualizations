@@ -4,10 +4,16 @@ import { ACCENT_FG, ACCENT_FILL, ACCENT_SOFT, BRAND } from "@/lib/brand";
 import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
 import { type TimeSplitSpec } from "@/lib/chart-spec";
 
+import {
+  resolvePalette,
+  type PresentationOverrides,
+} from "@/lib/presentation";
+
 interface Props {
   spec: TimeSplitSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 function fmtTotal(min: number) {

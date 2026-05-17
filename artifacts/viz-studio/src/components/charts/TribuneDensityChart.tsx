@@ -17,10 +17,13 @@ import { ChartTooltip } from "@/components/charts/system";
 import { type TribuneDensitySpec } from "@/lib/chart-spec";
 import { ChipButton } from "./interactions/ChipButton";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: TribuneDensitySpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 // Soft default, vivid only on callout — same rhythm as the Weekly pattern

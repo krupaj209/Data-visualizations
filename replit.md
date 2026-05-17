@@ -63,6 +63,29 @@ URL overrides:
 - `?compact=0` / `compact=false` — force default chrome at any size.
 - No flag — auto-detect by iframe height (recommended for CMS).
 
+**Task #151 — presentation overrides.** Charts also accept render-time
+presentation params that re-skin or re-frame the visual without re-calling
+Gemini. They merge over any saved `charts.presentation` jsonb (URL wins):
+
+- `?palette=` — `brand` (default) / `traffic` / `mono` / `cool` / `warm` / `high_contrast`.
+- `?direction=` — `low_good` / `low_bad`. Flips the quantitative ramp for charts that encode a single axis (currently `weekly_pattern`, `hourly_heatmap`, `seasonal_curve`).
+- `?view=` — chart-type-specific alternate form (e.g. `hourly_heatmap` supports `grid` / `strip`).
+- `?density=` — `comfortable` / `compact`. Overrides the iframe-height auto-detect; `?compact=` still works as a legacy alias.
+- `?emphasis=` — chart-specific target id (e.g. `mon` on `weekly_pattern`, hour-of-day `14` on `hourly_heatmap`, `slot-0` on `slot_compare`). Decorates the matching element with a brand-colored ring.
+
+The chart types in scope and their option matrix live in
+`artifacts/viz-studio/src/lib/presentation.ts` (`PRESENTATION_REGISTRY`).
+Legacy types (`compare_zones`, `ticket_ladder`, `stat_grid`, `month_calendar`,
+`donut_breakdown`) are intentionally excluded — they predate the curated
+cluster and are not part of the CMS embed contract.
+
+Writers edit these on the CE Detail page via a per-chart "Presentation"
+disclosure card (palette / view / direction / density / emphasis selects +
+"Copy preview URL"). Saves go through `PATCH /api/charts/:id` with only the
+`presentation` field set; the api-server detects presentation-only updates
+(`isPresentationOnlyUpdate` in `routes/charts.ts`) and **allows them on locked
+CEs** since presentation never mutates the chart spec.
+
 Compact is honored by all 8 chart types used by the curated Florence cluster (the only CEs the CMS embeds — see `LOCKED_CE_SLUGS`). `ChartCard` strips its header and tightens padding for every chart. Per-component chrome gating: `SeasonalCurve` hides metric_insights/calendar_notes/fallback legend; `BookingWindow` hides "Sweet spot" pill + sold_out_risk footer; `DurationProfiles` hides headline/scale-ticks/tip footer; `TribuneDensity` hides y_label/context_pills/arrow_callout helper, samples ~5 vs ~12 x-axis labels; `CoBookings` hides headline + per-row badge, tightens spacing; `WeeklyPattern` hides level legend + day_notes; `DailyPattern` hides opening-hours caption, samples ~5 vs ~9 x-axis labels; `EntranceLanes` hides venue title strip; `DailyProgramme` hides ChartCard header + per-event sub-labels + highlight callout; `TimeSplit` hides total/runtime row + bottom callout, tightens legend; `SlotCompare` hides slot legend, "{slot} leads" labels, and bottom insight, shrinks bars to 14px. `HourlyHeatmap` accepts `compact` and renders visualization-only (grid + Quiet→Crowded legend + best-window pill).
 
 The `HourlyHeatmapSpec.highlight_cards` field (`{kind, headline, detail}` × ≤6, kinds: `quietest_hours`, `best_photography`, `best_weather`, `fastest_entry`, `best_evening`, `best_off_season`) is **never rendered inside the chart** — it surfaces only on the studio CE detail page as a "Suggested content" panel (`SuggestedContentPanel` in `pages/CeDetail.tsx`) with a Copy-as-HTML button. This keeps embeds purely visual while preserving supplementary text as ready-to-ship CMS copy. Reference: Colosseum `hourly-crowd-pattern` chart in `lib/curated-seeds/src/data/colosseum.ts`.

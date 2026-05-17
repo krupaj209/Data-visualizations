@@ -9,6 +9,12 @@ import {
   type ChartProvenanceLite,
   type ChartSpec,
 } from "@/lib/chart-spec";
+import {
+  mergePresentation,
+  normalizePresentation,
+  readPresentationFromQuery,
+  type PresentationOverrides,
+} from "@/lib/presentation";
 
 /**
  * Hysteresis bounds for auto-compact. Below ENTER, chrome doesn't fit and we
@@ -64,6 +70,30 @@ export default function Embed() {
   const spec = chart.spec as unknown as ChartSpec;
   const ceName = ce?.name;
 
+  // Task #151 — render-time presentation: persisted overrides on the chart
+  // row, optionally overridden per-field by URL params (`?palette=`,
+  // `?direction=`, `?view=`, `?density=`, `?emphasis=`).
+  const savedPresentation: PresentationOverrides = normalizePresentation(
+    chart.presentation ?? null,
+    chart.chartType,
+  );
+  const urlPresentation: PresentationOverrides =
+    typeof window !== "undefined"
+      ? readPresentationFromQuery(window.location.search, chart.chartType)
+      : {};
+  const presentation = mergePresentation(savedPresentation, urlPresentation);
+
+  // Density-as-compact: an explicit `density=compact` from URL or saved row
+  // forces compact mode, density=comfortable forces full chrome. Otherwise
+  // fall back to the legacy `?compact=` flag + auto height detection.
+  const densityCompact: boolean | null =
+    presentation.density === "compact"
+      ? true
+      : presentation.density === "comfortable"
+        ? false
+        : null;
+  const effectiveCompact = densityCompact ?? compact;
+
   // No height floor: the host iframe is the source of truth on size. The
   // chart components use container-query-based clamps and adapt to whatever
   // box they're given. When the box is short, `compact` auto-flips on (see
@@ -87,7 +117,8 @@ export default function Embed() {
         <ChartRenderer
           spec={spec}
           preserve={ceName}
-          compact={compact}
+          compact={effectiveCompact}
+          presentation={presentation}
           provenance={chart.provenance as ChartProvenanceLite | null}
           header={{
             title: chart.title,

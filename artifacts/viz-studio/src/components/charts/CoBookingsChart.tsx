@@ -11,10 +11,13 @@ import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
 import { type CoBookingsSpec } from "@/lib/chart-spec";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: CoBookingsSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 const ICON_MAP: Record<

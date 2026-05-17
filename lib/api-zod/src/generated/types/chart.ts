@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ChartPresentation } from "./chartPresentation";
 import type { ChartProvenance } from "./chartProvenance";
 import type { ChartSpec } from "./chartSpec";
 
@@ -36,6 +37,12 @@ spec.subtitle when null. Never read by embeds.
 back to spec.insight when null. Never read by embeds.
  */
   overlayInsight?: string | null;
+  /** Task #151 — render-time presentation overrides applied by chart
+components (palette, view, emphasis, direction, density). Never
+triggers re-generation. Shape mirrors `PresentationOverrides` in
+the viz-studio presentation lib.
+ */
+  presentation?: ChartPresentation;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;

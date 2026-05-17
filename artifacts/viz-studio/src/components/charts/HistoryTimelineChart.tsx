@@ -5,10 +5,13 @@ import { BRAND } from "@/lib/brand";
 import type { HistoryTimelineSpec } from "@/lib/chart-spec";
 import { toSentenceCase } from "@/lib/text";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: HistoryTimelineSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 type EraKey = HistoryTimelineSpec["events"][number]["era"];

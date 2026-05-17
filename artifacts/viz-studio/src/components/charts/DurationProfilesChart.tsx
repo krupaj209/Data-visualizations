@@ -8,10 +8,13 @@ import { type DurationProfilesSpec } from "@/lib/chart-spec";
 const NAME_COL = "minmax(96px, 138px)";
 const ICON_COL = "36px";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: DurationProfilesSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 const ICONS: Record<DurationProfilesSpec["profiles"][number]["icon"], string> = {

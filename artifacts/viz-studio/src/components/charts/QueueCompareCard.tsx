@@ -11,10 +11,13 @@ import { ChartCard } from "@/components/ChartCard";
 import { BRAND } from "@/lib/brand";
 import type { QueueCompareSpec, EntranceLanesSpec } from "@/lib/chart-spec";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: QueueCompareSpec | EntranceLanesSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 type LaneTone = "candy" | "purps" | "okay" | "slate";

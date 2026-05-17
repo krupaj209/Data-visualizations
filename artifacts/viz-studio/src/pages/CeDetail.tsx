@@ -54,6 +54,17 @@ import {
   type IdeationMessage,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import {
+  getPresentationOptions,
+  normalizePresentation,
+  PALETTE_LABELS,
+  DIRECTION_LABELS,
+  DENSITY_LABELS,
+  type PresentationOverrides,
+  type PaletteId,
+  type DirectionId,
+  type DensityId,
+} from "@/lib/presentation";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
@@ -1264,6 +1275,14 @@ function ChartRow({
                 insight: chart.insight || undefined,
               }}
               variant={spec.type === "queue_compare" ? "comparison" : undefined}
+              presentation={normalizePresentation(
+                (chart as unknown as { presentation?: unknown }).presentation,
+              )}
+              compact={
+                normalizePresentation(
+                  (chart as unknown as { presentation?: unknown }).presentation,
+                ).density === "compact"
+              }
             />
           </div>
         </div>
@@ -1322,6 +1341,14 @@ function ChartRow({
           <EditorialKeyInsight overlay={editorialOverlay} />
           <ProvenanceDisclosure
             provenance={chart.provenance as ChartProvenanceLite | null}
+          />
+          <PresentationPanel
+            chartId={chart.id}
+            chartType={spec.type}
+            presentation={normalizePresentation(
+              (chart as unknown as { presentation?: unknown }).presentation,
+            )}
+            embedUrl={`${window.location.origin}${BASE}/studio/embed/${chart.id}`}
           />
           <ChartFactTable
             chartId={chart.id}
@@ -2233,6 +2260,310 @@ function relativeTime(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Presentation panel — render-time overrides (Task #151)                     */
+/* -------------------------------------------------------------------------- */
+
+function PresentationPanel({
+  chartId,
+  chartType,
+  presentation,
+  embedUrl,
+}: {
+  chartId: number;
+  chartType: string;
+  presentation: PresentationOverrides;
+  embedUrl: string;
+}) {
+  const opts = getPresentationOptions(chartType);
+  const updateMut = useUpdateChart();
+  const qc = useQueryClient();
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  if (!opts) return null;
+
+  async function save(next: PresentationOverrides) {
+    setSaveError(null);
+    try {
+      await updateMut.mutateAsync({
+        id: chartId,
+        data: { presentation: next as Record<string, unknown> },
+      });
+      qc.invalidateQueries({ queryKey: ["getCe"] });
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Failed to save");
+    }
+  }
+
+  function patch(partial: Partial<PresentationOverrides>) {
+    const merged = normalizePresentation({ ...presentation, ...partial });
+    void save(merged);
+  }
+
+  // Build a preview URL with the current overrides as query params so writers
+  // can copy a sharable embed link reflecting their selections.
+  const previewQuery = new URLSearchParams();
+  if (presentation.palette) previewQuery.set("palette", presentation.palette);
+  if (presentation.direction) previewQuery.set("direction", presentation.direction);
+  if (presentation.view) previewQuery.set("view", presentation.view);
+  if (presentation.density) previewQuery.set("density", presentation.density);
+  if (presentation.emphasis) previewQuery.set("emphasis", presentation.emphasis);
+  const previewUrl = previewQuery.toString()
+    ? `${embedUrl}?${previewQuery.toString()}`
+    : embedUrl;
+
+  async function copyPreviewUrl() {
+    try {
+      await navigator.clipboard.writeText(previewUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* no-op */
+    }
+  }
+
+  const selectStyle = {
+    background: "white",
+    color: BRAND.slate950,
+    border: `1px solid ${BRAND.slate200}`,
+    padding: "6px 8px",
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 12,
+    width: "100%",
+    cursor: "pointer",
+  } as const;
+
+  const labelStyle = {
+    fontSize: 10,
+    fontWeight: 800,
+    color: BRAND.slate500,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+  };
+
+  return (
+    <details
+      style={{
+        border: `1px solid ${BRAND.slate200}`,
+        borderRadius: 12,
+        background: "white",
+        padding: "10px 12px",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          listStyle: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          color: BRAND.slate900,
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        <span>Presentation</span>
+        <span
+          style={{
+            borderRadius: 999,
+            padding: "3px 8px",
+            background: BRAND.purpsSoft,
+            color: BRAND.purps,
+            fontSize: 10,
+            fontWeight: 800,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Render-time
+        </span>
+      </summary>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={labelStyle}>Palette</span>
+          <select
+            style={selectStyle}
+            disabled={updateMut.isPending}
+            value={presentation.palette ?? ""}
+            onChange={(e) =>
+              patch({
+                palette: (e.target.value || undefined) as PaletteId | undefined,
+              })
+            }
+          >
+            <option value="">Default (brand)</option>
+            {opts.palettes.map((p) => (
+              <option key={p} value={p}>
+                {PALETTE_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {opts.supportsDirection && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={labelStyle}>Direction</span>
+            <select
+              style={selectStyle}
+              disabled={updateMut.isPending}
+              value={presentation.direction ?? ""}
+              onChange={(e) =>
+                patch({
+                  direction: (e.target.value || undefined) as
+                    | DirectionId
+                    | undefined,
+                })
+              }
+            >
+              <option value="">Default</option>
+              {(["low_good", "low_bad"] as DirectionId[]).map((d) => (
+                <option key={d} value={d}>
+                  {DIRECTION_LABELS[d]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {opts.views.length > 0 && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={labelStyle}>View</span>
+            <select
+              style={selectStyle}
+              disabled={updateMut.isPending}
+              value={presentation.view ?? ""}
+              onChange={(e) =>
+                patch({ view: e.target.value || undefined })
+              }
+            >
+              <option value="">Default</option>
+              {opts.views.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {opts.supportsDensity && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={labelStyle}>Density</span>
+            <select
+              style={selectStyle}
+              disabled={updateMut.isPending}
+              value={presentation.density ?? ""}
+              onChange={(e) =>
+                patch({
+                  density: (e.target.value || undefined) as
+                    | DensityId
+                    | undefined,
+                })
+              }
+            >
+              <option value="">Auto (by iframe height)</option>
+              {(["comfortable", "compact"] as DensityId[]).map((d) => (
+                <option key={d} value={d}>
+                  {DENSITY_LABELS[d]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {opts.emphasisLabel && (
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              gridColumn: "1 / -1",
+            }}
+          >
+            <span style={labelStyle}>{opts.emphasisLabel}</span>
+            <input
+              type="text"
+              placeholder="e.g. mon, 14, slot-0"
+              style={{ ...selectStyle, cursor: "text" }}
+              disabled={updateMut.isPending}
+              defaultValue={presentation.emphasis ?? ""}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if ((v || undefined) !== presentation.emphasis) {
+                  patch({ emphasis: v || undefined });
+                }
+              }}
+            />
+          </label>
+        )}
+      </div>
+
+      <div
+        className="mt-3 flex items-center justify-between gap-2 flex-wrap"
+        style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 8 }}
+      >
+        <button
+          type="button"
+          onClick={() => save({})}
+          disabled={updateMut.isPending}
+          style={{
+            background: "white",
+            color: BRAND.slate700,
+            border: `1px solid ${BRAND.slate200}`,
+            padding: "5px 10px",
+            borderRadius: 8,
+            fontWeight: 800,
+            fontSize: 11,
+            cursor: updateMut.isPending ? "wait" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <RotateCcw size={11} />
+          Reset
+        </button>
+        <button
+          type="button"
+          onClick={copyPreviewUrl}
+          style={{
+            background: BRAND.purps,
+            color: "white",
+            border: `1px solid ${BRAND.purps}`,
+            padding: "5px 10px",
+            borderRadius: 8,
+            fontWeight: 800,
+            fontSize: 11,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? "Copied" : "Copy preview URL"}
+        </button>
+      </div>
+
+      {saveError && (
+        <p
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            color: BRAND.candy,
+          }}
+        >
+          {saveError}
+        </p>
+      )}
+    </details>
+  );
 }
 
 function ProvenanceDisclosure({

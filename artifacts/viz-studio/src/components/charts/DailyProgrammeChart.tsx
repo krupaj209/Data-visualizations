@@ -11,10 +11,13 @@ import { ChartTooltip } from "@/components/charts/system";
 import { type DailyProgrammeSpec } from "@/lib/chart-spec";
 import { formatClock } from "@/lib/time";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: DailyProgrammeSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 const ICON_GLYPH: Record<NonNullable<DailyProgrammeSpec["events"][number]["icon"]>, string> = {

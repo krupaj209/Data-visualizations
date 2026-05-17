@@ -8,10 +8,13 @@ import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill } from "@/components/charts/system";
 import { type EntranceLanesSpec } from "@/lib/chart-spec";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: EntranceLanesSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 // Soft default, vivid only on the highlighted lane — same rhythm as the

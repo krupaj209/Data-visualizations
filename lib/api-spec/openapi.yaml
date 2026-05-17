@@ -1539,6 +1539,15 @@ components:
           description: |
             Writer-edited editorial overlay key-insight callout copy. Falls
             back to spec.insight when null. Never read by embeds.
+        presentation:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            Task #151 — render-time presentation overrides applied by chart
+            components (palette, view, emphasis, direction, density). Never
+            triggers re-generation. Shape mirrors `PresentationOverrides` in
+            the viz-studio presentation lib.
         sortOrder:
           type: integer
         openFeedbackCount:
@@ -1597,6 +1606,14 @@ components:
           type: string
           nullable: true
           maxLength: 500
+        presentation:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            Task #151 — render-time presentation overrides (palette, view,
+            emphasis, direction, density). Pass `null` to clear. Allowed on
+            locked CEs (does not modify the chart spec).
         writerId:
           type: string
     ChartFactReviewInput:

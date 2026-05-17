@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ChartUpdateInputPresentation } from "./chartUpdateInputPresentation";
 import type { ChartUpdateInputSpec } from "./chartUpdateInputSpec";
 
 export interface ChartUpdateInput {
@@ -24,5 +25,10 @@ export interface ChartUpdateInput {
   overlaySubhead?: string | null;
   /** @maxLength 500 */
   overlayInsight?: string | null;
+  /** Task #151 — render-time presentation overrides (palette, view,
+emphasis, direction, density). Pass `null` to clear. Allowed on
+locked CEs (does not modify the chart spec).
+ */
+  presentation?: ChartUpdateInputPresentation;
   writerId?: string;
 }

@@ -5,10 +5,13 @@ import { BRAND } from "@/lib/brand";
 import { CalloutPill } from "@/components/charts/system";
 import { type BookingWindowSpec } from "@/lib/chart-spec";
 
+import type { PresentationOverrides } from "@/lib/presentation";
+
 interface Props {
   spec: BookingWindowSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 interface Bucket {

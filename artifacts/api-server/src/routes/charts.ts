@@ -82,6 +82,7 @@ function serializeChart(chart: Chart) {
     overlayHeadline: chart.overlayHeadline ?? null,
     overlaySubhead: chart.overlaySubhead ?? null,
     overlayInsight: chart.overlayInsight ?? null,
+    presentation: chart.presentation ?? null,
     sortOrder: chart.sortOrder,
     createdAt: chart.createdAt.toISOString(),
     updatedAt: chart.updatedAt.toISOString(),
@@ -133,6 +134,25 @@ router.get("/charts/:id", async (req, res): Promise<void> => {
 /* PATCH /charts/:id — writer edit                                             */
 /* -------------------------------------------------------------------------- */
 
+const PRESENTATION_PALETTES = [
+  "brand",
+  "traffic",
+  "mono",
+  "cool",
+  "warm",
+  "high_contrast",
+] as const;
+
+const presentationSchema = z
+  .object({
+    palette: z.enum(PRESENTATION_PALETTES).optional(),
+    direction: z.enum(["low_good", "low_bad"] as const).optional(),
+    density: z.enum(["comfortable", "compact"] as const).optional(),
+    view: z.string().max(40).optional(),
+    emphasis: z.string().max(120).optional(),
+  })
+  .strict();
+
 const updateBody = z.object({
   question: z.string().min(2).max(200).optional(),
   title: z.string().min(1).max(120).optional(),
@@ -145,8 +165,27 @@ const updateBody = z.object({
   overlayHeadline: z.string().max(160).nullable().optional(),
   overlaySubhead: z.string().max(240).nullable().optional(),
   overlayInsight: z.string().max(500).nullable().optional(),
+  // Task #151 — presentation overrides. Allowed on locked CEs.
+  presentation: presentationSchema.nullable().optional(),
   writerId: z.string().max(120).optional(),
 });
+
+/**
+ * Returns true if the parsed update body touches only render-time
+ * presentation (Task #151). Such updates are allowed on locked CEs because
+ * they never change the chart spec — only how it's drawn.
+ */
+function isPresentationOnlyUpdate(
+  body: z.infer<typeof updateBody>,
+): boolean {
+  if (body.presentation === undefined) return false;
+  const keys = Object.keys(body).filter(
+    (k) => k !== "writerId" && k !== "presentation",
+  );
+  return keys.every(
+    (k) => body[k as keyof typeof body] === undefined,
+  );
+}
 
 router.patch("/charts/:id", async (req, res): Promise<void> => {
   const params = GetChartParams.safeParse(req.params);
@@ -171,7 +210,12 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
   }
   const existing = existingRow.chart;
 
-  if (LOCKED_CE_SLUGS.has(existingRow.ce.slug)) {
+  // Task #151 — presentation-only updates are render-time overrides and
+  // never modify the chart spec, so locked CEs allow them.
+  if (
+    LOCKED_CE_SLUGS.has(existingRow.ce.slug) &&
+    !isPresentationOnlyUpdate(parsed.data)
+  ) {
     res.status(409).json({
       error:
         "This CE has a hand-curated chart set and its charts cannot be edited.",
@@ -224,6 +268,21 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
   if (parsed.data.overlayInsight !== undefined) {
     const v = parsed.data.overlayInsight;
     update.overlayInsight = v && v.trim() ? v.trim() : null;
+  }
+
+  if (parsed.data.presentation !== undefined) {
+    // null or empty object → clear the column
+    if (
+      parsed.data.presentation === null ||
+      Object.keys(parsed.data.presentation).length === 0
+    ) {
+      update.presentation = null;
+    } else {
+      update.presentation = parsed.data.presentation as Record<
+        string,
+        unknown
+      >;
+    }
   }
 
   if (Object.keys(update).length === 0) {

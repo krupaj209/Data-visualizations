@@ -71,10 +71,17 @@ function getTrafficFill(score: number, isCallout: boolean): string {
   return isCallout ? TRAFFIC_FILL[step] : TRAFFIC_FILL_SOFT[step];
 }
 
+import {
+  applyDirection,
+  resolvePalette,
+  type PresentationOverrides,
+} from "@/lib/presentation";
+
 interface Props {
   spec: WeeklyPatternSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 const DAY_NOTE_TONE: Record<
@@ -89,7 +96,33 @@ const DAY_NOTE_TONE: Record<
 const PILL_HEADROOM = 26;
 const MAX_BAR_FILL = 0.78;
 
-export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
+export function WeeklyPatternChart({
+  spec,
+  context,
+  compact = false,
+  presentation,
+}: Props) {
+  // Task #151 — when a non-default palette is set, override the traffic-light
+  // ramp by mapping the 5 traffic steps onto the 5 ramp stops. Soft/saturated
+  // distinction is preserved by using stops[2] for soft middles and the full
+  // stop for callouts. Default palette keeps the original traffic colours.
+  const ramp = resolvePalette(presentation);
+  const paletteOverride = !!presentation?.palette;
+  const overrideFill = (score: number, isCallout: boolean): string => {
+    // `direction=low_bad` flips low/high so the warm end of the ramp sits on
+    // low scores. The five buckets map to scale[0..4] respectively.
+    const oriented = applyDirection(score / 100, presentation);
+    const step =
+      oriented < 0.2 ? 0 : oriented < 0.4 ? 1 : oriented < 0.6 ? 2 : oriented < 0.8 ? 3 : 4;
+    if (!isCallout) return ramp.scale[Math.max(0, step - 1)] ?? ramp.scale[step];
+    return ramp.scale[step];
+  };
+  const resolveFill = (score: number, isCallout: boolean) =>
+    paletteOverride ? overrideFill(score, isCallout) : getTrafficFill(score, isCallout);
+
+  // Emphasis: `emphasis=mon`/`tue`/...  → highlighted day code gets the ring.
+  const emphasisDay = (presentation?.emphasis ?? "").toLowerCase();
+
   const byDay = new Map(spec.days.map((d) => [d.day, d]));
   const ordered = DAY_ORDER.map(
     (code) =>
@@ -179,7 +212,9 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
             d.level === "busiest" || d.level === "quietest" || isBest;
           const fill = isClosed
             ? "transparent"
-            : getTrafficFill(d.score, isCallout);
+            : resolveFill(d.score, isCallout);
+          const isEmphasized =
+            !!emphasisDay && d.day.toLowerCase() === emphasisDay;
           const rawPct = Math.max(d.score, isClosed ? 60 : 0);
           const heightPct = rawPct * MAX_BAR_FILL;
           const isActive = selectedIdx === i;
@@ -258,7 +293,9 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                   borderBottomRightRadius: 4,
                   boxShadow: isActive
                     ? `0 0 0 3px ${BRAND.purps}, 0 0 0 5px white inset`
-                    : undefined,
+                    : isEmphasized
+                      ? `0 0 0 2px ${ramp.callout}`
+                      : undefined,
                   transition: "box-shadow .15s ease",
                 }}
               />

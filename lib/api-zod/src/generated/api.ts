@@ -1041,6 +1041,12 @@ export const GetCeResponse = zod.object({
         .describe(
           "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
         ),
+      presentation: zod
+        .record(zod.string(), zod.unknown())
+        .nullish()
+        .describe(
+          "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+        ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
       topFeedbackSeverity: zod.string().nullish(),
@@ -1154,6 +1160,12 @@ export const RegenerateCeResponse = zod.object({
         .nullish()
         .describe(
           "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+        ),
+      presentation: zod
+        .record(zod.string(), zod.unknown())
+        .nullish()
+        .describe(
+          "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
         ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
@@ -1547,6 +1559,12 @@ export const GetChartResponse = zod.object({
       .describe(
         "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
       ),
+    presentation: zod
+      .record(zod.string(), zod.unknown())
+      .nullish()
+      .describe(
+        "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -1610,6 +1628,12 @@ export const UpdateChartBody = zod.object({
     ),
   overlaySubhead: zod.string().max(updateChartBodyOverlaySubheadMax).nullish(),
   overlayInsight: zod.string().max(updateChartBodyOverlayInsightMax).nullish(),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides (palette, view,\nemphasis, direction, density). Pass `null` to clear. Allowed on\nlocked CEs (does not modify the chart spec).\n",
+    ),
   writerId: zod.string().optional(),
 });
 
@@ -1648,6 +1672,12 @@ export const UpdateChartResponse = zod.object({
     .nullish()
     .describe(
       "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+    ),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
     ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
@@ -1730,6 +1760,12 @@ export const RegenerateChartResponse = zod.object({
       .describe(
         "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
       ),
+    presentation: zod
+      .record(zod.string(), zod.unknown())
+      .nullish()
+      .describe(
+        "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -1809,6 +1845,12 @@ export const RegenerateSuggestedContentResponse = zod.object({
       .nullish()
       .describe(
         "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+      ),
+    presentation: zod
+      .record(zod.string(), zod.unknown())
+      .nullish()
+      .describe(
+        "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
@@ -1942,6 +1984,12 @@ export const PublishChartResponse = zod.object({
     .describe(
       "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
     ),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+    ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
   topFeedbackSeverity: zod.string().nullish(),
@@ -2006,6 +2054,12 @@ export const UpsertChartFactReviewResponse = zod.object({
     .describe(
       "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
     ),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+    ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
   topFeedbackSeverity: zod.string().nullish(),
@@ -2057,6 +2111,12 @@ export const ClearChartFactReviewResponse = zod.object({
     .nullish()
     .describe(
       "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+    ),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
     ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
@@ -2170,6 +2230,12 @@ export const MergeChartSuggestionResponse = zod.object({
     .describe(
       "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
     ),
+  presentation: zod
+    .record(zod.string(), zod.unknown())
+    .nullish()
+    .describe(
+      "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
+    ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
   topFeedbackSeverity: zod.string().nullish(),
@@ -2234,6 +2300,12 @@ export const ListAllFeedbackResponseItem = zod.object({
       .nullish()
       .describe(
         "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+      ),
+    presentation: zod
+      .record(zod.string(), zod.unknown())
+      .nullish()
+      .describe(
+        "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
@@ -2651,6 +2723,12 @@ export const PostIdeationGenerateChartResponse = zod.object({
       .nullish()
       .describe(
         "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+      ),
+    presentation: zod
+      .record(zod.string(), zod.unknown())
+      .nullish()
+      .describe(
+        "Task #151 — render-time presentation overrides applied by chart\ncomponents (palette, view, emphasis, direction, density). Never\ntriggers re-generation. Shape mirrors `PresentationOverrides` in\nthe viz-studio presentation lib.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),

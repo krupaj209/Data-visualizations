@@ -40,6 +40,15 @@ export type ChartSpec = { [key: string]: unknown };
 
 export type ChartProvenance = { [key: string]: unknown } | null;
 
+/**
+ * Task #151 — render-time presentation overrides applied by chart
+components (palette, view, emphasis, direction, density). Never
+triggers re-generation. Shape mirrors `PresentationOverrides` in
+the viz-studio presentation lib.
+
+ */
+export type ChartPresentation = { [key: string]: unknown } | null;
+
 export interface Chart {
   id: number;
   ceId: number;
@@ -68,6 +77,12 @@ spec.subtitle when null. Never read by embeds.
 back to spec.insight when null. Never read by embeds.
  */
   overlayInsight?: string | null;
+  /** Task #151 — render-time presentation overrides applied by chart
+components (palette, view, emphasis, direction, density). Never
+triggers re-generation. Shape mirrors `PresentationOverrides` in
+the viz-studio presentation lib.
+ */
+  presentation?: ChartPresentation;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;
@@ -77,6 +92,14 @@ back to spec.insight when null. Never read by embeds.
 }
 
 export type ChartUpdateInputSpec = { [key: string]: unknown };
+
+/**
+ * Task #151 — render-time presentation overrides (palette, view,
+emphasis, direction, density). Pass `null` to clear. Allowed on
+locked CEs (does not modify the chart spec).
+
+ */
+export type ChartUpdateInputPresentation = { [key: string]: unknown } | null;
 
 export interface ChartUpdateInput {
   question?: string;
@@ -95,6 +118,11 @@ export interface ChartUpdateInput {
   overlaySubhead?: string | null;
   /** @maxLength 500 */
   overlayInsight?: string | null;
+  /** Task #151 — render-time presentation overrides (palette, view,
+emphasis, direction, density). Pass `null` to clear. Allowed on
+locked CEs (does not modify the chart spec).
+ */
+  presentation?: ChartUpdateInputPresentation;
   writerId?: string;
 }
 

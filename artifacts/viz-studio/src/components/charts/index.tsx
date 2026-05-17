@@ -54,6 +54,10 @@ import { TimeValueMatrixChart } from "./TimeValueMatrixChart";
 import { AccessibilityGuideChart } from "./AccessibilityGuideChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
+import {
+  getPresentationOptions,
+  type PresentationOverrides,
+} from "@/lib/presentation";
 
 interface Props {
   spec: ChartSpec;
@@ -81,6 +85,12 @@ interface Props {
    * `EntranceLanesChart`.
    */
   variant?: "default" | "comparison";
+  /**
+   * Task #151 — render-time presentation overrides (palette, view,
+   * emphasis, direction, density). Forwarded to chart components that
+   * opt-in via `PRESENTATION_REGISTRY`. Density=compact forces compact.
+   */
+  presentation?: PresentationOverrides;
 }
 
 export function ChartRenderer({
@@ -90,24 +100,42 @@ export function ChartRenderer({
   compact,
   provenance,
   variant,
+  presentation,
 }: Props) {
+  // Only forward presentation to chart types in the Task #151 registry.
+  const pres = getPresentationOptions(spec.type) ? presentation : undefined;
   const context = header?.subtitle
     ? toSentenceCase(header.subtitle, { preserve })
     : undefined;
   switch (spec.type) {
     case "weekly_pattern":
       return (
-        <WeeklyPatternChart spec={spec} context={context} compact={compact} />
+        <WeeklyPatternChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "hourly_heatmap":
       return (
-        <HourlyHeatmapChart spec={spec} context={context} compact={compact} />
+        <HourlyHeatmapChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "month_calendar":
       return <MonthCalendarChart spec={spec} context={context} />;
     case "booking_window":
       return (
-        <BookingWindowChart spec={spec} context={context} compact={compact} />
+        <BookingWindowChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "stat_grid":
       return <StatGridChart spec={spec} context={context} />;
@@ -117,7 +145,12 @@ export function ChartRenderer({
       return <DonutBreakdownChart spec={spec} context={context} />;
     case "seasonal_curve":
       return (
-        <SeasonalCurveChart spec={spec} context={context} compact={compact} />
+        <SeasonalCurveChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "conditions_calendar":
       return (
@@ -159,11 +192,21 @@ export function ChartRenderer({
       return <TicketLadderChart spec={spec} context={context} />;
     case "daily_pattern":
       return (
-        <DailyPatternChart spec={spec} context={context} compact={compact} />
+        <DailyPatternChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "tribune_density":
       return (
-        <TribuneDensityChart spec={spec} context={context} compact={compact} />
+        <TribuneDensityChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "duration_profiles":
       return (
@@ -171,15 +214,26 @@ export function ChartRenderer({
           spec={spec}
           context={context}
           compact={compact}
+          presentation={pres}
         />
       );
     case "entrance_lanes":
       return (
-        <EntranceLanesChart spec={spec} context={context} compact={compact} />
+        <EntranceLanesChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "co_bookings":
       return (
-        <CoBookingsChart spec={spec} context={context} compact={compact} />
+        <CoBookingsChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "zone_crowd_heatmap":
       return (
@@ -200,7 +254,12 @@ export function ChartRenderer({
     case "queue_compare":
       if (variant === "comparison") {
         return (
-          <QueueCompareCard spec={spec} context={context} compact={compact} />
+          <QueueCompareCard
+            spec={spec}
+            context={context}
+            compact={compact}
+            presentation={pres}
+          />
         );
       }
       return (
@@ -208,6 +267,7 @@ export function ChartRenderer({
           spec={{ ...spec, type: "entrance_lanes" }}
           context={context}
           compact={compact}
+          presentation={pres}
         />
       );
     case "daily_programme":
@@ -216,6 +276,7 @@ export function ChartRenderer({
           spec={spec}
           context={context}
           compact={compact}
+          presentation={pres}
         />
       );
     case "zone_wait_heatmap":
@@ -240,6 +301,7 @@ export function ChartRenderer({
           spec={{ ...spec, type: "duration_profiles" }}
           context={context}
           compact={compact}
+          presentation={pres}
         />
       );
     case "golden_hour_match":
@@ -284,7 +346,12 @@ export function ChartRenderer({
       );
     case "time_split":
       return (
-        <TimeSplitChart spec={spec} context={context} compact={compact} />
+        <TimeSplitChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "history_timeline":
       return (
@@ -292,11 +359,17 @@ export function ChartRenderer({
           spec={spec}
           context={context}
           compact={compact}
+          presentation={pres}
         />
       );
     case "slot_compare":
       return (
-        <SlotCompareChart spec={spec} context={context} compact={compact} />
+        <SlotCompareChart
+          spec={spec}
+          context={context}
+          compact={compact}
+          presentation={pres}
+        />
       );
     case "ticket_access_matrix":
       return (

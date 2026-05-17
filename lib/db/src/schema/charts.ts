@@ -77,6 +77,14 @@ export const chartsTable = pgTable("charts", {
   overlayHeadline: text("overlay_headline"),
   overlaySubhead: text("overlay_subhead"),
   overlayInsight: text("overlay_insight"),
+  /**
+   * Task #151 — render-time presentation overrides (palette, view, emphasis,
+   * direction, density). Applied by chart components at render-time only;
+   * never triggers a re-generation. Nullable for back-compat with rows
+   * predating this column. Shape mirrors `PresentationOverrides` in
+   * `artifacts/viz-studio/src/lib/presentation.ts`.
+   */
+  presentation: jsonb("presentation").$type<Record<string, unknown> | null>(),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

@@ -6,10 +6,16 @@ import { CHART_TYPE } from "@/lib/chart-system";
 import { type SlotCompareSpec } from "@/lib/chart-spec";
 import { formatClockRangesInText } from "@/lib/time";
 
+import {
+  resolvePalette,
+  type PresentationOverrides,
+} from "@/lib/presentation";
+
 interface Props {
   spec: SlotCompareSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 /**

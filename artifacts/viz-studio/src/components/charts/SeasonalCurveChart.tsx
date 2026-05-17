@@ -19,10 +19,16 @@ import {
 import { CALLOUT_PILL, CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill, Legend, LegendItem } from "@/components/charts/system";
 
+import {
+  resolvePalette,
+  type PresentationOverrides,
+} from "@/lib/presentation";
+
 interface Props {
   spec: SeasonalCurveSpec;
   context?: string;
   compact?: boolean;
+  presentation?: PresentationOverrides;
 }
 
 type MetricKey = "crowd" | "weather" | "price";
