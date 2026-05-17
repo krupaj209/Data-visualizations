@@ -267,5 +267,63 @@ export const colosseum: CuratedCe = {
         ],
       } as Record<string, unknown>,
     },
+    {
+      slug: "time-budget",
+      question: "How long should I budget for the Colosseum visit?",
+      title: "Budgeting your time",
+      subtitle:
+        "One combo ticket covers all three sites — pick the plan that matches your day",
+      insight:
+        "The ticket includes the Colosseum, Roman Forum, and Palatine Hill. Solid blocks are the can't-skip core (~1h 30m). Dashed blocks are extensions on the same ticket — add one for a half-day, both for a full archaeological park visit.",
+      chart_type: "time_split",
+      spec: {
+        type: "time_split",
+        total_label: "Standard visit",
+        total_min: 210,
+        segments: [
+          {
+            label: "Security & entry",
+            minutes: 30,
+            accent: "slate",
+            note: "Bag check at the Stern entrance.",
+          },
+          {
+            label: "Colosseum main levels",
+            minutes: 60,
+            accent: "candy",
+            note: "Arena floor view, 1st & 2nd tier.",
+          },
+          {
+            label: "Roman Forum",
+            minutes: 60,
+            accent: "purps",
+            optional: true,
+            note: "Skip if short on time.",
+          },
+          {
+            label: "Palatine Hill",
+            minutes: 60,
+            accent: "okay",
+            optional: true,
+            note: "Skip if short on time.",
+          },
+        ],
+      },
+      provenance: {
+        status: "curated",
+        web_sources: [
+          {
+            url: "https://parcocolosseo.it/en/visit/visiting-hours/",
+            title: "Parco archeologico del Colosseo — Visiting hours & ticket",
+          },
+        ],
+        estimates: [
+          {
+            field: "segments[].minutes",
+            note: "Visit timings are guide-school estimates synthesised from operator FAQs and recurring visitor-review themes: ~30m security, ~60m Colosseum interior, ~60m each for Forum and Palatine. Optional flag mirrors the standard 'Colosseum-only is fine if tight; Forum + Palatine are the full archaeological park' guidance.",
+          },
+        ],
+      } as Record<string, unknown>,
+    },
   ],
 };

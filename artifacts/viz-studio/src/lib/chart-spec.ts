@@ -692,6 +692,12 @@ export interface TimeSplitSpec {
     minutes: number;
     accent: AccentKey;
     note?: string;
+    /**
+     * When true, the segment renders as a skippable add-on (dashed
+     * outline + softened fill). Used by combo-ticket visits where some
+     * sub-sites are optional extensions on a shared ticket.
+     */
+    optional?: boolean;
   }[];
   callout?: string;
 }

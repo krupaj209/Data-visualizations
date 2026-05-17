@@ -1003,6 +1003,13 @@ export const timeSplitSpec = z.object({
         minutes: z.number().int().min(1).max(2880),
         accent: z.enum(["purps", "candy", "hola", "okay", "slate"]),
         note: z.string().max(120).optional(),
+        /**
+         * When true, the segment is a skippable add-on (e.g. an optional
+         * extension included in the combo ticket but not required to
+         * complete the visit). Renders with a dashed outline + softened
+         * fill rather than a solid block. Defaults to false.
+         */
+        optional: z.boolean().optional(),
       }),
     )
     .min(3)
