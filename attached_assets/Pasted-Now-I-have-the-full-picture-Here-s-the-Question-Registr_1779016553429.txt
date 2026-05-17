@@ -1,0 +1,1245 @@
+Now I have the full picture. Here's the **Question Registry v2** design that layers on top of your existing Task #99 bundle engine without replacing it.
+
+## Architecture: 3-Layer Registry with DB Merge
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 1: CODE (Universal)                              │
+│  - Archetype definitions (types.ts)                       │
+│  - Subcategory registry (bank.ts)                         │
+│  - Intent definitions (intents.ts)                        │
+│  - Signal extractor (signals.ts)                          │
+│  - Bundle definitions (bundles.ts) ← YOU KEEP THIS        │
+│  - Page templates (page-templates.ts)                     │
+│  - Universal question overrides (new: universal-questions.ts) │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│  LAYER 2: DB (Category + CE Overrides)                  │
+│  - question_category_overrides (per-subcategory)        │
+│  - question_ce_overrides (per-CE)                       │
+│  Both store: add/remove/reorder/scoreBoost/blockWhen     │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│  MERGE ENGINE (new: registry-v2.ts)                      │
+│  1. Load bundle from code                                 │
+│  2. Apply category overrides from DB                      │
+│  3. Apply CE overrides from DB                            │
+│  4. Run enhanced decision engine with per-question scoring │
+│  5. Return merged bundle → existing assembler             │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Why This Design
+
+| Your Concern | How This Solves It |
+|-------------|-------------------|
+| "Improve the question bank" | DB overrides let content team tune without code deploys |
+| "Edit/remove/add questions" | `question_category_overrides` table with CRUD API |
+| "Update for entire subcat/cat" | Category overrides apply to all CEs in that subcategory |
+| "Filter for category/subcat" | Studio UI queries `question_category_overrides` by subcategory_id |
+| "Make it more intelligent" | Per-question `scoreBoost`, `blockWhen`, `trigger` conditions |
+| "Layout improvements" | Studio UI with filter sidebar + editable table |
+
+## The Files
+
+### 1. `lib/question-bank/src/registry-v2.ts` — Core Types & Merge Engine
+
+```typescript
+/**
+ * Question Registry v2 — 3-layer signal-driven registry.
+ * 
+ * Layers:
+ *   1. CODE: Bundles, archetypes, intents, signals (existing Task #99)
+ *   2. DB: Category overrides (per-subcategory) + CE overrides (per-CE)
+ *   3. MERGE: Runtime assembly with per-question scoring
+ * 
+ * This extends (not replaces) the existing bundle engine. The assembler
+ * in assembler.ts continues to work unchanged — it receives a merged
+ * bundle from this layer.
+ */
+
+import type { ChartArchetypeId } from "./types";
+import type { BundleId, BundleCandidate, QuestionBundle } from "./bundles";
+import type { ContextSignals } from "./signals";
+import type { VisitorIntentId } from "./intents";
+import type { SubcategoryId } from "./types";
+
+// ─────────────────────────────────────────────────────────────────────────
+// LAYER 2: DB Schema Types (what gets stored in Postgres)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface CategoryQuestionOverride {
+  id: string;                    // UUID
+  subcategory_id: SubcategoryId;
+  bundle_id: BundleId;
+  
+  // Override type
+  action: "add" | "remove" | "reorder" | "score_boost" | "block_when";
+  
+  // For "add": new candidate to inject
+  added_candidate?: {
+    archetype: ChartArchetypeId;
+    question_template: string;
+    requires?: (keyof ContextSignals)[];
+    prefers?: (keyof ContextSignals)[];
+    kind?: "standard" | "signature";
+    position?: "first" | "last" | number;  // Where to insert in candidate list
+  };
+  
+  // For "remove": which archetype to suppress
+  removed_archetype?: ChartArchetypeId;
+  
+  // For "reorder": new ordering of archetypes
+  reordered_archetypes?: ChartArchetypeId[];
+  
+  // For "score_boost": boost this archetype's score
+  score_boost?: {
+    archetype: ChartArchetypeId;
+    boost: number;             // Add to bundle score (e.g., +5)
+    condition?: string;        // Only apply when condition met (see TriggerCondition)
+  };
+  
+  // For "block_when": suppress when condition met
+  block_when?: {
+    archetype: ChartArchetypeId;
+    condition: TriggerCondition;
+    reason: string;            // Shown in dropped[] audit
+  };
+  
+  // Metadata
+  created_by: string;          // User ID
+  created_at: Date;
+  updated_at: Date;
+  notes?: string;
+}
+
+export interface CEQuestionOverride {
+  id: string;                  // UUID
+  ce_slug: string;
+  subcategory_id: SubcategoryId;
+  bundle_id: BundleId;
+  
+  action: "force_include" | "force_exclude" | "score_boost" | "swap_template";
+  
+  // Force include: add this archetype even if signals don't match
+  force_include?: {
+    archetype: ChartArchetypeId;
+    question_template: string;
+    position?: "first" | number;
+    reason: string;
+  };
+  
+  // Force exclude: never show this archetype for this CE
+  force_exclude?: {
+    archetype: ChartArchetypeId;
+    reason: string;
+  };
+  
+  // Score boost: per-CE tuning
+  score_boost?: {
+    archetype: ChartArchetypeId;
+    boost: number;
+  };
+  
+  // Swap template: use different question wording for this CE
+  swap_template?: {
+    archetype: ChartArchetypeId;
+    new_template: string;
+  };
+  
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+  notes?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Trigger Conditions (for block_when, score_boost condition)
+// ─────────────────────────────────────────────────────────────────────────
+
+export type TriggerCondition =
+  | { type: "signal_present"; signal: keyof ContextSignals }
+  | { type: "signal_absent"; signal: keyof ContextSignals }
+  | { type: "page_type"; pageType: string }
+  | { type: "ce_slug"; ceSlug: string }
+  | { type: "subcategory"; subcategoryId: SubcategoryId }
+  | { type: "season"; months: number[] }
+  | { type: "and"; conditions: TriggerCondition[] }
+  | { type: "or"; conditions: TriggerCondition[] };
+
+export function evaluateTrigger(
+  condition: TriggerCondition,
+  signals: ContextSignals,
+  pageType: string,
+  ceSlug: string,
+  subcategoryId: SubcategoryId,
+  currentMonth?: number,
+): boolean {
+  switch (condition.type) {
+    case "signal_present":
+      return Boolean(signals[condition.signal]);
+    case "signal_absent":
+      return !Boolean(signals[condition.signal]);
+    case "page_type":
+      return pageType === condition.pageType;
+    case "ce_slug":
+      return ceSlug === condition.ceSlug;
+    case "subcategory":
+      return subcategoryId === condition.subcategoryId;
+    case "season":
+      return currentMonth ? condition.months.includes(currentMonth) : false;
+    case "and":
+      return condition.conditions.every(c =>
+        evaluateTrigger(c, signals, pageType, ceSlug, subcategoryId, currentMonth)
+      );
+    case "or":
+      return condition.conditions.some(c =>
+        evaluateTrigger(c, signals, pageType, ceSlug, subcategoryId, currentMonth)
+      );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LAYER 3: Merged Bundle (output of merge engine, input to assembler)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface MergedBundleCandidate extends BundleCandidate {
+  /** Override source for audit trail. */
+  override_source?: "code" | "category_db" | "ce_db";
+  /** Original position before reorders. */
+  original_index?: number;
+  /** Score modifier from overrides. */
+  score_modifier?: number;
+  /** Blocked by a condition (still in list for audit, but skipped). */
+  blocked?: {
+    by: string;                // Override ID
+    reason: string;
+    condition: TriggerCondition;
+  };
+}
+
+export interface MergedQuestionBundle extends QuestionBundle {
+  candidates: MergedBundleCandidate[];
+  /** Audit of overrides applied. */
+  override_audit: {
+    category_overrides_applied: string[];
+    ce_overrides_applied: string[];
+    candidates_added: number;
+    candidates_removed: number;
+    candidates_reordered: boolean;
+    score_modifiers_applied: number;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MERGE ENGINE
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface MergeInput {
+  bundleId: BundleId;
+  subcategoryId: SubcategoryId;
+  ceSlug: string;
+  signals: ContextSignals;
+  pageType: string;
+  currentMonth?: number;
+  /** Fetched from DB. */
+  categoryOverrides: CategoryQuestionOverride[];
+  /** Fetched from DB. */
+  ceOverrides: CEQuestionOverride[];
+}
+
+/**
+ * Merge a code bundle with DB overrides to produce a MergedQuestionBundle.
+ * This is the core of Registry v2 — deterministic, testable, auditable.
+ */
+export function mergeBundle(input: MergeInput): MergedQuestionBundle {
+  const baseBundle = QUESTION_BUNDLES[input.bundleId];
+  const candidates: MergedBundleCandidate[] = baseBundle.candidates.map((c, i) => ({
+    ...c,
+    override_source: "code",
+    original_index: i,
+    score_modifier: 0,
+  }));
+
+  const audit = {
+    category_overrides_applied: [] as string[],
+    ce_overrides_applied: [] as string[],
+    candidates_added: 0,
+    candidates_removed: 0,
+    candidates_reordered: false,
+    score_modifiers_applied: 0,
+  };
+
+  // ── Apply category overrides ──
+  for (const override of input.categoryOverrides) {
+    if (override.bundle_id !== input.bundleId) continue;
+    
+    switch (override.action) {
+      case "add": {
+        if (override.added_candidate) {
+          const pos = override.added_candidate.position === "first" ? 0 :
+                     override.added_candidate.position === "last" ? candidates.length :
+                     override.added_candidate.position ?? candidates.length;
+          candidates.splice(pos, 0, {
+            ...override.added_candidate,
+            override_source: "category_db",
+            original_index: -1,
+            score_modifier: 0,
+          });
+          audit.candidates_added++;
+        }
+        audit.category_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "remove": {
+        if (override.removed_archetype) {
+          const idx = candidates.findIndex(c => c.archetype === override.removed_archetype);
+          if (idx >= 0) {
+            candidates.splice(idx, 1);
+            audit.candidates_removed++;
+          }
+        }
+        audit.category_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "reorder": {
+        if (override.reordered_archetypes) {
+          const newOrder: MergedBundleCandidate[] = [];
+          for (const arch of override.reordered_archetypes) {
+            const found = candidates.find(c => c.archetype === arch);
+            if (found) newOrder.push(found);
+          }
+          // Append any not in the reorder list
+          for (const c of candidates) {
+            if (!override.reordered_archetypes.includes(c.archetype)) {
+              newOrder.push(c);
+            }
+          }
+          candidates.length = 0;
+          candidates.push(...newOrder);
+          audit.candidates_reordered = true;
+        }
+        audit.category_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "score_boost": {
+        if (override.score_boost) {
+          const c = candidates.find(c => c.archetype === override.score_boost!.archetype);
+          if (c) {
+            // Only apply if condition passes (or no condition)
+            if (!override.score_boost.condition ||
+                evaluateTrigger(
+                  override.score_boost.condition,
+                  input.signals,
+                  input.pageType,
+                  input.ceSlug,
+                  input.subcategoryId,
+                  input.currentMonth
+                )) {
+              c.score_modifier = (c.score_modifier ?? 0) + override.score_boost.boost;
+              audit.score_modifiers_applied++;
+            }
+          }
+        }
+        audit.category_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "block_when": {
+        if (override.block_when) {
+          const c = candidates.find(c => c.archetype === override.block_when!.archetype);
+          if (c) {
+            const triggered = evaluateTrigger(
+              override.block_when.condition,
+              input.signals,
+              input.pageType,
+              input.ceSlug,
+              input.subcategoryId,
+              input.currentMonth
+            );
+            if (triggered) {
+              c.blocked = {
+                by: override.id,
+                reason: override.block_when.reason,
+                condition: override.block_when.condition,
+              };
+            }
+          }
+        }
+        audit.category_overrides_applied.push(override.id);
+        break;
+      }
+    }
+  }
+
+  // ── Apply CE overrides ──
+  for (const override of input.ceOverrides) {
+    if (override.bundle_id !== input.bundleId) continue;
+    
+    switch (override.action) {
+      case "force_include": {
+        if (override.force_include) {
+          const pos = override.force_include.position === "first" ? 0 :
+                     override.force_include.position ?? 0;
+          candidates.splice(pos, 0, {
+            archetype: override.force_include.archetype,
+            question_template: override.force_include.question_template,
+            override_source: "ce_db",
+            original_index: -1,
+            score_modifier: 100, // Massive boost to ensure selection
+          });
+          audit.candidates_added++;
+        }
+        audit.ce_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "force_exclude": {
+        if (override.force_exclude) {
+          const idx = candidates.findIndex(c => c.archetype === override.force_exclude!.archetype);
+          if (idx >= 0) {
+            candidates.splice(idx, 1);
+            audit.candidates_removed++;
+          }
+        }
+        audit.ce_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "score_boost": {
+        if (override.score_boost) {
+          const c = candidates.find(c => c.archetype === override.score_boost!.archetype);
+          if (c) {
+            c.score_modifier = (c.score_modifier ?? 0) + override.score_boost.boost;
+            audit.score_modifiers_applied++;
+          }
+        }
+        audit.ce_overrides_applied.push(override.id);
+        break;
+      }
+      
+      case "swap_template": {
+        if (override.swap_template) {
+          const c = candidates.find(c => c.archetype === override.swap_template!.archetype);
+          if (c) {
+            c.question_template = override.swap_template.new_template;
+          }
+        }
+        audit.ce_overrides_applied.push(override.id);
+        break;
+      }
+    }
+  }
+
+  return {
+    ...baseBundle,
+    candidates,
+    override_audit: audit,
+  };
+}
+
+// Need to import QUESTION_BUNDLES here
+import { QUESTION_BUNDLES } from "./bundles";
+```
+
+### 2. `lib/question-bank/src/db-schema.ts` — Drizzle Schema for Overrides
+
+```typescript
+/**
+ * Drizzle schema for Question Registry v2 DB tables.
+ * 
+ * These tables store category-level and CE-level overrides that merge
+ * with the code-defined bundles at runtime.
+ */
+
+import { pgTable, uuid, text, timestamp, jsonb, integer, boolean } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+export const questionCategoryOverrides = pgTable("question_category_overrides", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  subcategoryId: text("subcategory_id").notNull(),
+  bundleId: text("bundle_id").notNull(),
+  
+  action: text("action", { enum: ["add", "remove", "reorder", "score_boost", "block_when"] }).notNull(),
+  
+  // JSONB columns for complex override data
+  addedCandidate: jsonb("added_candidate"),
+  removedArchetype: text("removed_archetype"),
+  reorderedArchetypes: jsonb("reordered_archetypes"),
+  scoreBoost: jsonb("score_boost"),
+  blockWhen: jsonb("block_when"),
+  
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  notes: text("notes"),
+});
+
+export const questionCEOverrides = pgTable("question_ce_overrides", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ceSlug: text("ce_slug").notNull(),
+  subcategoryId: text("subcategory_id").notNull(),
+  bundleId: text("bundle_id").notNull(),
+  
+  action: text("action", { enum: ["force_include", "force_exclude", "score_boost", "swap_template"] }).notNull(),
+  
+  forceInclude: jsonb("force_include"),
+  forceExclude: jsonb("force_exclude"),
+  scoreBoost: jsonb("score_boost"),
+  swapTemplate: jsonb("swap_template"),
+  
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  notes: text("notes"),
+});
+
+// Indexes for fast lookups
+export const categoryOverrideIdx = sql`CREATE INDEX IF NOT EXISTS idx_cat_override_subcat_bundle 
+  ON ${questionCategoryOverrides} (subcategory_id, bundle_id)`;
+
+export const ceOverrideIdx = sql`CREATE INDEX IF NOT EXISTS idx_ce_override_ce_bundle 
+  ON ${questionCEOverrides} (ce_slug, bundle_id)`;
+```
+
+### 3. `lib/question-bank/src/assembler-v2.ts` — Enhanced Assembler Using Merged Bundles
+
+```typescript
+/**
+ * Deck Assembler v2 — uses merged bundles from Registry v2.
+ * 
+ * Drop-in replacement for assembleDeck() that:
+ * 1. Fetches overrides from DB
+ * 2. Merges bundles
+ * 3. Runs enhanced scoring with per-candidate modifiers
+ * 4. Falls back to original assembler if no overrides exist
+ */
+
+import { mergeBundle, type MergeInput, type MergedBundleCandidate } from "./registry-v2";
+import { QUESTION_BUNDLES, type BundleId, type QuestionBundle } from "./bundles";
+import { countSignalMatches, type ContextSignals } from "./signals";
+import { getPageTemplate, type PageType, DEFAULT_PAGE_TYPE } from "./page-templates";
+import type { VisitorIntentId } from "./intents";
+import type { BankQuestionKind, ChartArchetypeId } from "./types";
+import type { SubcategoryId } from "./types";
+import { isImplementedArchetype } from "./archetypes";
+
+// DB client interface (injected, not imported to avoid circular deps)
+export interface OverrideStore {
+  getCategoryOverrides(subcategoryId: SubcategoryId, bundleId: BundleId): Promise<any[]>;
+  getCEOverrides(ceSlug: string, bundleId: BundleId): Promise<any[]>;
+}
+
+export interface AssembleV2Input {
+  ceName: string;
+  ceSlug: string;
+  subcategoryId: SubcategoryId;
+  signals: ContextSignals;
+  pageType?: PageType;
+  retireArchetypes?: ChartArchetypeId[];
+  existingArchetypes?: ChartArchetypeId[];
+  /** Override store — if not provided, falls back to v1 behavior. */
+  overrideStore?: OverrideStore;
+  currentMonth?: number;
+}
+
+// Re-export v1 types for compatibility
+export type { AssembledQuestion, DroppedQuestion, AssembledDeck } from "./assembler";
+
+/**
+ * Enhanced pickCandidate that respects score modifiers from merged bundles.
+ */
+function pickCandidateV2(
+  bundle: QuestionBundle & { candidates: MergedBundleCandidate[] },
+  signals: ContextSignals,
+  usedArchetypes: Set<<ChartArchetypeId>,
+  retired: Set<<ChartArchetypeId>,
+  preferUnused: Set<<ChartArchetypeId>,
+  dropped: { question: string; reason: string }[],
+  ceName: string,
+): { candidate: MergedBundleCandidate; reason: string } | null {
+  // Sort by: (original index) + (score modifier) — higher is better
+  const scored = bundle.candidates.map(c => ({
+    ...c,
+    effective_score: (c.score_modifier ?? 0) + (c.original_index ?? 0) * 0.1,
+  })).sort((a, b) => b.effective_score - a.effective_score);
+
+  const seen = new Set<<ChartArchetypeId>();
+  
+  for (const c of scored) {
+    if (seen.has(c.archetype)) continue;
+    seen.add(c.archetype);
+
+    // Check blocked
+    if (c.blocked) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `blocked_by_override: ${c.blocked.reason} (condition: ${JSON.stringify(c.blocked.condition)})`,
+      });
+      continue;
+    }
+
+    if (retired.has(c.archetype)) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `retired_archetype: ${c.archetype}`,
+      });
+      continue;
+    }
+
+    if (!isImplementedArchetype(c.archetype)) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `viz_not_yet_built: ${c.archetype}`,
+      });
+      continue;
+    }
+
+    const requires = c.requires ?? [];
+    const missing = requires.filter((s) => !signals[s]);
+    if (missing.length > 0) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `signal_missing: needs ${missing.join(", ")}`,
+      });
+      continue;
+    }
+
+    const source = c.override_source === "code" ? "bundle default" :
+                   c.override_source === "category_db" ? "category override" :
+                   "CE override";
+
+    return {
+      candidate: c,
+      reason: `bundle "${bundle.id}" selected via ${source} (score_mod: ${c.score_modifier ?? 0})`,
+    };
+  }
+  
+  return null;
+}
+
+export async function assembleDeckV2(input: AssembleV2Input): Promise<any> {
+  // If no override store, fall back to v1 (existing behavior)
+  if (!input.overrideStore) {
+    const { assembleDeck } = await import("./assembler");
+    return assembleDeck({
+      ceName: input.ceName,
+      signals: input.signals,
+      pageType: input.pageType,
+      retireArchetypes: input.retireArchetypes,
+      existingArchetypes: input.existingArchetypes,
+    });
+  }
+
+  const pageType = input.pageType ?? DEFAULT_PAGE_TYPE;
+  const template = getPageTemplate(pageType);
+  const retired = new Set<<ChartArchetypeId>(input.retireArchetypes ?? []);
+  const existing = new Set<<ChartArchetypeId>(input.existingArchetypes ?? []);
+  const usedArchetypes = new Set<<ChartArchetypeId>();
+  const usedBundles = new Set<<BundleId>();
+  const selected: any[] = [];
+  const dropped: any[] = [];
+  const audit: any[] = [];
+
+  for (const slot of template.slots) {
+    if (selected.length >= template.maxCharts) break;
+
+    if (slot.forcedArchetype) {
+      // ... same as v1 ...
+      continue;
+    }
+
+    if (!slot.bundleId) continue;
+    if (usedBundles.has(slot.bundleId)) {
+      audit.push({
+        bundle_id: slot.bundleId,
+        fired: false,
+        notes: ["bundle already fired"],
+      });
+      continue;
+    }
+
+    // ── REGISTRY V2: Merge bundle with overrides ──
+    const [catOverrides, ceOverrides] = await Promise.all([
+      input.overrideStore!.getCategoryOverrides(input.subcategoryId, slot.bundleId),
+      input.overrideStore!.getCEOverrides(input.ceSlug, slot.bundleId),
+    ]);
+
+    const merged = mergeBundle({
+      bundleId: slot.bundleId,
+      subcategoryId: input.subcategoryId,
+      ceSlug: input.ceSlug,
+      signals: input.signals,
+      pageType,
+      currentMonth: input.currentMonth,
+      categoryOverrides: catOverrides,
+      ceOverrides: ceOverrides,
+    });
+
+    // Score using merged bundle
+    const counts = countSignalMatches(
+      input.signals,
+      merged.required_signals,
+      merged.preferred_signals,
+    );
+    const triggered = [
+      ...merged.required_signals.filter((s) => Boolean(input.signals[s])),
+      ...merged.preferred_signals.filter((s) => Boolean(input.signals[s])),
+    ];
+    const score = 1 + counts.requiredHits * 2 + counts.preferredHits;
+
+    if (!counts.allRequired) {
+      audit.push({
+        bundle_id: merged.id,
+        intent: merged.intent,
+        fired: false,
+        score,
+        triggering_signals: triggered,
+        chosen_archetype: null,
+        notes: ["required_signals not satisfied"],
+        override_audit: merged.override_audit,
+      });
+      if (slot.required) {
+        dropped.push({
+          question: `Required ${merged.id} bundle`,
+          reason: `bundle_gate_missing: ${merged.required_signals.join(", ")}`,
+        });
+      }
+      continue;
+    }
+
+    const picked = pickCandidateV2(
+      merged,
+      input.signals,
+      usedArchetypes,
+      retired,
+      existing,
+      dropped,
+      input.ceName,
+    );
+
+    if (!picked) {
+      audit.push({
+        bundle_id: merged.id,
+        intent: merged.intent,
+        fired: false,
+        score,
+        triggering_signals: triggered,
+        chosen_archetype: null,
+        notes: ["no viable candidate"],
+        override_audit: merged.override_audit,
+      });
+      continue;
+    }
+
+    const question = picked.candidate.question_template.replace(
+      /\{\{ceName\}\}/g,
+      input.ceName,
+    );
+
+    selected.push({
+      question,
+      archetype: picked.candidate.archetype,
+      rationale: picked.reason,
+      kind: picked.candidate.kind ?? "signature",
+      bundle_id: merged.id,
+      intent_id: merged.intent,
+      bundle_score: score,
+      triggering_signals: triggered,
+      topic_id: merged.id,
+      // NEW: v2 provenance
+      override_source: picked.candidate.override_source,
+      score_modifier: picked.candidate.score_modifier,
+    });
+
+    usedArchetypes.add(picked.candidate.archetype);
+    usedBundles.add(merged.id);
+
+    audit.push({
+      bundle_id: merged.id,
+      intent: merged.intent,
+      fired: true,
+      score,
+      triggering_signals: triggered,
+      chosen_archetype: picked.candidate.archetype,
+      notes: [],
+      override_audit: merged.override_audit,
+    });
+  }
+
+  // ... cap logic same as v1 ...
+
+  return {
+    pageType,
+    selected,
+    dropped,
+    bundle_audit: audit,
+  };
+}
+```
+
+### 4. `artifacts/api-server/src/routes/question-bank-admin.ts` — Admin API
+
+```typescript
+/**
+ * Question Bank Admin API
+ * 
+ * CRUD for category and CE overrides.
+ * Used by the Studio UI for filtering, editing, adding, removing questions.
+ */
+
+import { Router } from "express";
+import { z } from "zod";
+import { db } from "@workspace/db";
+import { questionCategoryOverrides, questionCEOverrides } from "@workspace/question-bank/db-schema";
+import { eq, and } from "drizzle-orm";
+
+const router = Router();
+
+// ── List category overrides (with filtering) ──
+router.get("/admin/category-overrides", async (req, res) => {
+  const { subcategory_id, bundle_id, action } = req.query;
+  
+  let query = db.select().from(questionCategoryOverrides);
+  
+  if (subcategory_id) {
+    query = query.where(eq(questionCategoryOverrides.subcategoryId, subcategory_id as string));
+  }
+  if (bundle_id) {
+    query = query.where(eq(questionCategoryOverrides.bundleId, bundle_id as string));
+  }
+  if (action) {
+    query = query.where(eq(questionCategoryOverrides.action, action as string));
+  }
+  
+  const results = await query.orderBy(questionCategoryOverrides.createdAt);
+  res.json({ overrides: results, count: results.length });
+});
+
+// ── Create category override ──
+const createCategoryOverrideSchema = z.object({
+  subcategory_id: z.string(),
+  bundle_id: z.string(),
+  action: z.enum(["add", "remove", "reorder", "score_boost", "block_when"]),
+  added_candidate: z.object({
+    archetype: z.string(),
+    question_template: z.string(),
+    requires: z.array(z.string()).optional(),
+    prefers: z.array(z.string()).optional(),
+    kind: z.enum(["standard", "signature"]).optional(),
+    position: z.union([z.enum(["first", "last"]), z.number()]).optional(),
+  }).optional(),
+  removed_archetype: z.string().optional(),
+  reordered_archetypes: z.array(z.string()).optional(),
+  score_boost: z.object({
+    archetype: z.string(),
+    boost: z.number(),
+    condition: z.any().optional(),
+  }).optional(),
+  block_when: z.object({
+    archetype: z.string(),
+    condition: z.any(),
+    reason: z.string(),
+  }).optional(),
+  notes: z.string().optional(),
+});
+
+router.post("/admin/category-overrides", async (req, res) => {
+  const body = createCategoryOverrideSchema.parse(req.body);
+  
+  const result = await db.insert(questionCategoryOverrides).values({
+    subcategoryId: body.subcategory_id,
+    bundleId: body.bundle_id,
+    action: body.action,
+    addedCandidate: body.added_candidate,
+    removedArchetype: body.removed_archetype,
+    reorderedArchetypes: body.reordered_archetypes,
+    scoreBoost: body.score_boost,
+    blockWhen: body.block_when,
+    createdBy: req.user?.id ?? "system",
+    notes: body.notes,
+  }).returning();
+  
+  res.json(result[0]);
+});
+
+// ── Update category override ──
+router.patch("/admin/category-overrides/:id", async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  
+  const result = await db.update(questionCategoryOverrides)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .where(eq(questionCategoryOverrides.id, id))
+    .returning();
+  
+  res.json(result[0]);
+});
+
+// ── Delete category override ──
+router.delete("/admin/category-overrides/:id", async (req, res) => {
+  const { id } = req.params;
+  await db.delete(questionCategoryOverrides).where(eq(questionCategoryOverrides.id, id));
+  res.json({ deleted: true });
+});
+
+// ── List CE overrides ──
+router.get("/admin/ce-overrides", async (req, res) => {
+  const { ce_slug, bundle_id } = req.query;
+  
+  let query = db.select().from(questionCEOverrides);
+  
+  if (ce_slug) {
+    query = query.where(eq(questionCEOverrides.ceSlug, ce_slug as string));
+  }
+  if (bundle_id) {
+    query = query.where(eq(questionCEOverrides.bundleId, bundle_id as string));
+  }
+  
+  const results = await query.orderBy(questionCEOverrides.createdAt);
+  res.json({ overrides: results, count: results.length });
+});
+
+// ── Create CE override ──
+const createCEOverrideSchema = z.object({
+  ce_slug: z.string(),
+  subcategory_id: z.string(),
+  bundle_id: z.string(),
+  action: z.enum(["force_include", "force_exclude", "score_boost", "swap_template"]),
+  force_include: z.object({
+    archetype: z.string(),
+    question_template: z.string(),
+    position: z.union([z.enum(["first"]), z.number()]).optional(),
+    reason: z.string(),
+  }).optional(),
+  force_exclude: z.object({
+    archetype: z.string(),
+    reason: z.string(),
+  }).optional(),
+  score_boost: z.object({
+    archetype: z.string(),
+    boost: z.number(),
+  }).optional(),
+  swap_template: z.object({
+    archetype: z.string(),
+    new_template: z.string(),
+  }).optional(),
+  notes: z.string().optional(),
+});
+
+router.post("/admin/ce-overrides", async (req, res) => {
+  const body = createCEOverrideSchema.parse(req.body);
+  
+  const result = await db.insert(questionCEOverrides).values({
+    ceSlug: body.ce_slug,
+    subcategoryId: body.subcategory_id,
+    bundleId: body.bundle_id,
+    action: body.action,
+    forceInclude: body.force_include,
+    forceExclude: body.force_exclude,
+    scoreBoost: body.score_boost,
+    swapTemplate: body.swap_template,
+    createdBy: req.user?.id ?? "system",
+    notes: body.notes,
+  }).returning();
+  
+  res.json(result[0]);
+});
+
+// ── Preview: what would be selected for a CE? ──
+router.post("/admin/preview", async (req, res) => {
+  const { ce_slug, subcategory_id, signals, page_type } = req.body;
+  
+  // Fetch overrides
+  const catOverrides = await db.select()
+    .from(questionCategoryOverrides)
+    .where(eq(questionCategoryOverrides.subcategoryId, subcategory_id));
+  
+  const ceOverrides = await db.select()
+    .from(questionCEOverrides)
+    .where(eq(questionCEOverrides.ceSlug, ce_slug));
+  
+  // Run merge for each bundle
+  const { mergeBundle } = await import("@workspace/question-bank/registry-v2");
+  const bundles = ["timing", "duration", "choice", "risk", "logistics", "value", "prep"] as const;
+  
+  const previews = bundles.map(bundleId => {
+    const merged = mergeBundle({
+      bundleId,
+      subcategoryId: subcategory_id,
+      ceSlug,
+      signals,
+      pageType: page_type ?? "plan-your-visit",
+      categoryOverrides: catOverrides,
+      ceOverrides,
+    });
+    
+    return {
+      bundle_id: bundleId,
+      candidates: merged.candidates.map(c => ({
+        archetype: c.archetype,
+        question: c.question_template,
+        source: c.override_source,
+        score_modifier: c.score_modifier,
+        blocked: c.blocked ?? null,
+      })),
+      audit: merged.override_audit,
+    };
+  });
+  
+  res.json({ previews });
+});
+
+export default router;
+```
+
+### 5. Studio UI Components (React)
+
+Here's the key UI components for the question bank management:
+
+```typescript
+// artifacts/viz-studio/src/pages/QuestionBankAdmin.tsx
+
+import React, { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+
+// Filter sidebar component
+const FilterSidebar: React.FC<<{
+  subcategories: string[];
+  bundles: string[];
+  actions: string[];
+  onFilterChange: (filters: any) => void;
+}> = ({ subcategories, bundles, actions, onFilterChange }) => {
+  const [selectedSubcat, setSelectedSubcat] = useState("");
+  const [selectedBundle, setSelectedBundle] = useState("");
+  const [selectedAction, setSelectedAction] = useState("");
+
+  return (
+    <div className="w-64 bg-gray-50 p-4 space-y-4">
+      <h3 className="font-semibold text-gray-900">Filters</h3>
+      
+      <div>
+        <label className="text-sm font-medium text-gray-700">Subcategory</label>
+        <select 
+          className="mt-1 w-full rounded-md border-gray-300"
+          value={selectedSubcat}
+          onChange={(e) => {
+            setSelectedSubcat(e.target.value);
+            onFilterChange({ subcategory_id: e.target.value });
+          }}
+        >
+          <option value="">All</option>
+          {subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-gray-700">Bundle</label>
+        <select 
+          className="mt-1 w-full rounded-md border-gray-300"
+          value={selectedBundle}
+          onChange={(e) => {
+            setSelectedBundle(e.target.value);
+            onFilterChange({ bundle_id: e.target.value });
+          }}
+        >
+          <option value="">All</option>
+          {bundles.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-gray-700">Action</label>
+        <select 
+          className="mt-1 w-full rounded-md border-gray-300"
+          value={selectedAction}
+          onChange={(e) => {
+            setSelectedAction(e.target.value);
+            onFilterChange({ action: e.target.value });
+          }}
+        >
+          <option value="">All</option>
+          {actions.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+};
+
+// Override table with inline editing
+const OverrideTable: React.FC<<{
+  overrides: any[];
+  onEdit: (id: string, updates: any) => void;
+  onDelete: (id: string) => void;
+}> = ({ overrides, onEdit, onDelete }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  return (
+    <table className="min-w-full divide-y divide-gray-200">
+      <thead>
+        <tr>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subcategory</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Bundle</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Action</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Details</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-200">
+        {overrides.map(override => (
+          <tr key={override.id} className="hover:bg-gray-50">
+            <td className="px-4 py-2 text-sm">{override.subcategoryId}</td>
+            <td className="px-4 py-2 text-sm">{override.bundleId}</td>
+            <td className="px-4 py-2">
+              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                override.action === "add" ? "bg-green-100 text-green-800" :
+                override.action === "remove" ? "bg-red-100 text-red-800" :
+                override.action === "score_boost" ? "bg-blue-100 text-blue-800" :
+                "bg-gray-100 text-gray-800"
+              }`}>
+                {override.action}
+              </span>
+            </td>
+            <td className="px-4 py-2 text-sm text-gray-600">
+              {override.addedCandidate?.archetype && `Add: ${override.addedCandidate.archetype}`}
+              {override.removedArchetype && `Remove: ${override.removedArchetype}`}
+              {override.scoreBoost && `Boost: ${override.scoreBoost.archetype} +${override.scoreBoost.boost}`}
+              {override.blockWhen && `Block: ${override.blockWhen.archetype} when ${JSON.stringify(override.blockWhen.condition)}`}
+            </td>
+            <td className="px-4 py-2 space-x-2">
+              <button 
+                onClick={() => setEditingId(override.id)}
+                className="text-blue-600 hover:text-blue-800 text-sm"
+              >
+                Edit
+              </button>
+              <button 
+                onClick={() => onDelete(override.id)}
+                className="text-red-600 hover:text-red-800 text-sm"
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+// Preview panel: show what questions would be selected
+const PreviewPanel: React.FC<<{
+  ceSlug: string;
+  subcategoryId: string;
+}> = ({ ceSlug, subcategoryId }) => {
+  const [signals, setSignals] = useState({});
+  
+  const previewQuery = useQuery({
+    queryKey: ["preview", ceSlug, subcategoryId, signals],
+    queryFn: () => fetch("/api/admin/question-bank/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ce_slug: ceSlug, subcategory_id: subcategoryId, signals }),
+    }).then(r => r.json()),
+  });
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <h3 className="font-semibold text-gray-900 mb-4">Preview: {ceSlug}</h3>
+      
+      {/* Signal editor */}
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        {Object.entries({
+          has_seasonal_variation: "Seasonal",
+          has_skip_the_line: "Skip-line",
+          has_multiple_entrances: "Multi-entrance",
+          has_long_queues: "Long queues",
+          has_timed_entry: "Timed entry",
+        }).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-2">
+            <input 
+              type="checkbox"
+              checked={signals[key] ?? false}
+              onChange={(e) => setSignals({ ...signals, [key]: e.target.checked })}
+            />
+            <span className="text-sm">{label}</span>
+          </label>
+        ))}
+      </div>
+
+      {previewQuery.data?.previews.map(bundle => (
+        <div key={bundle.bundle_id} className="mb-4">
+          <h4 className="font-medium text-gray-800 capitalize">{bundle.bundle_id}</h4>
+          <div className="space-y-1">
+            {bundle.candidates.map(c => (
+              <div 
+                key={c.archetype} 
+                className={`flex items-center justify-between p-2 rounded ${
+                  c.blocked ? "bg-red-50" : c.source !== "code" ? "bg-blue-50" : "bg-gray-50"
+                }`}
+              >
+                <div>
+                  <span className="text-sm font-medium">{c.archetype}</span>
+                  <span className="text-xs text-gray-500 ml-2">{c.question}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {c.score_modifier > 0 && (
+                    <span className="text-xs text-green-600">+{c.score_modifier}</span>
+                  )}
+                  {c.source !== "code" && (
+                    <span className="text-xs text-blue-600">{c.source}</span>
+                  )}
+                  {c.blocked && (
+                    <span className="text-xs text-red-600">Blocked: {c.blocked.reason}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+```
+
+## Migration Path from Task #99
+
+| Step | Action | Effort |
+|------|--------|--------|
+| 1 | Add DB tables (drizzle schema + migration) | 30 min |
+| 2 | Add `registry-v2.ts` (merge engine) | 2 hrs |
+| 3 | Add `assembler-v2.ts` (enhanced assembler, backward compatible) | 2 hrs |
+| 4 | Add admin API routes | 2 hrs |
+| 5 | Add Studio UI pages (filter, edit, preview) | 4 hrs |
+| 6 | Migrate existing "hardcoded" CE-specific logic into DB overrides | 1 hr |
+| 7 | Update pipeline to use `assembleDeckV2` with override store | 30 min |
+
+## Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Bundles stay in code** | They're the structural backbone — changing bundle definitions changes the narrative architecture, which needs dev review |
+| **Overrides in DB** | Content team can tune without deploys — this is the agility you need |
+| **Merge at runtime** | No build step needed — changes are immediate |
+| **Backward compatible** | `assembleDeck` still works — `assembleDeckV2` is opt-in with override store |
+| **Audit trail in every merge** | Every decision is traceable: "Why was this question selected?" → "Category override #123 boosted score by +5" |
+| **Preview API** | Content team can test changes before saving |
+
+## Next Steps
+
+1. **Confirm this design** — any changes to the override types or merge logic?
+2. **I'll write the Drizzle migration** — do you have a migrations folder I should target?
+3. **Studio UI** — should I build this as a new page in viz-studio or integrate into an existing admin section?
+
+Paste your `lib/db/src/schema/index.ts` or tell me your migration setup and I'll finalize the DB layer.
