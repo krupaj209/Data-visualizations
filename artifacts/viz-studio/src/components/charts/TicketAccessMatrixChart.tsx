@@ -67,8 +67,11 @@ export function TicketAccessMatrixChart({
           style={{
             flex: "1 1 auto",
             minHeight: 0,
+            // Scroll both axes so a long features list (spec allows up to 8
+            // rows) or many tiers can't silently clip against ChartCard's
+            // `overflow-hidden` boundary.
             overflowX: "auto",
-            overflowY: "visible",
+            overflowY: "auto",
           }}
         >
         {/* Tier header row */}
