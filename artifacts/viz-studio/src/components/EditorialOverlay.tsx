@@ -1,14 +1,15 @@
 /**
- * Editorial Overlay — Studio CE detail authoring aid (Task #109).
+ * Editorial Overlay — Studio CE detail authoring aid (Task #109, updated #132).
  *
- * Trimmed contract: narrative + trust only. CTA / social-proof / warning /
- * personalization branches were intentionally removed in Task #109 — the
- * overlay is a writer cue, not a marketing surface. The embed view
- * (/studio/embed/*) must never use this component.
+ * The full `EditorialOverlay` band (headline + subhead + confidence +
+ * Copy-HTML + freshness) is still used by the ChartEditor's live preview, so
+ * writers can see exactly what their headline/subhead edits produce. The CE
+ * detail row header (Task #132) collapses the duplicate band by composing
+ * the three reusable pieces directly: `ConfidencePill`, `CopyHtmlButton`,
+ * `FreshnessLine`.
  *
- * Renders headline + subhead + confidence badge + key-insight callout +
- * freshness line, with a Copy-as-HTML button so writers can lift the
- * narrative straight into the CMS body next to the embed.
+ * The embed view (/studio/embed/*) must never use any of this — embeds are
+ * purely visual and ship without editorial chrome.
  */
 
 import { useState } from "react";
@@ -63,9 +64,49 @@ const CONFIDENCE_STYLE: Record<
   low: { bg: BRAND.slate100, fg: BRAND.slate700, icon: "○", label: "Low confidence" },
 };
 
-export function EditorialOverlay({ overlay, compact = false }: Props) {
-  const [copied, setCopied] = useState(false);
+/** Standalone confidence chip — composable into any header row. */
+export function ConfidencePill({
+  overlay,
+}: {
+  overlay: EditorialOverlayType;
+}) {
+  const confidence =
+    CONFIDENCE_STYLE[overlay.confidence.level] ?? CONFIDENCE_STYLE.low;
+  return (
+    <span
+      title={overlay.confidence.explanation ?? confidence.label}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 9px",
+        borderRadius: 999,
+        background: confidence.bg,
+        color: confidence.fg,
+        fontSize: 10,
+        fontWeight: 800,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span aria-hidden>{confidence.icon}</span>
+      {confidence.label}
+    </span>
+  );
+}
 
+/**
+ * Copy-HTML button — emits `<h2>headline</h2><p>subhead</p><p>insight</p>`
+ * to the clipboard so writers can paste the editorial copy alongside the
+ * embed in the CMS body.
+ */
+export function CopyHtmlButton({
+  overlay,
+}: {
+  overlay: EditorialOverlayType;
+}) {
+  const [copied, setCopied] = useState(false);
   const insightText = overlay.tip?.text;
 
   async function copyAsHtml() {
@@ -85,9 +126,40 @@ export function EditorialOverlay({ overlay, compact = false }: Props) {
     }
   }
 
-  const confidence =
-    CONFIDENCE_STYLE[overlay.confidence.level] ?? CONFIDENCE_STYLE.low;
+  return (
+    <button
+      type="button"
+      onClick={copyAsHtml}
+      title="Copy headline, subhead, and key insight as HTML"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "5px 9px",
+        borderRadius: 8,
+        background: copied ? BRAND.purps : "white",
+        color: copied ? "white" : BRAND.slate700,
+        border: `1px solid ${copied ? BRAND.purps : BRAND.slate200}`,
+        fontWeight: 700,
+        fontSize: 11,
+        cursor: "pointer",
+      }}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "Copied" : "Copy HTML"}
+    </button>
+  );
+}
 
+/**
+ * Freshness line — "Updated <date> (<relative>) · <freq> refresh" plus a
+ * "Refresh suggested" pill when the chart is past the stale threshold.
+ */
+export function FreshnessLine({
+  overlay,
+}: {
+  overlay: EditorialOverlayType;
+}) {
   const lastUpdated =
     typeof overlay.freshness.lastUpdated === "string"
       ? new Date(overlay.freshness.lastUpdated)
@@ -97,6 +169,59 @@ export function EditorialOverlay({ overlay, compact = false }: Props) {
     : ageDaysFrom(lastUpdated);
   const isStale = ageDays !== null && ageDays > STALE_THRESHOLD_DAYS;
 
+  return (
+    <div
+      className="flex items-center gap-2 flex-wrap"
+      style={{
+        fontSize: 10,
+        color: isStale ? "#A65A00" : BRAND.slate500,
+        fontWeight: 600,
+      }}
+    >
+      <span className="flex items-center gap-1.5">
+        <span aria-hidden>🕐</span>
+        <span>
+          {ageDays === null ? (
+            <>Update date unknown · {overlay.freshness.updateFrequency} refresh</>
+          ) : (
+            <>
+              Updated {DATE_FMT.format(lastUpdated)}{" "}
+              <span style={{ color: BRAND.slate500, fontWeight: 500 }}>
+                ({relativeAge(ageDays)}) · {overlay.freshness.updateFrequency}{" "}
+                refresh
+              </span>
+            </>
+          )}
+        </span>
+      </span>
+      {isStale && (
+        <span
+          title={`This chart was last regenerated ${ageDays} days ago. The underlying research may be out of date — consider running Regenerate.`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: "#FFF4DD",
+            color: "#A65A00",
+            border: "1px solid #F2C879",
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <RefreshCw size={10} aria-hidden />
+          Refresh suggested
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function EditorialOverlay({ overlay, compact = false }: Props) {
   return (
     <div
       className={compact ? "space-y-2" : "space-y-3"}
@@ -135,97 +260,12 @@ export function EditorialOverlay({ overlay, compact = false }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span
-            title={overlay.confidence.explanation ?? confidence.label}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 9px",
-              borderRadius: 999,
-              background: confidence.bg,
-              color: confidence.fg,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span aria-hidden>{confidence.icon}</span>
-            {confidence.label}
-          </span>
-          <button
-            type="button"
-            onClick={copyAsHtml}
-            title="Copy headline, subhead, and key insight as HTML"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "5px 9px",
-              borderRadius: 8,
-              background: copied ? BRAND.purps : "white",
-              color: copied ? "white" : BRAND.slate700,
-              border: `1px solid ${copied ? BRAND.purps : BRAND.slate200}`,
-              fontWeight: 700,
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? "Copied" : "Copy HTML"}
-          </button>
+          <ConfidencePill overlay={overlay} />
+          <CopyHtmlButton overlay={overlay} />
         </div>
       </div>
 
-      <div
-        className="flex items-center gap-2 flex-wrap"
-        style={{
-          fontSize: 10,
-          color: isStale ? "#A65A00" : BRAND.slate500,
-          fontWeight: 600,
-        }}
-      >
-        <span className="flex items-center gap-1.5">
-          <span aria-hidden>🕐</span>
-          <span>
-            {ageDays === null ? (
-              <>Update date unknown · {overlay.freshness.updateFrequency} refresh</>
-            ) : (
-              <>
-                Updated {DATE_FMT.format(lastUpdated)}{" "}
-                <span style={{ color: BRAND.slate500, fontWeight: 500 }}>
-                  ({relativeAge(ageDays)})
-                </span>
-              </>
-            )}
-          </span>
-        </span>
-        {isStale && (
-          <span
-            title={`This chart was last regenerated ${ageDays} days ago. The underlying research may be out of date — consider running Regenerate.`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "2px 8px",
-              borderRadius: 999,
-              background: "#FFF4DD",
-              color: "#A65A00",
-              border: "1px solid #F2C879",
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <RefreshCw size={10} aria-hidden />
-            Refresh suggested
-          </span>
-        )}
-      </div>
+      <FreshnessLine overlay={overlay} />
     </div>
   );
 }

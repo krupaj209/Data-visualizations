@@ -76,6 +76,9 @@ import { QuestionsPanel } from "@/components/QuestionsPanel";
 import {
   EditorialOverlay,
   EditorialKeyInsight,
+  ConfidencePill,
+  CopyHtmlButton,
+  FreshnessLine,
 } from "@/components/EditorialOverlay";
 import { assembleHybridOverlay } from "@workspace/editorial";
 
@@ -963,6 +966,7 @@ function ChartRow({
                 · Writer-edited
               </span>
             )}
+            <ConfidencePill overlay={editorialOverlay} />
           </div>
           <h3
             className="text-lg"
@@ -983,6 +987,7 @@ function ChartRow({
           >
             {headline}
           </h3>
+          <FreshnessLine overlay={editorialOverlay} />
         </div>
         <div className="chart-row-actions flex items-center gap-2 flex-wrap">
           {Array.isArray(
@@ -1003,6 +1008,8 @@ function ChartRow({
           <EvidenceKindRollup
             provenance={chart.provenance as ChartProvenanceLite | null}
           />
+
+          <CopyHtmlButton overlay={editorialOverlay} />
 
           <button
             type="button"
@@ -1088,10 +1095,6 @@ function ChartRow({
           }
         />
       )}
-
-      <div style={{ marginBottom: 12 }}>
-        <EditorialOverlay overlay={editorialOverlay} />
-      </div>
 
       <div
         className={
