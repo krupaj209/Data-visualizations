@@ -2,13 +2,13 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/busy-chart/WeeklyPattern.tsx": () => import("../components/mockups/busy-chart/WeeklyPattern.tsx"),
-  "./components/mockups/viz-studio-home/Atlas.tsx": () => import("../components/mockups/viz-studio-home/Atlas.tsx"),
-  "./components/mockups/viz-studio-home/StudioToday.tsx": () => import("../components/mockups/viz-studio-home/StudioToday.tsx"),
-  "./components/mockups/viz-studio-home/Workbench.tsx": () => import("../components/mockups/viz-studio-home/Workbench.tsx"),
   "./components/mockups/page-charts/AccessibilityGuide.tsx": () => import("../components/mockups/page-charts/AccessibilityGuide.tsx"),
   "./components/mockups/page-charts/EntranceMap.tsx": () => import("../components/mockups/page-charts/EntranceMap.tsx"),
   "./components/mockups/page-charts/FloorPlanFlow.tsx": () => import("../components/mockups/page-charts/FloorPlanFlow.tsx"),
   "./components/mockups/page-charts/RulesChecklist.tsx": () => import("../components/mockups/page-charts/RulesChecklist.tsx"),
   "./components/mockups/page-charts/TimeValueMatrix.tsx": () => import("../components/mockups/page-charts/TimeValueMatrix.tsx"),
-  "./components/mockups/page-charts/TransitOptions.tsx": () => import("../components/mockups/page-charts/TransitOptions.tsx")
+  "./components/mockups/page-charts/TransitOptions.tsx": () => import("../components/mockups/page-charts/TransitOptions.tsx"),
+  "./components/mockups/viz-studio-home/Atlas.tsx": () => import("../components/mockups/viz-studio-home/Atlas.tsx"),
+  "./components/mockups/viz-studio-home/StudioToday.tsx": () => import("../components/mockups/viz-studio-home/StudioToday.tsx"),
+  "./components/mockups/viz-studio-home/Workbench.tsx": () => import("../components/mockups/viz-studio-home/Workbench.tsx")
 };
