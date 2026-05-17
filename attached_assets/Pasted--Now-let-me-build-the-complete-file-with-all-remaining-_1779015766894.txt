@@ -1,0 +1,1470 @@
+
+# Now let me build the complete file with all remaining subcategories
+# Starting from the cut-off point at "COMEDY, F"
+
+complete_continuation = """# Continue building the subcategory-specific questions
+# Complete list with all subcategories
+
+continuation = r'''
+  which_cinema: {
+    id: "which_cinema",
+    question: "Which cinema experience fits my mood?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Cinema" },
+    },
+    score: (ce, drd) => ce.subcategory === "Cinema" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_musical: {
+    id: "which_musical",
+    question: "Which musical fits my taste?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Musicals" },
+    },
+    score: (ce, drd) => ce.subcategory === "Musicals" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_opera: {
+    id: "which_opera",
+    question: "Which opera performance fits my evening?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Opera" },
+    },
+    score: (ce, drd) => ce.subcategory === "Opera" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_rock_concert: {
+    id: "which_rock_concert",
+    question: "Which rock concert fits my vibe?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Rock Concerts" },
+    },
+    score: (ce, drd) => ce.subcategory === "Rock Concerts" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_play: {
+    id: "which_play",
+    question: "Which play fits my taste?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Plays" },
+    },
+    score: (ce, drd) => ce.subcategory === "Plays" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: OBSERVATION DECKS & ATTRACTIONS
+  // ═════════════════════════════════════════════════════════════
+
+  which_observation_deck_time: {
+    id: "which_observation_deck_time",
+    question: "Which time slot gives the clearest views?",
+    chartType: "optimal_departure",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Observation Decks" },
+      drdSignals: { hasMultipleDepartures: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Observation Decks" && drd.hasMultipleDepartures ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_viewing_level: {
+    id: "which_viewing_level",
+    question: "Which viewing level is worth the upgrade?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Observation Decks" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Observation Decks" && drd.hasPriceTiers ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_zoo_exhibit_first: {
+    id: "which_zoo_exhibit_first",
+    question: "Which exhibit should I visit first?",
+    chartType: "opening_hour_rank",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Zoos" },
+      drdSignals: { hasHeadlineAttraction: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Zoos" && drd.hasHeadlineAttraction ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_aquarium_tank: {
+    id: "which_aquarium_tank",
+    question: "Which tank or zone is most impressive?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Aquariums" },
+      drdSignals: { hasNamedGalleries: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Aquariums" && drd.hasNamedGalleries ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_feeding_time: {
+    id: "which_feeding_time",
+    question: "When are the animal feedings and shows?",
+    chartType: "daily_pattern",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Zoos" },
+    },
+    score: (ce, drd) => ce.subcategory === "Zoos" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_theme_park_ticket: {
+    id: "which_theme_park_ticket",
+    question: "Which ticket tier unlocks the best value?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Theme Parks" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Theme Parks" && drd.hasPriceTiers ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_water_park_slide: {
+    id: "which_water_park_slide",
+    question: "Which slides should I prioritise?",
+    chartType: "opening_hour_rank",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Water Parks" },
+      drdSignals: { hasHeadlineAttraction: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Water Parks" && drd.hasHeadlineAttraction ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: RELIGIOUS SITES & HISTORICAL
+  // ═════════════════════════════════════════════════════════════
+
+  which_religious_dress_code: {
+    id: "which_religious_dress_code",
+    question: "What is the dress code and what is provided?",
+    chartType: "rules_checklist",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Religious Sites", hasDressCode: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Religious Sites" && ce.hasDressCode ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "entrances"],
+    requiredFor: ["entrances"],
+  },
+
+  which_prayer_time_avoid: {
+    id: "which_prayer_time_avoid",
+    question: "When are prayer times and how do they affect visiting?",
+    chartType: "daily_pattern",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Religious Sites" },
+    },
+    score: (ce, drd) => ce.subcategory === "Religious Sites" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_historical_era_focus: {
+    id: "which_historical_era_focus",
+    question: "Which historical era should I focus on?",
+    chartType: "history_timeline",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Landmarks", historicalDepth: "deep" },
+    },
+    score: (ce, drd) => ce.subcategory === "Landmarks" && ce.historicalDepth === "deep" ? 70 : 0,
+    defaultScore: 0,
+    pageTypes: ["history"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: IMMERSIVE EXPERIENCES
+  // ═════════════════════════════════════════════════════════════
+
+  which_immersive_slot: {
+    id: "which_immersive_slot",
+    question: "Which time slot has the best atmosphere?",
+    chartType: "hourly_heatmap",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Immersive Experiences" },
+    },
+    score: (ce, drd) => ce.subcategory === "Immersive Experiences" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_digital_time: {
+    id: "which_digital_time",
+    question: "When is the digital experience least crowded?",
+    chartType: "hourly_heatmap",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Digital Experiences" },
+    },
+    score: (ce, drd) => ce.subcategory === "Digital Experiences" ? 70 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: NIGHTLIFE & EVENING
+  // ═════════════════════════════════════════════════════════════
+
+  when_does_nightlife_peak: {
+    id: "when_does_nightlife_peak",
+    question: "What time does the night actually peak?",
+    chartType: "hourly_heatmap",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Nightlife" },
+    },
+    score: (ce, drd) => ce.subcategory === "Nightlife" ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_night_best_atmosphere: {
+    id: "which_night_best_atmosphere",
+    question: "Which night has the best atmosphere?",
+    chartType: "weekly_pattern",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Nightlife" },
+    },
+    score: (ce, drd) => ce.subcategory === "Nightlife" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_pub_crawl_route: {
+    id: "which_pub_crawl_route",
+    question: "Which pub crawl route fits my group?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Pub Crawls" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Pub Crawls" && drd.hasNamedRoute ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WELLNESS & BATHS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_spa_treatment: {
+    id: "which_spa_treatment",
+    question: "Which treatment or package fits my time?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Spa" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Spa" && drd.hasPriceTiers ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_bath_session_length: {
+    id: "which_bath_session_length",
+    question: "How long should I plan for the full bath circuit?",
+    chartType: "duration_stat",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Baths" },
+    },
+    score: (ce, drd) => ce.subcategory === "Baths" ? 70 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_thermal_zone: {
+    id: "which_thermal_zone",
+    question: "Which thermal zone is hottest and when is it quietest?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Baths", hasNamedZones: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Baths" && ce.hasNamedZones ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: HELICOPTER & AERIAL
+  // ═════════════════════════════════════════════════════════════
+
+  which_heli_route: {
+    id: "which_heli_route",
+    question: "Which helicopter route covers the most landmarks?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Helicopter Tours" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Helicopter Tours" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_heli_departure_clear: {
+    id: "which_heli_departure_clear",
+    question: "Which departure has the clearest visibility?",
+    chartType: "optimal_departure",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Helicopter Tours" },
+      drdSignals: { hasMultipleDepartures: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Helicopter Tours" && drd.hasMultipleDepartures ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_cable_car_line: {
+    id: "which_cable_car_line",
+    question: "Which cable car line fits my route?",
+    chartType: "transit_options",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Cable Car Tours" },
+    },
+    score: (ce, drd) => ce.subcategory === "Cable Car Tours" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: DESERT & EXTREME
+  // ═════════════════════════════════════════════════════════════
+
+  which_desert_activity: {
+    id: "which_desert_activity",
+    question: "Which desert activity fits my adventure level?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Desert Safari" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Desert Safari" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_dune_bash_intensity: {
+    id: "which_dune_bash_intensity",
+    question: "Which dune bashing intensity fits my group?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Desert Safari" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Desert Safari" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_balloon_weather_window: {
+    id: "which_balloon_weather_window",
+    question: "What weather window gives the safest flight?",
+    chartType: "departure_reliability",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Hot Air Balloon" },
+    },
+    score: (ce, drd) => ce.subcategory === "Hot Air Balloon" ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WINTER SPORTS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_ski_pass_duration: {
+    id: "which_ski_pass_duration",
+    question: "Which ski pass duration fits my trip?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Skiing" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Skiing" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_slope_difficulty: {
+    id: "which_slope_difficulty",
+    question: "Which slope difficulty fits my level?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Skiing" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Skiing" && drd.hasMultipleFormats ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_snowboard_park: {
+    id: "which_snowboard_park",
+    question: "Which snow park fits my skill level?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Snowboarding" },
+      drdSignals: { hasMultipleSites: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Snowboarding" && drd.hasMultipleSites ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: DIVING & WATER SPORTS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_dive_depth: {
+    id: "which_dive_depth",
+    question: "Which dive depth or certification is required?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Scuba Diving" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Scuba Diving" && drd.hasMultipleFormats ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_snorkel_spot: {
+    id: "which_snorkel_spot",
+    question: "Which snorkel spot has the best visibility today?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Snorkeling" },
+      drdSignals: { hasMultipleSites: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Snorkeling" && drd.hasMultipleSites ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_surf_break_level: {
+    id: "which_surf_break_level",
+    question: "Which surf break fits my level today?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Surfing" },
+      drdSignals: { hasMultipleSites: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Surfing" && drd.hasMultipleSites ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_rafting_river: {
+    id: "which_rafting_river",
+    question: "Which river section fits my group?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Rafting" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Rafting" && drd.hasMultipleFormats ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: HIKING & CLIMBING (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_hike_length: {
+    id: "which_hike_length",
+    question: "Which trail length fits my fitness and time?",
+    chartType: "best_for_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Hiking & Trails" },
+      drdSignals: { hasMultipleTrails: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Hiking & Trails" && drd.hasMultipleTrails ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_climb_grade: {
+    id: "which_climb_grade",
+    question: "Which climbing grade fits my experience?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Climbing" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Climbing" && drd.hasMultipleFormats ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: CITY CARDS & PASSES (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_card_inclusions: {
+    id: "which_card_inclusions",
+    question: "Which attractions are actually included?",
+    chartType: "donut_breakdown",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "City Cards" },
+    },
+    score: (ce, drd) => ce.subcategory === "City Cards" ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["tickets-pricing"],
+    requiredFor: ["tickets-pricing"],
+  },
+
+  which_card_duration_value: {
+    id: "which_card_duration_value",
+    question: "Which card duration gives the best value?",
+    chartType: "savings_breakdown",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "City Cards" },
+    },
+    score: (ce, drd) => ce.subcategory === "City Cards" ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["tickets-pricing"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: COMBO DEALS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_combo_saves_most: {
+    id: "which_combo_saves_most",
+    question: "Which combo saves the most money?",
+    chartType: "savings_breakdown",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Combos" },
+    },
+    score: (ce, drd) => ce.subcategory === "Combos" ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["combo-deals", "tickets-pricing"],
+    requiredFor: ["combo-deals"],
+  },
+
+  which_combo_time_efficient: {
+    id: "which_combo_time_efficient",
+    question: "Which combo is most time-efficient?",
+    chartType: "itinerary_flow",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Combos" },
+    },
+    score: (ce, drd) => ce.subcategory === "Combos" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["combo-deals"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: GUIDED TOURS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_guide_language: {
+    id: "which_guide_language",
+    question: "Which guide language options are available?",
+    chartType: "donut_breakdown",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Guided Tours" },
+    },
+    score: (ce, drd) => ce.subcategory === "Guided Tours" ? 70 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_tour_group_size: {
+    id: "which_tour_group_size",
+    question: "Which group size fits my preference?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Guided Tours" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Guided Tours" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WALKING TOURS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_walking_theme: {
+    id: "which_walking_theme",
+    question: "Which walking tour theme fits my interests?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Walking Tours" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Walking Tours" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_walking_pace: {
+    id: "which_walking_pace",
+    question: "Which walking pace fits my fitness?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Walking Tours" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Walking Tours" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: MULTI-DAY TOURS
+  // ═════════════════════════════════════════════════════════════
+
+  which_day_trip_route: {
+    id: "which_day_trip_route",
+    question: "Which day trip route covers the most?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Day Trips" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Day Trips" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_multi_day_style: {
+    id: "which_multi_day_style",
+    question: "Which multi-day tour style fits my travel pace?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Multi-Day Tours" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Multi-Day Tours" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: HOP-ON HOP-OFF (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_hop_on_route: {
+    id: "which_hop_on_route",
+    question: "Which hop-on hop-off route covers my must-sees?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Hop-on Hop-off Tours" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Hop-on Hop-off Tours" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_hop_on_frequency: {
+    id: "which_hop_on_frequency",
+    question: "How often do buses come at each stop?",
+    chartType: "stop_frequency",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Hop-on Hop-off Tours" },
+    },
+    score: (ce, drd) => ce.subcategory === "Hop-on Hop-off Tours" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: PORT OF CALL (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_port_tour_fits: {
+    id: "which_port_tour_fits",
+    question: "Which port tour fits my cruise schedule?",
+    chartType: "return_buffer_rank",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Port of Call Tours" },
+    },
+    score: (ce, drd) => ce.subcategory === "Port of Call Tours" ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+    requiredFor: ["plan-your-visit"],
+  },
+
+  which_port_tour_back_on_time: {
+    id: "which_port_tour_back_on_time",
+    question: "Which tour gets me back with the most buffer?",
+    chartType: "return_buffer_rank",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Port of Call Tours" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Port of Call Tours" && drd.hasMultipleProducts ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: PHOTOGRAPHY TOURS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_photo_golden_hour: {
+    id: "which_photo_golden_hour",
+    question: "Which departure captures golden hour?",
+    chartType: "golden_hour_match",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Photography Tours" },
+      drdSignals: { hasMultipleDepartures: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Photography Tours" && drd.hasMultipleDepartures ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_photo_stops_covered: {
+    id: "which_photo_stops_covered",
+    question: "Which iconic stops are actually covered?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Photography Tours" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Photography Tours" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: FOOD TOURS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_food_stops_covered: {
+    id: "which_food_stops_covered",
+    question: "Which food stops and tastings are included?",
+    chartType: "itinerary_flow",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Food Tours" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Food Tours" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_food_dietary: {
+    id: "which_food_dietary",
+    question: "Which tour accommodates my dietary needs?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Food Tours" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Food Tours" && drd.hasMultipleProducts ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WINERIES (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_winery_harvest: {
+    id: "which_winery_harvest",
+    question: "When is harvest season and how does it change the visit?",
+    chartType: "season_weather_fit",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Wineries" },
+    },
+    score: (ce, drd) => ce.subcategory === "Wineries" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_winery_tasting: {
+    id: "which_winery_tasting",
+    question: "Which tasting tier fits my palate and budget?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Wineries" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Wineries" && drd.hasPriceTiers ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: COOKING CLASSES (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_cuisine_type: {
+    id: "which_cuisine_type",
+    question: "Which cuisine type fits my interests?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Cooking Classes" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Cooking Classes" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_class_dietary: {
+    id: "which_class_dietary",
+    question: "Which class accommodates my dietary restrictions?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Cooking Classes" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Cooking Classes" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_class_skill_level: {
+    id: "which_class_skill_level",
+    question: "Which class fits my cooking skill level?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Cooking Classes" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Cooking Classes" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WORKSHOPS
+  // ═════════════════════════════════════════════════════════════
+
+  which_workshop_topic: {
+    id: "which_workshop_topic",
+    question: "Which workshop topic fits my interests?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Workshops" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Workshops" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_workshop_duration: {
+    id: "which_workshop_duration",
+    question: "Which workshop duration fits my schedule?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Workshops" },
+      drdSignals: { hasMultipleFormats: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Workshops" && drd.hasMultipleFormats ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: TRAIN & FERRY (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_train_class: {
+    id: "which_train_class",
+    question: "Which train class is worth the upgrade?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Train Tickets" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Train Tickets" && drd.hasPriceTiers ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_ferry_seating: {
+    id: "which_ferry_seating",
+    question: "Which ferry seating or deck is best?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Ferry Tickets" },
+      drdSignals: { hasDeckZones: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Ferry Tickets" && drd.hasDeckZones ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_ferry_scenic: {
+    id: "which_ferry_scenic",
+    question: "Which ferry route is most scenic?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Ferry Tickets" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Ferry Tickets" && drd.hasNamedRoute ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: STAYCATIONS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_national_park_entrance: {
+    id: "which_national_park_entrance",
+    question: "Which park entrance is best for my plans?",
+    chartType: "entrance_map",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "National Park Staycations" },
+      drdSignals: { entryPoints: ">1" },
+    },
+    score: (ce, drd) => ce.subcategory === "National Park Staycations" && (ce.entryPoints || 0) > 1 ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "entrances"],
+  },
+
+  which_wildlife_experience: {
+    id: "which_wildlife_experience",
+    question: "Which wildlife experience fits my stay?",
+    chartType: "best_for_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Wildlife Staycations" },
+    },
+    score: (ce, drd) => ce.subcategory === "Wildlife Staycations" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_beach_stay_type: {
+    id: "which_beach_stay_type",
+    question: "Which beach stay type fits my group?",
+    chartType: "best_for_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Beach Staycations" },
+    },
+    score: (ce, drd) => ce.subcategory === "Beach Staycations" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_mountain_activity: {
+    id: "which_mountain_activity",
+    question: "Which mountain activity fits my fitness level?",
+    chartType: "best_for_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Mountains Staycations" },
+    },
+    score: (ce, drd) => ce.subcategory === "Mountains Staycations" ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: WHALE WATCHING (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_whale_season: {
+    id: "which_whale_season",
+    question: "Which months offer the best whale sightings?",
+    chartType: "sighting_probability",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Whale Watching" },
+      drdSignals: { sightingProbability: "exists" },
+    },
+    score: (ce, drd) => ce.subcategory === "Whale Watching" && drd.sightingProbability ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+    requiredFor: ["plan-your-visit"],
+  },
+
+  which_whale_departure: {
+    id: "which_whale_departure",
+    question: "Which departure time has the best sighting odds?",
+    chartType: "optimal_departure",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Whale Watching" },
+      drdSignals: { hasMultipleDepartures: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Whale Watching" && drd.hasMultipleDepartures ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: SAFARI (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_safari_zone: {
+    id: "which_safari_zone",
+    question: "Which safari zone has the strongest sightings?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Safari", hasNamedZones: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Safari" && ce.hasNamedZones ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_safari_time_wildlife: {
+    id: "which_safari_time_wildlife",
+    question: "What time of day are animals most active?",
+    chartType: "activity_window",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Safari" },
+      drdSignals: { sightingProbability: "exists" },
+    },
+    score: (ce, drd) => ce.subcategory === "Safari" && drd.sightingProbability ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_safari_vehicle_quiet: {
+    id: "which_safari_vehicle_quiet",
+    question: "When is the safari vehicle quietest?",
+    chartType: "hourly_heatmap",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Safari" },
+    },
+    score: (ce, drd) => ce.subcategory === "Safari" ? 70 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: RIVER CRUISES
+  // ═════════════════════════════════════════════════════════════
+
+  which_river_cruise_route: {
+    id: "which_river_cruise_route",
+    question: "Which river cruise route covers the most landmarks?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "River Cruises" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "River Cruises" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_river_cruise_duration: {
+    id: "which_river_cruise_duration",
+    question: "Which river cruise duration fits my schedule?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "River Cruises" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "River Cruises" && drd.hasMultipleProducts ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: LUNCH CRUISES
+  // ═════════════════════════════════════════════════════════════
+
+  which_lunch_cruise_menu: {
+    id: "which_lunch_cruise_menu",
+    question: "Which lunch cruise menu fits my dietary needs?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Lunch Cruises" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Lunch Cruises" && drd.hasMultipleProducts ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_lunch_cruise_views: {
+    id: "which_lunch_cruise_views",
+    question: "Which lunch cruise has the best midday views?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Lunch Cruises" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Lunch Cruises" && drd.hasNamedRoute ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: DINNER CRUISES (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_dinner_cruise_sunset: {
+    id: "which_dinner_cruise_sunset",
+    question: "Is the dinner cruise actually at sunset?",
+    chartType: "optimal_departure",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Dinner Cruises" },
+      drdSignals: { hasSunsetSlot: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Dinner Cruises" && drd.hasSunsetSlot ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_dinner_cruise_deck: {
+    id: "which_dinner_cruise_deck",
+    question: "Which deck gives the best dinner views?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Dinner Cruises" },
+      drdSignals: { hasDeckZones: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Dinner Cruises" && drd.hasDeckZones ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: SIGHTSEEING CRUISES (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_sightseeing_loop: {
+    id: "which_sightseeing_loop",
+    question: "Short loop or full route — which fits my time?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Sightseeing Cruises" },
+      drdSignals: { hasRouteVariants: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Sightseeing Cruises" && drd.hasRouteVariants ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_sightseeing_day_night: {
+    id: "which_sightseeing_day_night",
+    question: "Day cruise or after-dark cruise?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Sightseeing Cruises" },
+      drdSignals: { hasDayAndNight: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Sightseeing Cruises" && drd.hasDayAndNight ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_sightseeing_hop: {
+    id: "which_sightseeing_hop",
+    question: "Single cruise or hop-on hop-off pass?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Sightseeing Cruises" },
+      drdSignals: { hasHopOnOffVariant: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Sightseeing Cruises" && drd.hasHopOnOffVariant ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_sightseeing_deck: {
+    id: "which_sightseeing_deck",
+    question: "Where should I sit for the best views?",
+    chartType: "compare_zones",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Sightseeing Cruises" },
+      drdSignals: { hasDeckZones: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Sightseeing Cruises" && drd.hasDeckZones ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: CITY TOURS
+  // ═════════════════════════════════════════════════════════════
+
+  which_city_tour_route: {
+    id: "which_city_tour_route",
+    question: "Which city tour route covers my must-sees?",
+    chartType: "landmark_coverage",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "City Tours" },
+      drdSignals: { hasNamedRoute: true },
+    },
+    score: (ce, drd) => ce.subcategory === "City Tours" && drd.hasNamedRoute ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_city_tour_vehicle: {
+    id: "which_city_tour_vehicle",
+    question: "Which tour vehicle fits my comfort?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "City Tours" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "City Tours" && drd.hasMultipleProducts ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: SPORTS (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_sport_fixture: {
+    id: "which_sport_fixture",
+    question: "Which fixture is hardest to get tickets for?",
+    chartType: "month_calendar",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { category: "Sports" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.category === "Sports" && drd.hasMultipleProducts ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_sport_seat_zone: {
+    id: "which_sport_seat_zone",
+    question: "Which seating zone is best value?",
+    chartType: "seat_value_map",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { category: "Sports" },
+      drdSignals: { hasSeatedVenue: true, hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.category === "Sports" && drd.hasSeatedVenue && drd.hasPriceTiers ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: FORMULA 1 (extended)
+  // ═════════════════════════════════════════════════════════════
+
+  which_f1_day_type: {
+    id: "which_f1_day_type",
+    question: "Practice, qualifying, or race day — which fits my budget?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Formula 1" },
+      drdSignals: { hasMultipleProducts: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Formula 1" && drd.hasMultipleProducts ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+    requiredFor: ["tickets-pricing"],
+  },
+
+  which_f1_grandstand: {
+    id: "which_f1_grandstand",
+    question: "Which grandstand gives the best race views?",
+    chartType: "seat_value_map",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Formula 1" },
+      drdSignals: { hasSeatedVenue: true, hasPriceTiers: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Formula 1" && drd.hasSeatedVenue && drd.hasPriceTiers ? 85 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  which_f1_premium_sellout: {
+    id: "which_f1_premium_sellout",
+    question: "How quickly do premium grandstands sell out?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Formula 1" },
+      drdSignals: { hasPriceTiers: true, sellOutRisk: "high" },
+    },
+    score: (ce, drd) => {
+      if (ce.subcategory !== "Formula 1") return 0;
+      if (!drd.hasPriceTiers) return 0;
+      if (drd.sellOutRisk === "high") return 95;
+      if (drd.sellOutRisk === "medium") return 75;
+      return 50;
+    },
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit", "tickets-pricing"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: COMEDY & STAND-UP
+  // ═════════════════════════════════════════════════════════════
+
+  which_comedy_show: {
+    id: "which_comedy_show",
+    question: "Which comedy show fits my sense of humour?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Comedy" },
+    },
+    score: (ce, drd) => ce.subcategory === "Comedy" ? 75 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  which_stand_up_language: {
+    id: "which_stand_up_language",
+    question: "Which stand-up show is in my language?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Stand-Up" },
+      drdSignals: { hasMultipleLanguages: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Stand-Up" && drd.hasMultipleLanguages ? 80 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+  },
+
+  // ═════════════════════════════════════════════════════════════
+  // ADDITIONAL SUBCATEGORIES: FESTIVALS & EVENTS
+  // ═════════════════════════════════════════════════════════════
+
+  which_festival_lineup_day: {
+    id: "which_festival_lineup_day",
+    question: "Which day has the lineup I care about most?",
+    chartType: "slot_compare",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Festivals" },
+      drdSignals: { hasMultipleDays: true },
+    },
+    score: (ce, drd) => ce.subcategory === "Festivals" && drd.hasMultipleDays ? 90 : 0,
+    defaultScore: 0,
+    pageTypes: ["plan-your-visit"],
+    requiredFor: ["plan-your-visit"],
+  },
+
+  which_festival_ticket_tier: {
+    id: "which_festival_ticket_tier",
+    question: "Which ticket tier gets me closest to the action?",
+    chartType: "ticket_access_matrix",
+    layer: "ce_specific",
+    trigger: {
+      ceSignals: { subcategory: "Festivals" },
+      drdSignals: { hasPriceTiers: true },
+    },
+    score: (ce

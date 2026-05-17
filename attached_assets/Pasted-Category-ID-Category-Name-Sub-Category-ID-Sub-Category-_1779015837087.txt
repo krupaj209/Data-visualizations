@@ -1,0 +1,1000 @@
+Category ID	Category Name	Sub Category ID	Sub Category Name
+1	Tickets		
+1	Tickets	1007	Landmarks
+1	Tickets	1002	Museums
+1	Tickets	1001	Theme Parks
+1	Tickets	1005	Water Parks
+1	Tickets	1003	Zoos
+1	Tickets	1140	Aquariums
+1	Tickets	1098	Observation Decks
+1	Tickets	1008	City Cards
+1	Tickets	1004	Parks
+1	Tickets	1006	Religious Sites
+1	Tickets	1149	Immersive Experiences
+2	Tours		
+2	Tours	1010	Guided Tours
+2	Tours	1143	Day Trips
+			
+			
+2	Tours	1012	City Tours
+2	Tours	1009	Walking Tours
+2	Tours	1011	Hop-on Hop-off Tours
+2	Tours	1013	Private Tours
+2	Tours	1014	Bike & Segway Tours
+2	Tours	1068	Speed Boat Tours
+2	Tours	1147	Heritage Experiences
+2	Tours	1017	Photography Tours
+2	Tours	1016	Multi-Day Tours
+2	Tours	1015	Shopping
+2	Tours	1018	Port of Call Tours (Cruise Visitors)
+3	Transportation		
+3	Transportation	1019	Airport Transfers
+3	Transportation	1145	Shared Airport Transfers
+3	Transportation	1022	Public Transport
+3	Transportation	1021	Attraction Transfers
+3	Transportation	1144	Private Airport Transfers
+3	Transportation	1108	Ferry Tickets
+3	Transportation	1133	Train Tickets
+3	Transportation	1139	Train Passes
+3	Transportation	1020	Car Rentals
+4	Travel Services		
+4	Travel Services	1023	Wifi & SIM Cards
+4	Travel Services	1132	Airport Services
+4	Travel Services	1153	Luggage Storage
+5	Food & Drink		
+5	Food & Drink	1025	Dining
+5	Food & Drink	1026	Food Tours
+5	Food & Drink	1028	Wineries
+5	Food & Drink	1027	Cooking Classes
+5	Food & Drink	1030	Pub Crawls
+5	Food & Drink	1031	Food Passes
+5	Food & Drink	1029	Coffee & Tea
+18	Cruises		
+18	Cruises	1061	Sightseeing Cruises
+18	Cruises	1060	Dinner Cruises
+18	Cruises	1094	Lunch Cruises
+18	Cruises		Whale watching
+7	Entertainment		
+7	Entertainment	1037	Plays
+7	Entertainment	1041	Comedy
+7	Entertainment	1107	Drama
+7	Entertainment	1036	Musicals
+7	Entertainment	1100	Dance Shows
+7	Entertainment	1038	Opera
+7	Entertainment	1047	Family Shows
+7	Entertainment	1040	Classical Concerts
+7	Entertainment	1119	Theatrical Concerts
+7	Entertainment	1148	Nightlife
+7	Entertainment	1042	Sports
+7	Entertainment	1043	Cabarets
+7	Entertainment	1104	Immersive Theatre
+7	Entertainment	1046	New Arrivals
+7	Entertainment	1105	Circus
+7	Entertainment	1106	Fantasy
+7	Entertainment	1044	Ballet
+7	Entertainment	1120	Rock Concerts
+7	Entertainment	1151	Adult Shows
+7	Entertainment	1096	Pantomimes
+7	Entertainment	1103	Magic Shows
+7	Entertainment	1039	Cinema
+7	Entertainment	1121	Church Concerts
+7	Entertainment	1045	Shows Opening Soon
+7	Entertainment	1048	Shows Reopening
+7	Entertainment	1097	See it in Style
+8	Adventure		
+8	Adventure	1056	Outdoor Activities
+8	Adventure	1055	Indoor Adventure
+8	Adventure	1073	Desert Safari
+8	Adventure	1052	Ziplining
+8	Adventure	1049	Skydiving
+8	Adventure	1134	Go Karting
+8	Adventure	1116	Mountain Excursions
+8	Adventure	1135	Quad Biking
+8	Adventure	1053	Climbing
+8	Adventure	1054	Racing
+8	Adventure	1114	Sledding
+8	Adventure	1050	Skiing
+8	Adventure	1051	Bungee Jumping
+8	Adventure	1115	Snowshoeing
+8	Adventure	1113	Snowboarding
+9	Aerial Sightseeing		
+9	Aerial Sightseeing	1057	Helicopter Tours
+9	Aerial Sightseeing	1112	Cable Car Tours
+9	Aerial Sightseeing	1058	Hot Air Balloon
+9	Aerial Sightseeing	1059	Airplane Tours
+10	Water Sports		
+10	Water Sports	1101	Snorkeling
+10	Water Sports	1065	Kayaking
+10	Water Sports	1066	Rafting
+10	Water Sports	1067	Boat Rentals
+10	Water Sports	1062	Scuba Diving
+10	Water Sports	1064	Jet Skiing
+10	Water Sports	1063	Surfing
+10	Water Sports	1102	Marine Walks
+10	Water Sports	1138	Paddle Sport
+11	Nature & Wildlife		
+11	Nature & Wildlife	1070	Safari
+11	Nature & Wildlife	1071	Hiking & Trails
+11	Nature & Wildlife	1072	Camping
+12	Wellness		
+12	Wellness	1074	Spa
+12	Wellness	1117	Baths
+12	Wellness	1075	Fitness Passes
+13	Classes		
+13	Classes	1099	Workshops
+14	Specials		
+14	Specials	1080	Combos
+14	Specials	1111	Valentine's Day
+14	Specials	1079	Digital Experiences
+14	Specials	1081	Coming Soon
+16	Staycations		
+16	Staycations	1090	Wildlife Staycations
+16	Staycations	1089	Mountains Staycations
+16	Staycations	1088	Beach Staycations
+16	Staycations	1091	National Park Staycations
+19	Sports		
+19	Sports	1109	Formula 1
+19	Sports	1131	Baseball
+19	Sports	1130	Muay Thai
+19	Sports	1110	Football
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
