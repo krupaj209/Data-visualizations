@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -232,7 +238,24 @@ export function IntelPanel({
   const [plan, setPlan] = useState<VisualizationPlan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
-  const [creatingQuestion, setCreatingQuestion] = useState<string | null>(null);
+  const [creatingQuestions, setCreatingQuestions] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const markCreating = useCallback(
+    (question: string | null, creating: boolean) => {
+      if (!question) return;
+      setCreatingQuestions((prev) => {
+        const has = prev.has(question);
+        if (creating && has) return prev;
+        if (!creating && !has) return prev;
+        const next = new Set(prev);
+        if (creating) next.add(question);
+        else next.delete(question);
+        return next;
+      });
+    },
+    [],
+  );
   const [rejectedContext, setRejectedContext] = useState<Record<string, string>>(
     () => ({}),
   );
@@ -420,7 +443,7 @@ export function IntelPanel({
   async function handleSearchMoreForRejected(
     item: VisualizationPlan["rejected_visualizations"][number],
   ) {
-    setCreatingQuestion(item.question);
+    markCreating(item.question, true);
     setPlanError(null);
     try {
       const res = await fetch(`/api/ce-intelligence/${slug}/recheck-gap`, {
@@ -516,14 +539,14 @@ export function IntelPanel({
         err instanceof Error ? err.message : "Could not recheck evidence",
       );
     } finally {
-      setCreatingQuestion(null);
+      markCreating(item.question, false);
     }
   }
 
   async function runCreateForIdea(
     item: VisualizationPlan["recommended_visualizations"][number],
   ): Promise<{ ok: true } | { ok: false; error: string }> {
-    setCreatingQuestion(item.question);
+    markCreating(item.question, true);
     try {
       const evidenceSnippets = relevantEvidenceForVisualization(plan, item);
       const plannerContext = [
@@ -628,7 +651,7 @@ export function IntelPanel({
         err instanceof Error ? err.message : "Chart generation failed";
       return { ok: false, error: message } as const;
     } finally {
-      setCreatingQuestion(null);
+      markCreating(item.question, false);
     }
   }
 
@@ -662,29 +685,60 @@ export function IntelPanel({
       failed: 0,
       running: true,
     });
+
+    // Concurrency cap — keep small so Gemini isn't hammered. 2 in flight
+    // roughly halves wall time vs sequential without spiking rate limits.
+    const CONCURRENCY = 2;
+    // Soft global backoff: when any worker hits a 429 / rate-limit error,
+    // every worker waits at least this long before its next start.
+    let backoffUntil = 0;
     let created = 0;
     let failed = 0;
-    for (const item of ideas) {
-      const result = await runCreateForIdea(item);
-      if (result.ok) {
-        created += 1;
-      } else {
-        failed += 1;
-        setBulkErrors((prev) => ({
-          ...prev,
-          [item.question]: result.error,
-        }));
+    const queue = [...ideas];
+
+    async function worker() {
+      while (queue.length > 0) {
+        const now = Date.now();
+        if (backoffUntil > now) {
+          await new Promise((r) => setTimeout(r, backoffUntil - now));
+        }
+        const item = queue.shift();
+        if (!item) return;
+        const result = await runCreateForIdea(item);
+        if (result.ok) {
+          created += 1;
+        } else {
+          failed += 1;
+          setBulkErrors((prev) => ({
+            ...prev,
+            [item.question]: result.error,
+          }));
+          if (/rate.?limit|429|quota|too many requests/i.test(result.error)) {
+            // Exponential-ish backoff bounded at 30s; subsequent rate
+            // limits push the deadline further out.
+            const base = Math.max(0, backoffUntil - Date.now());
+            const next = Math.min(30_000, Math.max(2_000, base * 2 || 2_000));
+            backoffUntil = Date.now() + next;
+          }
+        }
+        setBulkProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                done: prev.done + 1,
+                failed: prev.failed + (result.ok ? 0 : 1),
+              }
+            : prev,
+        );
       }
-      setBulkProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              done: prev.done + 1,
-              failed: prev.failed + (result.ok ? 0 : 1),
-            }
-          : prev,
-      );
     }
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, ideas.length) }, () =>
+        worker(),
+      ),
+    );
+
     setBulkProgress(null);
     setBulkSummary({ created, failed });
     clearSelectedIdeas();
@@ -706,7 +760,7 @@ export function IntelPanel({
       setPlanError("Choose a chart type before creating this chart.");
       return;
     }
-    setCreatingQuestion(item.question);
+    markCreating(item.question, true);
     setPlanError(null);
     try {
       const repairContext =
@@ -798,7 +852,7 @@ export function IntelPanel({
     } catch (err) {
       setPlanError(err instanceof Error ? err.message : "Chart generation failed");
     } finally {
-      setCreatingQuestion(null);
+      markCreating(item.question, false);
     }
   }
 
@@ -830,7 +884,8 @@ export function IntelPanel({
     (plan?.traveler_questions ?? []).map((q) => [q.question, q]),
   );
 
-  const isBusyGenerating = creatingQuestion !== null || !!bulkProgress?.running;
+  const isBusyGenerating =
+    creatingQuestions.size > 0 || !!bulkProgress?.running;
 
   // Match plan ideas to existing charts on this CE so writers see which
   // ideas are already "Done". Match against provenance.source_question
@@ -1412,7 +1467,7 @@ export function IntelPanel({
                             : undefined,
                           actionLabel: "Create chart",
                           actionDisabled: isBusyGenerating,
-                          actionBusy: creatingQuestion === item.question,
+                          actionBusy: creatingQuestions.has(item.question),
                           onAction: () => handleCreateFromPlan(item),
                           cardError: bulkErrors[item.question],
                           selectable: true,
@@ -1438,7 +1493,7 @@ export function IntelPanel({
                       onViewChart={onViewChart}
                       rejectedContext={rejectedContext}
                       rejectedArchetype={rejectedArchetype}
-                      creatingQuestion={creatingQuestion}
+                      creatingQuestions={creatingQuestions}
                       setRejectedContext={setRejectedContext}
                       setRejectedArchetype={setRejectedArchetype}
                       onAddContext={(item) =>
@@ -3097,7 +3152,7 @@ function RejectedSection({
   onViewChart,
   rejectedContext,
   rejectedArchetype,
-  creatingQuestion,
+  creatingQuestions,
   setRejectedContext,
   setRejectedArchetype,
   onAddContext,
@@ -3115,7 +3170,7 @@ function RejectedSection({
   onViewChart?: (chartId: number) => void;
   rejectedContext: Record<string, string>;
   rejectedArchetype: Record<string, string>;
-  creatingQuestion: string | null;
+  creatingQuestions: Set<string>;
   setRejectedContext: React.Dispatch<
     React.SetStateAction<Record<string, string>>
   >;
@@ -3165,7 +3220,8 @@ function RejectedSection({
           {items.map((item) => {
             const isExpanded = !!expandedRows[item.question];
             const existingChartId = existingChartIdFor(item.question);
-            const isBusy = creatingQuestion === item.question;
+            const isBusy = creatingQuestions.has(item.question);
+            const anyCreating = creatingQuestions.size > 0;
             return (
               <CompactRow
                 key={item.question}
@@ -3212,7 +3268,7 @@ function RejectedSection({
                         e.stopPropagation();
                         onSearchMore(item);
                       }}
-                      disabled={creatingQuestion !== null}
+                      disabled={anyCreating}
                       title="Recheck evidence for this rejected idea"
                       style={{
                         border: `1px solid ${BRAND.slate200}`,
@@ -3222,10 +3278,7 @@ function RejectedSection({
                         color: BRAND.purps,
                         fontSize: 10,
                         fontWeight: 850,
-                        cursor:
-                          creatingQuestion !== null
-                            ? "not-allowed"
-                            : "pointer",
+                        cursor: anyCreating ? "not-allowed" : "pointer",
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 4,
@@ -3265,7 +3318,7 @@ function RejectedSection({
                       ""
                     }
                     isBusy={isBusy}
-                    disabled={creatingQuestion !== null}
+                    disabled={anyCreating}
                     onContextChange={(value) =>
                       setRejectedContext((prev) => ({
                         ...prev,
