@@ -11,6 +11,7 @@
     "src/test-editorial-verdict.mts",
     "src/test-intent-engine.mts",
     "src/test-page-type-specs.mts",
-    "src/test-overrides-merge.mts"
+    "src/test-overrides-merge.mts",
+    "src/test-pipeline-overrides.mts"
   ]
 }

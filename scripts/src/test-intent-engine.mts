@@ -19,6 +19,7 @@ import {
   QUESTION_BUNDLES,
   VISITOR_INTENTS,
   type ChartArchetypeId,
+  type OverrideAction,
 } from "../../lib/question-bank/src/index.ts";
 
 const COLOSSEUM_DRD = `
@@ -314,5 +315,127 @@ test("assembleDeck: bundle_audit reports score + triggering_signals for fired bu
   for (const entry of fired) {
     assert.ok(entry.score >= 0, "fired bundle must have a numeric score");
     assert.ok(Array.isArray(entry.triggering_signals));
+  }
+});
+
+/* ---------------- Overrides (Task #113) ---------------- */
+
+test("assembleDeck: category 'edit' override rewrites the question template + tags override_source/override_id", () => {
+  const signals = extractSignals(COLOSSEUM_DRD);
+  const categoryOverrides: OverrideAction[] = [
+    {
+      id: 42,
+      action: "edit",
+      bundleId: "timing",
+      archetype: "hourly_heatmap",
+      questionTemplate: "CATEGORY EDIT: when is {{ceName}} truly quiet?",
+    },
+  ];
+  const deck = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+    categoryOverrides,
+  });
+  const hit = deck.selected.find((s) => s.archetype === "hourly_heatmap");
+  assert.ok(hit, "timing bundle should still pick hourly_heatmap");
+  assert.equal(hit!.question, "CATEGORY EDIT: when is Colosseum truly quiet?");
+  assert.equal(hit!.override_source, "category");
+  assert.equal(hit!.override_id, 42);
+});
+
+test("assembleDeck: CE-scope override wins over category-scope override (last-layer wins)", () => {
+  const signals = extractSignals(COLOSSEUM_DRD);
+  const categoryOverrides: OverrideAction[] = [
+    {
+      id: 1,
+      action: "edit",
+      bundleId: "timing",
+      archetype: "hourly_heatmap",
+      questionTemplate: "CATEGORY VERSION for {{ceName}}",
+    },
+  ];
+  const ceOverrides: OverrideAction[] = [
+    {
+      id: 99,
+      action: "edit",
+      bundleId: "timing",
+      archetype: "hourly_heatmap",
+      questionTemplate: "CE VERSION for {{ceName}}",
+    },
+  ];
+  const deck = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+    categoryOverrides,
+    ceOverrides,
+  });
+  const hit = deck.selected.find((s) => s.archetype === "hourly_heatmap")!;
+  assert.equal(hit.question, "CE VERSION for Colosseum");
+  assert.equal(hit.override_source, "ce");
+  assert.equal(hit.override_id, 99);
+});
+
+test("assembleDeck: 'mute' override forces fallback to the next viable candidate in the bundle", () => {
+  const signals = extractSignals(COLOSSEUM_DRD);
+  const baseDeck = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+  });
+  const basePick = baseDeck.selected.find((s) => s.bundle_id === "timing");
+  assert.ok(basePick, "timing bundle should pick something by default");
+
+  const ceOverrides: OverrideAction[] = [
+    {
+      id: 7,
+      action: "mute",
+      bundleId: "timing",
+      archetype: basePick!.archetype,
+    },
+  ];
+  const mutedDeck = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+    ceOverrides,
+  });
+  const mutedPick = mutedDeck.selected.find((s) => s.bundle_id === "timing");
+  assert.ok(mutedPick, "timing bundle should still fire — just with a different archetype");
+  assert.notEqual(
+    mutedPick!.archetype,
+    basePick!.archetype,
+    "muted archetype must not be selected",
+  );
+});
+
+test("assembleDeck: candidates left untouched by overrides keep override_source='code'", () => {
+  const signals = extractSignals(COLOSSEUM_DRD);
+  const categoryOverrides: OverrideAction[] = [
+    {
+      id: 3,
+      action: "edit",
+      bundleId: "timing",
+      archetype: "weekly_pattern",
+      questionTemplate: "UNUSED EDIT for {{ceName}}",
+    },
+  ];
+  const deck = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+    categoryOverrides,
+  });
+  // Any chart from a non-timing bundle should still report override_source "code".
+  const nonTiming = deck.selected.filter((s) => s.bundle_id !== "timing");
+  assert.ok(nonTiming.length > 0, "expected at least one non-timing chart");
+  for (const q of nonTiming) {
+    assert.equal(
+      q.override_source,
+      "code",
+      `bundle ${q.bundle_id} should be untouched by a timing-only override`,
+    );
+    assert.equal(q.override_id, undefined);
   }
 });

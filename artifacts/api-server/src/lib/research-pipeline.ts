@@ -181,6 +181,70 @@ export interface ResearchPipelineResult {
 /* -------------------------------------------------------------------------- */
 
 /* -------------------------------------------------------------------------- */
+/* Pipeline-level override loader                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Resolve the active category + CE override actions for this pipeline run
+ * and mutate `input` in place so downstream steps (`selectQuestions` →
+ * `assembleDeck`) see them. Soft-fails: a DB error just falls back to
+ * code defaults. Exported for unit testing the wiring contract.
+ *
+ * Skipped entirely when the caller already pre-populated the override
+ * arrays (tests / scripts that want a deterministic deck).
+ */
+export async function resolvePipelineOverrides(
+  input: ResearchPipelineInput,
+): Promise<void> {
+  if (
+    input.categoryOverrides !== undefined ||
+    input.ceOverrides !== undefined
+  ) {
+    return;
+  }
+  try {
+    const loaded = await loadOverridesFor({
+      ceSlug: input.ce.slug,
+      subcategoryId: input.subcategoryId,
+    });
+    input.categoryOverrides = loaded.categoryActions;
+    input.ceOverrides = loaded.ceActions;
+  } catch (err) {
+    logger.warn(
+      { err, slug: input.ce.slug },
+      "Could not load question overrides — pipeline will run with code defaults",
+    );
+    input.categoryOverrides = [];
+    input.ceOverrides = [];
+  }
+}
+
+/**
+ * Merge an assembled question's intent + override metadata onto the
+ * verifier-augmented provenance. Exported so the override contract
+ * (override_source / override_id flowing into chart provenance) is
+ * unit-testable without invoking the real Gemini pipeline.
+ */
+export function buildChartProvenance(
+  sel: AssembledQuestion,
+  verified: ChartProvenance,
+  pageType: PageType,
+): ChartProvenance {
+  return {
+    ...verified,
+    kind: sel.kind,
+    ...(sel.topic_id ? { topic_id: sel.topic_id } : {}),
+    bundle_id: sel.bundle_id,
+    intent_id: sel.intent_id,
+    bundle_score: sel.bundle_score,
+    triggering_signals: sel.triggering_signals,
+    page_type: pageType,
+    override_source: sel.override_source,
+    ...(sel.override_id !== undefined ? { override_id: sel.override_id } : {}),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Step 1 — Assemble the deck (deterministic intent-driven engine)             */
 /* -------------------------------------------------------------------------- */
 
@@ -1125,24 +1189,11 @@ export async function runResearchPipeline(
   }
 
   // Load DB-backed overrides once if not pre-supplied. Soft-fails: a
-  // miss just means the pipeline runs with code defaults only.
-  if (input.categoryOverrides === undefined && input.ceOverrides === undefined) {
-    try {
-      const loaded = await loadOverridesFor({
-        ceSlug: input.ce.slug,
-        subcategoryId: input.subcategoryId,
-      });
-      input.categoryOverrides = loaded.categoryActions;
-      input.ceOverrides = loaded.ceActions;
-    } catch (err) {
-      logger.warn(
-        { err, slug: input.ce.slug },
-        "Could not load question overrides — pipeline will run with code defaults",
-      );
-      input.categoryOverrides = [];
-      input.ceOverrides = [];
-    }
-  }
+  // miss just means the pipeline runs with code defaults only. The
+  // resolved actions are then forwarded into `assembleDeck` via
+  // `selectQuestions` so writer edits (category- or CE-scope) shape the
+  // questions Gemini is actually prompted with.
+  await resolvePipelineOverrides(input);
 
   // Read intelligence layer once if not pre-supplied. Soft-fails: missing
   // intel just means the pipeline runs without it (DRD-only).
@@ -1168,22 +1219,14 @@ export async function runResearchPipeline(
 
   // Helper: assembler-derived provenance for one chart. Merges the
   // intent/bundle metadata from the assembled question with the
-  // verifier-augmented provenance returned from Step 2/3.
+  // verifier-augmented provenance returned from Step 2/3. The
+  // override_source / override_id fields ride through from the assembler
+  // so writers can see which charts their override edits shaped.
   const buildProvenance = (
     sel: AssembledQuestion,
     verified: ChartProvenance,
-  ): ChartProvenance => ({
-    ...verified,
-    kind: sel.kind,
-    ...(sel.topic_id ? { topic_id: sel.topic_id } : {}),
-    bundle_id: sel.bundle_id,
-    intent_id: sel.intent_id,
-    bundle_score: sel.bundle_score,
-    triggering_signals: sel.triggering_signals,
-    page_type: selection.page_type,
-    override_source: sel.override_source,
-    ...(sel.override_id !== undefined ? { override_id: sel.override_id } : {}),
-  });
+  ): ChartProvenance =>
+    buildChartProvenance(sel, verified, selection.page_type);
 
   /* ------- Grouped generation for the timing pair (weekly + hourly) ------- */
   // If the assembler happened to keep BOTH weekly_pattern AND hourly_heatmap

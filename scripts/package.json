@@ -9,6 +9,7 @@
     "test-editorial-verdict": "tsx ./src/test-editorial-verdict.mts",
     "test-page-type-specs": "tsx ./src/test-page-type-specs.mts",
     "test-intent-engine": "tsx ./src/test-intent-engine.mts",
+    "test-pipeline-overrides": "tsx ./src/test-pipeline-overrides.mts",
     "test-overrides-merge": "tsx ./src/test-overrides-merge.mts",
     "test-overrides-api": "node ./src/test-overrides-api.mjs",
     "reset-dev-db-to-curated": "tsx ./src/reset-dev-db-to-curated.mts",
