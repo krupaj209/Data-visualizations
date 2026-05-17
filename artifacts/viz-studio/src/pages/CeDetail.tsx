@@ -644,11 +644,11 @@ function CeDetailInner({
       )}
 
       <main
-        className="max-w-[1400px] mx-auto px-6 py-8"
+        className="max-w-[1500px] mx-auto px-6 py-8"
         style={{
           display: "grid",
           gridTemplateColumns:
-            showIdeation || showIntel ? "minmax(0, 1fr) 360px" : "1fr",
+            showIdeation || showIntel ? "minmax(0, 1fr) 440px" : "1fr",
           gap: 24,
         }}
       >
