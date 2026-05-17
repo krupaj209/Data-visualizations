@@ -16,35 +16,32 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-async function bootstrap() {
-  try {
-    const result = await seedCuratedCesIdempotent();
-    if (result.inserted.length > 0) {
-      logger.info(
-        { inserted: result.inserted, skipped: result.skipped },
-        "Curated CEs seeded",
-      );
-    } else {
-      logger.info(
-        { skipped: result.skipped },
-        "Curated CEs already present, no seeding needed",
-      );
-    }
-  } catch (err) {
-    logger.error(
-      { err },
-      "Failed to seed curated CEs — continuing startup anyway",
-    );
+app.listen(port, (err) => {
+  if (err) {
+    logger.error({ err }, "Error listening on port");
+    process.exit(1);
   }
 
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
+  logger.info({ port }, "Server listening");
 
-    logger.info({ port }, "Server listening");
-  });
-}
-
-bootstrap();
+  seedCuratedCesIdempotent()
+    .then((result) => {
+      if (result.inserted.length > 0) {
+        logger.info(
+          { inserted: result.inserted, skipped: result.skipped },
+          "Curated CEs seeded",
+        );
+      } else {
+        logger.info(
+          { skipped: result.skipped },
+          "Curated CEs already present, no seeding needed",
+        );
+      }
+    })
+    .catch((seedErr) => {
+      logger.error(
+        { err: seedErr },
+        "Failed to seed curated CEs — continuing startup anyway",
+      );
+    });
+});
