@@ -45,16 +45,47 @@ export interface ResearchPipelineInput {
    */
   regenerationFeedback?: string;
   /** Current deck snapshot so regenerate can intentionally diversify. */
-  existingCharts?: {
-    question: string;
-    chartType: string;
-    status?: string | null;
-  }[];
+  existingCharts?: ExistingChartSnapshot[];
   /**
    * Optional pre-loaded CE intelligence view. The orchestrator loads this
    * once and slices per archetype on each `generateOneChart` call.
    */
   intel?: CeIntelligenceView | null;
+  /**
+   * Optional persisted regen constraints (negative writer feedback) the
+   * selector should honor. Shape is owned by `regen-constraints.ts` but
+   * left loose here to avoid a cyclic import.
+   */
+  regenConstraints?: unknown;
+  /**
+   * Topic IDs (from prior charts' provenance) that should be retired this
+   * run because of chronically weak feedback.
+   */
+  retireTopics?: string[];
+  /**
+   * Chart archetypes that should be suppressed entirely (e.g. because the
+   * prior chart of that archetype got a high-severity "wrong data" flag).
+   */
+  retireArchetypes?: ChartArchetypeId[];
+}
+
+/**
+ * Snapshot of a prior chart on a CE. Passed to the selector during
+ * regeneration so it can intentionally diversify and honor retire signals.
+ */
+export interface ExistingChartSnapshot {
+  question: string;
+  chartType: string;
+  status?: string | null;
+  archetype?: ChartArchetypeId;
+  topicId?: string;
+  insight?: string;
+  specDigest?: string;
+  feedback?: {
+    editCount: number;
+    issue: string | null;
+    note?: string;
+  };
 }
 
 export interface ChartProvenance {
@@ -93,6 +124,14 @@ export interface ResearchPipelineResult {
   dropped_questions: { question: string; reason: string }[];
   /** Hero questions the LLM proposed in addition to the curated bank. */
   proposed_hero_questions: BankQuestion[];
+  /** Per-run summary of how regen constraints + retire signals were honored. */
+  regen_summary: {
+    honoredFeedback: string[];
+    suppressedArchetypes: string[];
+    retiredTopics: string[];
+    priorDeckOverlap: number;
+    priorDeckSize: number;
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1597,12 +1636,27 @@ export async function runResearchPipeline(
     seenSlugs.add(candidate);
   }
 
+  const priorQuestionSet = new Set(
+    (input.existingCharts ?? []).map((c) => normalizeQuestionKey(c.question)),
+  );
+  const priorDeckOverlap = charts.reduce(
+    (n, c) => (priorQuestionSet.has(normalizeQuestionKey(c.source_question)) ? n + 1 : n),
+    0,
+  );
+
   return {
     summary: selection.summary || `${input.ce.name} — research-grounded deck.`,
     emoji: selection.emoji || "📍",
     charts,
     dropped_questions: selection.dropped,
     proposed_hero_questions: selection.proposed_hero,
+    regen_summary: {
+      honoredFeedback: [],
+      suppressedArchetypes: (input.retireArchetypes ?? []).map(String),
+      retiredTopics: input.retireTopics ?? [],
+      priorDeckOverlap,
+      priorDeckSize: input.existingCharts?.length ?? 0,
+    },
   };
 }
 

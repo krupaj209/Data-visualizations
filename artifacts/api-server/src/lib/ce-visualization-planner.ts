@@ -19,6 +19,10 @@ import {
   type EvidenceInventory,
 } from "./ce-evidence-inventory";
 import { logger } from "./logger";
+import {
+  buildEditorialBlock,
+  type EditorialBlock,
+} from "./editorial-verdict";
 
 const MODEL = "gemini-2.5-pro";
 
@@ -95,14 +99,28 @@ export interface PlannerVisualization {
       | "not_worth_charting"
       | "good_but_duplicate";
     rationale: string;
+    /** Optional editorial judgement block attached when an idea has been
+     *  re-scored by the targeted recheck pipeline. */
+    editorial?: import("./editorial-verdict").EditorialJudgements;
+    editorial_verdict?: import("./editorial-verdict").EditorialVerdict;
   };
   priority: number;
+  /** Set when this idea was originally rejected and promoted back into
+   *  the recommended list by a targeted recheck. */
+  promoted_from_rejected?: boolean;
+  recheck_findings?: string[];
+  recheck_status?: "found" | "partial" | "not_found";
 }
 
 export interface RejectedVisualization {
   question: string;
   archetype?: ChartArchetypeId;
   reason: string;
+  /** Editorial verdict + judgements attached after a targeted recheck. */
+  editorial?: import("./editorial-verdict").EditorialJudgements;
+  editorial_verdict?: import("./editorial-verdict").EditorialVerdict;
+  recheck_findings?: string[];
+  recheck_status?: "found" | "partial" | "not_found";
 }
 
 export interface CeVisualizationPlan {
@@ -594,4 +612,76 @@ Rules:
       .slice(0, 12),
     generatedAt: new Date().toISOString(),
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Editorial re-scoring for the targeted gap-recheck pipeline                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Re-score a single (recommended or rejected) idea editorially after a
+ * targeted recheck has produced new evidence. Returns the deterministic
+ * `EditorialBlock` (judgements + ship/hold/cut verdict).
+ *
+ * Today this is a lightweight heuristic stub: we map the recheck status +
+ * rejection-reason signals into the five editorial judgements so the
+ * deterministic verdict in `editorial-verdict.ts` is the single source of
+ * truth. A future revision can promote this to a full Gemini call that
+ * reads the DRD + intel facts + recheck findings, but the call-site
+ * contract stays the same.
+ */
+export async function scoreEditorialForIdea(args: {
+  ce: { name: string; city: string; country: string };
+  question: string;
+  archetype?: string;
+  rejectionReason: string;
+  drdMarkdown: string;
+  intelFactsBlock: string;
+  recheckFindings: string[];
+  sourceRefs: string[];
+}): Promise<EditorialBlock> {
+  const findingCount = args.recheckFindings.filter((f) => f.trim()).length;
+  const sourceCount = args.sourceRefs.filter((s) => s.trim()).length;
+  const drdHasSignal = args.drdMarkdown.trim().length > 200;
+  const intelHasSignal = args.intelFactsBlock.trim().length > 0;
+
+  const verdict = (yes: boolean, weak: boolean = false) =>
+    yes ? "yes" : weak ? "weak" : "no";
+
+  const rationaleFor = (label: string, ok: boolean) =>
+    ok
+      ? `${label}: supported by recheck findings.`
+      : `${label}: still under-evidenced after recheck.`;
+
+  const usefulYes = findingCount >= 1 || drdHasSignal;
+  const ceSpecificYes =
+    findingCount >= 1 && (intelHasSignal || sourceCount >= 1);
+  const betterYes = findingCount >= 2;
+  const conversionYes = /\b(book|tour|ticket|wait|queue|skip|price|hour|when|crowd|busy)\b/i.test(
+    args.question,
+  );
+  const visualYes = !!args.archetype && args.archetype.length > 0;
+
+  return buildEditorialBlock({
+    useful: {
+      verdict: verdict(usefulYes, drdHasSignal),
+      rationale: rationaleFor("Useful", usefulYes),
+    },
+    ce_specific: {
+      verdict: verdict(ceSpecificYes, intelHasSignal),
+      rationale: rationaleFor("CE-specific", ceSpecificYes),
+    },
+    better_than_existing: {
+      verdict: verdict(betterYes, findingCount >= 1),
+      rationale: rationaleFor("Better than existing", betterYes),
+    },
+    conversion_driven: {
+      verdict: verdict(conversionYes, true),
+      rationale: rationaleFor("Conversion-driven", conversionYes),
+    },
+    visually_strong: {
+      verdict: verdict(visualYes, true),
+      rationale: rationaleFor("Visually strong", visualYes),
+    },
+  });
 }

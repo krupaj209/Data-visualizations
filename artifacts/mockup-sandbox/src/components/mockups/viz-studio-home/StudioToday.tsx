@@ -18,6 +18,11 @@ import {
 
 // Brand constants duplicated for self-containment
 const BRAND = {
+  holaSoft: "#FFF1D9",
+  okayInk: "#0E8F4E",
+  bgMint: "#D2FDEB",
+  slate500: "#A6A6A6",
+  slate300: "#D0D0D0",
   purps: "#8000FF",
   purpsHover: "#6D00E0",
   purpsSoft: "#F3E8FF",
