@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
@@ -115,17 +115,42 @@ export function EntranceLanesChart({
   // dots per lane). Cap the rendered column to a bounded height and scale
   // each dot to fit so the chart card never overflows its frame regardless
   // of `dots` count, while preserving the relative-length visual.
+  //
+  // The stack height is measured live via ResizeObserver instead of a fixed
+  // 220px cap so the chart actually fills tall iframes (CMS pastes the embed
+  // URL at varying heights — at 600px+ the old fixed cap left half the box
+  // empty). We reserve a small chrome budget for the caption/label/pill
+  // rows above + below the dots, then let dotPx grow up to 12px so the
+  // visualization scales into the available vertical space.
   const maxDots = Math.max(1, ...lanes.map((l) => l.dots));
-  const STACK_MAX_PX = 220;
   const DOT_GAP_PX = 2;
+  const outerRef = useRef<HTMLDivElement>(null);
+  const [availH, setAvailH] = useState<number>(0);
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setAvailH(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Chrome reserve = caption band (only non-compact) + lane title row + wait
+  // pill row + locked-detail headroom. Tuned empirically against the 8 sizes
+  // the CMS uses (~280, 320, 400, 480, 560, 640, 800, 1024 tall).
+  const chromeReserve = compact ? 90 : 170;
+  const stackMaxPx = Math.max(
+    140,
+    Math.min(availH > 0 ? availH - chromeReserve : 220, 520),
+  );
   const dotPx = Math.max(
-    2,
-    Math.min(7, Math.floor((STACK_MAX_PX - maxDots * DOT_GAP_PX) / maxDots)),
+    3,
+    Math.min(12, Math.floor((stackMaxPx - maxDots * DOT_GAP_PX) / maxDots)),
   );
 
   return (
     <ChartCard compact={compact}>
-      <div className="flex-1 flex flex-col min-h-0">
+      <div ref={outerRef} className="flex-1 flex flex-col min-h-0">
         {!compact && (
           <div
             className="flex items-center gap-3 px-4 py-3 mb-3"
