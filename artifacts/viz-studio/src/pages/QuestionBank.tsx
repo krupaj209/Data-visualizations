@@ -1,63 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  Eye,
-  MessageSquarePlus,
-  Sparkles,
-  X,
-  Check,
-} from "lucide-react";
-import type {
-  BankQuestion,
-  ChartArchetype,
-  ChartArchetypeId,
-  QuestionBankAudit,
-  SubcategoryQuestionBankAudit,
-  SubcategoryFamily,
+  CHART_ARCHETYPES,
+  QUESTION_BUNDLES,
+  VISITOR_INTENTS,
+  PAGE_TEMPLATES,
+  type BundleId,
+  type ChartArchetypeId,
+  type PageType,
+  type VisitorIntentId,
 } from "@workspace/question-bank";
-import { BRAND } from "@/lib/brand";
-import { ChartRenderer } from "@/components/charts";
-import { ARCHETYPE_SAMPLES } from "@/lib/archetype-samples";
-import type { ChartSpec } from "@/lib/chart-spec";
-import { HeadoutLogo } from "@/components/HeadoutLogo";
 
-interface SubcategoryRow {
-  id: string;
-  label: string;
-  family: SubcategoryFamily | null;
-  description: string;
-  unratified: boolean;
-  questions: BankQuestion[];
-}
-interface BankPayload {
-  audit: QuestionBankAudit;
-  archetypes: Record<ChartArchetypeId, ChartArchetype>;
-  standardQuestions: BankQuestion[];
-  subcategories: SubcategoryRow[];
+interface BankSnapshot {
+  archetypes: typeof CHART_ARCHETYPES;
+  intents: typeof VISITOR_INTENTS;
+  bundles: typeof QUESTION_BUNDLES;
+  pageTemplates: typeof PAGE_TEMPLATES;
+  subcategories: { id: string; label: string; description: string }[];
 }
 
-const FAMILY_ORDER: (SubcategoryFamily | "Other")[] = [
-  "Tickets",
-  "Tours",
-  "Cruises",
-  "Entertainment",
-  "Adventure",
-  "Aerial",
-  "Water",
-  "Nature",
-  "Food",
-  "Wellness",
-  "Sports",
-  "Specials",
-  "Transport",
-  "Other",
-];
-
-async function fetchBank(): Promise<BankPayload> {
+async function fetchBank(): Promise<BankSnapshot> {
   const res = await fetch("/api/question-bank");
-  if (!res.ok) throw new Error("Failed to load question bank");
+  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -65,890 +29,211 @@ export default function QuestionBank() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["question-bank"],
     queryFn: fetchBank,
+    staleTime: 5 * 60_000,
   });
 
-  const [previewArchetype, setPreviewArchetype] =
-    useState<ChartArchetypeId | null>(null);
-  const [previewQuestion, setPreviewQuestion] = useState<string | null>(null);
-  const [suggestSubcat, setSuggestSubcat] = useState<SubcategoryRow | null>(
-    null,
-  );
-  const [activeFamily, setActiveFamily] = useState<string>("All");
-
-  const grouped = useMemo(() => {
-    if (!data) return new Map<string, SubcategoryRow[]>();
-    const m = new Map<string, SubcategoryRow[]>();
-    for (const sub of data.subcategories) {
-      const key = sub.family ?? "Other";
-      const arr = m.get(key) ?? [];
-      arr.push(sub);
-      m.set(key, arr);
-    }
-    return m;
-  }, [data]);
-
-  const visibleSubcats = useMemo(() => {
-    if (!data) return [];
-    if (activeFamily === "All") return data.subcategories;
-    return data.subcategories.filter(
-      (s) => (s.family ?? "Other") === activeFamily,
-    );
-  }, [data, activeFamily]);
-
-  const auditBySubcategory = useMemo(() => {
-    const m = new Map<string, SubcategoryQuestionBankAudit>();
-    for (const row of data?.audit.subcategories ?? []) m.set(row.id, row);
-    return m;
-  }, [data]);
-
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: BRAND.bgShell, fontFamily: "Manrope, system-ui, sans-serif" }}
-    >
-      <header
-        className="border-b sticky top-0 z-20"
-        style={{ background: "white", borderColor: BRAND.slate200 }}
-      >
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-semibold"
-            style={{ color: BRAND.slate700 }}
-          >
-            <ArrowLeft size={16} /> Library
-          </Link>
-          <div className="flex-1 flex items-center gap-3 justify-center">
-            <HeadoutLogo height={26} />
-            <div
-              className="font-extrabold"
-              style={{ color: BRAND.slate900, fontSize: 18 }}
-            >
-              Question Bank
-            </div>
-          </div>
-          <a
-            href={typeof window !== "undefined" ? window.location.href : "#"}
-            onClick={(e) => {
-              e.preventDefault();
-              if (typeof navigator !== "undefined" && navigator.clipboard) {
-                navigator.clipboard.writeText(window.location.href);
-              }
-            }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{
-              border: `1px solid ${BRAND.slate200}`,
-              color: BRAND.slate700,
-            }}
-            title="Copy link to share"
-          >
-            Copy share link
-          </a>
+    <div className="mx-auto max-w-6xl px-6 py-10">
+      <header className="mb-8 flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">
+            Intent-driven question bank
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            The flat per-subcategory question dump is gone. Decks are now
+            assembled deterministically from{" "}
+            <span className="font-medium">visitor intents</span> →{" "}
+            <span className="font-medium">question bundles</span> →{" "}
+            <span className="font-medium">page templates</span>. The page
+            templates pick which bundles fire for each listing surface.
+          </p>
         </div>
+        <Link
+          to="/"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Back to CEs
+        </Link>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <section className="mb-10">
-          <h1
-            className="font-extrabold tracking-tight"
-            style={{ color: BRAND.slate900, fontSize: 38, lineHeight: 1.1 }}
-          >
-            Every question we answer with a chart
-          </h1>
-          <p
-            className="mt-3 max-w-2xl"
-            style={{ color: BRAND.slate700, fontSize: 16, lineHeight: 1.5 }}
-          >
-            Browse the questions visitors actually ask, the chart we use to
-            answer each one, and a sample preview. See a gap?{" "}
-            <button
-              className="font-semibold underline"
-              style={{ color: BRAND.purps }}
-              onClick={() =>
-                setSuggestSubcat({
-                  id: "_general",
-                  label: "General",
-                  family: null,
-                  description: "Cross-cutting suggestion",
-                  unratified: false,
-                  questions: [],
-                })
-              }
-            >
-              suggest a question
-            </button>
-            .
-          </p>
-        </section>
-
-        {isLoading && (
-          <div style={{ color: BRAND.slate700 }}>Loading bank…</div>
-        )}
-        {error && (
-          <div style={{ color: BRAND.candy }}>
-            Couldn't load the bank. Try refreshing.
-          </div>
-        )}
-
-        {data && (
-          <>
-            <AuditPanel audit={data.audit} />
-
-            {/* Standards */}
-            <section className="mb-12">
-              <SectionHeader
-                eyebrow="Standards"
-                title="Every CE gets these"
-                sub="The four (well, five) universal questions inherited by every attraction unless skipped."
-              />
-              <div className="grid gap-3 md:grid-cols-2">
-                {data.standardQuestions.map((q, i) => (
-                  <QuestionCard
-                    key={i}
-                    q={q}
-                    archetype={data.archetypes[q.recommended_archetype]}
-                    onPreview={() => {
-                      setPreviewArchetype(q.recommended_archetype);
-                      setPreviewQuestion(q.question);
-                    }}
-                  />
-                ))}
-              </div>
-            </section>
-
-            {/* Family filter chips */}
-            <section className="mb-6 flex items-center gap-2 flex-wrap">
-              <FamilyChip
-                label="All"
-                active={activeFamily === "All"}
-                onClick={() => setActiveFamily("All")}
-              />
-              {FAMILY_ORDER.filter((f) => grouped.has(f)).map((f) => (
-                <FamilyChip
-                  key={f}
-                  label={f}
-                  active={activeFamily === f}
-                  onClick={() => setActiveFamily(f)}
-                />
-              ))}
-            </section>
-
-            {/* Subcategories */}
-            <section className="space-y-8">
-              {visibleSubcats.map((sub) => (
-                <SubcategoryBlock
-                  key={sub.id}
-                  sub={sub}
-                  audit={auditBySubcategory.get(sub.id)}
-                  archetypes={data.archetypes}
-                  onPreview={(arch, qText) => {
-                    setPreviewArchetype(arch);
-                    setPreviewQuestion(qText);
-                  }}
-                  onSuggest={() => setSuggestSubcat(sub)}
-                />
-              ))}
-            </section>
-          </>
-        )}
-      </main>
-
-      {previewArchetype && (
-        <PreviewModal
-          archetypeId={previewArchetype}
-          archetype={data?.archetypes[previewArchetype]}
-          question={previewQuestion}
-          onClose={() => {
-            setPreviewArchetype(null);
-            setPreviewQuestion(null);
-          }}
-        />
+      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
+      {error && (
+        <p className="text-sm text-rose-600">
+          Failed to load the question bank: {(error as Error).message}
+        </p>
       )}
 
-      {suggestSubcat && data && (
-        <SuggestModal
-          subcat={suggestSubcat}
-          archetypes={data.archetypes}
-          onClose={() => setSuggestSubcat(null)}
-        />
+      {data && (
+        <div className="space-y-10">
+          <Section
+            title="Visitor intents"
+            subtitle="The seven first-class jobs a visitor brings to a listing page."
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              {Object.values(data.intents).map((intent) => (
+                <article
+                  key={intent.id}
+                  className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <header className="flex items-center justify-between">
+                    <h3 className="font-medium text-slate-900">
+                      {intent.label}
+                    </h3>
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {intent.id}
+                    </code>
+                  </header>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {intent.visitor_state}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            title="Question bundles"
+            subtitle="Each bundle resolves to one chart. The assembler scores bundles against extracted DRD signals and picks the highest-priority candidate archetype that has evidence."
+          >
+            <div className="space-y-3">
+              {Object.values(data.bundles).map((bundle) => (
+                <article
+                  key={bundle.id}
+                  className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <header className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-base font-medium text-slate-900">
+                      {bundle.label}
+                    </h3>
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {bundle.id satisfies BundleId}
+                    </code>
+                  </header>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {bundle.description}
+                  </p>
+                  <dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                    <div>
+                      <dt className="font-semibold uppercase tracking-wide text-slate-500">
+                        Intent
+                      </dt>
+                      <dd>
+                        {data.intents[bundle.intent as VisitorIntentId]
+                          ?.label ?? bundle.intent}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold uppercase tracking-wide text-slate-500">
+                        Candidate archetypes
+                      </dt>
+                      <dd className="flex flex-wrap gap-1">
+                        {bundle.candidates.map((c) => (
+                          <code
+                            key={c.archetype}
+                            className="rounded bg-purps/10 px-1.5 py-0.5 text-[11px] text-purps"
+                            title={
+                              data.archetypes[c.archetype as ChartArchetypeId]
+                                ?.label ?? c.archetype
+                            }
+                          >
+                            {c.archetype}
+                          </code>
+                        ))}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            title="Page templates"
+            subtitle="Which bundles fire on each listing surface. Slot order is render order, top to bottom."
+          >
+            <div className="space-y-3">
+              {Object.values(data.pageTemplates).map((tmpl) => (
+                <article
+                  key={tmpl.id}
+                  className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <header className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-base font-medium text-slate-900">
+                      {tmpl.label}
+                    </h3>
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {tmpl.id satisfies PageType}
+                    </code>
+                  </header>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {tmpl.narrative}
+                  </p>
+                  <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+                    {tmpl.slots.map((slot, idx) => (
+                      <li key={idx}>
+                        <span className="font-medium">
+                          {slot.bundleId
+                            ? (data.bundles[slot.bundleId]?.label ??
+                              slot.bundleId)
+                            : "(forced archetype)"}
+                        </span>
+                        {slot.required ? (
+                          <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
+                            required
+                          </span>
+                        ) : null}
+                        {slot.forcedArchetype ? (
+                          <span className="ml-2 text-xs text-slate-500">
+                            → forced to{" "}
+                            <code className="text-purps">
+                              {slot.forcedArchetype}
+                            </code>
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            title="Subcategories (metadata only)"
+            subtitle="Used to bootstrap CE rows and route long-tail content. Selection no longer reads per-subcategory question lists — the intent engine handles all decks."
+          >
+            <ul className="grid gap-2 text-sm sm:grid-cols-2 md:grid-cols-3">
+              {data.subcategories.map((s) => (
+                <li
+                  key={s.id}
+                  className="rounded border border-slate-200 bg-white px-3 py-2"
+                >
+                  <div className="font-medium text-slate-900">{s.label}</div>
+                  <div className="text-xs text-slate-500">{s.id}</div>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </div>
       )}
     </div>
   );
 }
 
-function AuditPanel({ audit }: { audit: QuestionBankAudit }) {
-  const healthy = audit.fail_count === 0 && audit.warn_count === 0;
-  return (
-    <section
-      className="mb-10 rounded-2xl border p-5"
-      style={{
-        background: "white",
-        borderColor: healthy ? BRAND.bgMint : BRAND.slate200,
-      }}
-    >
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div
-            className="text-[11px] font-extrabold uppercase tracking-wider"
-            style={{ color: BRAND.purps }}
-          >
-            Coverage audit
-          </div>
-          <h2
-            className="font-extrabold mt-1"
-            style={{ color: BRAND.slate900, fontSize: 22 }}
-          >
-            {audit.pass_count}/{audit.total_subcategories} subcategories pass
-          </h2>
-          <p
-            className="mt-1 max-w-2xl"
-            style={{ color: BRAND.slate700, fontSize: 14 }}
-          >
-            Every major Headout subcategory is checked for standard questions,
-            two implemented signature questions, preferred archetypes, and
-            legacy/unbuilt chart references.
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 min-w-[260px]">
-          <AuditStat label="Pass" value={audit.pass_count} tone="pass" />
-          <AuditStat label="Warn" value={audit.warn_count} tone="warn" />
-          <AuditStat label="Fail" value={audit.fail_count} tone="fail" />
-        </div>
-      </div>
-      <div
-        className="mt-4 rounded-xl px-4 py-3 text-sm"
-        style={{
-          background: healthy ? "#ECFDF3" : BRAND.bgShell,
-          color: BRAND.slate700,
-          border: `1px solid ${healthy ? BRAND.bgMint : BRAND.slate200}`,
-        }}
-      >
-        Standards: {audit.standard_questions.count} universal questions ·{" "}
-        {audit.standard_questions.all_implemented
-          ? "all standard archetypes are implemented"
-          : `waiting on ${audit.standard_questions.unimplemented_archetypes.join(", ")}`}
-      </div>
-    </section>
-  );
-}
-
-function AuditStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "pass" | "warn" | "fail";
-}) {
-  const colors = {
-    pass: { bg: "#ECFDF3", fg: BRAND.okayInk },
-    warn: { bg: BRAND.holaSoft, fg: BRAND.hola },
-    fail: { bg: "#FFF1F2", fg: BRAND.candy },
-  }[tone];
-  return (
-    <div className="rounded-xl px-3 py-2 text-center" style={{ background: colors.bg }}>
-      <div className="text-xl font-extrabold" style={{ color: colors.fg }}>
-        {value}
-      </div>
-      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.slate700 }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({
-  eyebrow,
+function Section({
   title,
-  sub,
-}: {
-  eyebrow: string;
-  title: string;
-  sub: string;
-}) {
-  return (
-    <div className="mb-4">
-      <div
-        className="text-[11px] font-extrabold uppercase tracking-wider"
-        style={{ color: BRAND.purps }}
-      >
-        {eyebrow}
-      </div>
-      <h2
-        className="font-extrabold mt-1"
-        style={{ color: BRAND.slate900, fontSize: 22 }}
-      >
-        {title}
-      </h2>
-      <p
-        className="mt-1 max-w-2xl"
-        style={{ color: BRAND.slate700, fontSize: 14 }}
-      >
-        {sub}
-      </p>
-    </div>
-  );
-}
-
-function FamilyChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-xs font-semibold px-3 py-1.5 rounded-full transition"
-      style={{
-        background: active ? BRAND.purps : "white",
-        color: active ? "white" : BRAND.slate700,
-        border: `1px solid ${active ? BRAND.purps : BRAND.slate200}`,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function SubcategoryBlock({
-  sub,
-  audit,
-  archetypes,
-  onPreview,
-  onSuggest,
-}: {
-  sub: SubcategoryRow;
-  audit?: SubcategoryQuestionBankAudit;
-  archetypes: Record<ChartArchetypeId, ChartArchetype>;
-  onPreview: (a: ChartArchetypeId, q: string) => void;
-  onSuggest: () => void;
-}) {
-  const hasQuestions = sub.questions.length > 0;
-  return (
-    <div
-      className="rounded-2xl p-5 border"
-      style={{ background: "white", borderColor: BRAND.slate200 }}
-    >
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3
-              className="font-extrabold"
-              style={{ color: BRAND.slate900, fontSize: 18 }}
-            >
-              {sub.label}
-            </h3>
-            {sub.family && (
-              <span
-                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{
-                  background: BRAND.purpsSoft,
-                  color: BRAND.purps,
-                }}
-              >
-                {sub.family}
-              </span>
-            )}
-            {sub.unratified && (
-              <span
-                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{
-                  background: BRAND.slate100 ?? "#f1f5f9",
-                  color: BRAND.slate700,
-                }}
-                title="No curated bank yet — orchestrator bootstraps from the DRD only."
-              >
-                Unratified
-              </span>
-            )}
-            {audit && <AuditStatusPill audit={audit} />}
-          </div>
-          <p
-            className="mt-1 max-w-2xl"
-            style={{ color: BRAND.slate700, fontSize: 13 }}
-          >
-            {sub.description}
-          </p>
-          {audit && (
-            <div
-              className="mt-2 text-xs"
-              style={{ color: BRAND.slate700 }}
-            >
-              {audit.signature_question_count} signature questions ·{" "}
-              {audit.implemented_archetype_count} preferred chart types
-              {audit.missing.length > 0
-                ? ` · Needs ${audit.missing.join(", ")}`
-                : ""}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={onSuggest}
-          className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"
-          style={{
-            border: `1px solid ${BRAND.slate200}`,
-            color: BRAND.purps,
-          }}
-        >
-          <MessageSquarePlus size={14} /> Suggest
-        </button>
-      </div>
-      {hasQuestions ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {sub.questions.map((q, i) => (
-            <QuestionCard
-              key={i}
-              q={q}
-              archetype={archetypes[q.recommended_archetype]}
-              onPreview={() => onPreview(q.recommended_archetype, q.question)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          className="rounded-lg px-4 py-3 text-sm"
-          style={{
-            background: BRAND.bgShell,
-            color: BRAND.slate700,
-            border: `1px dashed ${BRAND.slate200}`,
-          }}
-        >
-          No curated questions yet. Suggest one to start the bank for{" "}
-          <strong>{sub.label}</strong>.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AuditStatusPill({ audit }: { audit: SubcategoryQuestionBankAudit }) {
-  const style =
-    audit.status === "pass"
-      ? { background: "#ECFDF3", color: BRAND.okayInk }
-      : audit.status === "warn"
-        ? { background: BRAND.holaSoft, color: BRAND.hola }
-        : { background: "#FFF1F2", color: BRAND.candy };
-  return (
-    <span
-      className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-      style={style}
-      title={
-        audit.missing.length > 0
-          ? audit.missing.join(", ")
-          : "Question bank coverage looks good."
-      }
-    >
-      {audit.status}
-    </span>
-  );
-}
-
-function QuestionCard({
-  q,
-  archetype,
-  onPreview,
-}: {
-  q: BankQuestion;
-  archetype: ChartArchetype | undefined;
-  onPreview: () => void;
-}) {
-  const hasSample = !!ARCHETYPE_SAMPLES[q.recommended_archetype];
-  return (
-    <div
-      className="rounded-xl p-4 border flex flex-col"
-      style={{
-        background: BRAND.bgShell,
-        borderColor: BRAND.slate200,
-      }}
-    >
-      <div className="flex items-start gap-2 mb-2">
-        <span
-          className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-          style={{
-            background: q.kind === "standard" ? BRAND.purps : BRAND.candy,
-            color: "white",
-          }}
-        >
-          {q.kind === "standard" ? "Standard" : "Signature"}
-        </span>
-        {q.legacy && (
-          <span
-            className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-            style={{
-              background: "white",
-              color: BRAND.slate700,
-              border: `1px solid ${BRAND.slate200}`,
-            }}
-          >
-            Legacy
-          </span>
-        )}
-      </div>
-      <p
-        className="font-extrabold flex-1"
-        style={{ color: BRAND.slate900, fontSize: 15, lineHeight: 1.3 }}
-      >
-        {q.question}
-      </p>
-      <div
-        className="mt-3 text-xs"
-        style={{ color: BRAND.slate700, lineHeight: 1.4 }}
-      >
-        Answered with{" "}
-        <strong style={{ color: BRAND.purps }}>
-          {archetype?.label ?? q.recommended_archetype}
-        </strong>
-      </div>
-      {q.notes && (
-        <div
-          className="mt-2 text-xs italic"
-          style={{ color: BRAND.slate700, lineHeight: 1.4 }}
-        >
-          {q.notes}
-        </div>
-      )}
-      <button
-        onClick={onPreview}
-        disabled={!hasSample}
-        className="mt-3 self-start text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 transition"
-        style={{
-          background: hasSample ? BRAND.purps : "white",
-          color: hasSample ? "white" : BRAND.slate700,
-          border: hasSample
-            ? `1px solid ${BRAND.purps}`
-            : `1px solid ${BRAND.slate200}`,
-          cursor: hasSample ? "pointer" : "not-allowed",
-          opacity: hasSample ? 1 : 0.7,
-        }}
-        title={
-          hasSample
-            ? "See a sample chart of this type"
-            : "Sample preview coming soon"
-        }
-      >
-        <Eye size={13} /> {hasSample ? "Preview" : "Preview soon"}
-      </button>
-    </div>
-  );
-}
-
-function PreviewModal({
-  archetypeId,
-  archetype,
-  question,
-  onClose,
-}: {
-  archetypeId: ChartArchetypeId;
-  archetype: ChartArchetype | undefined;
-  question: string | null;
-  onClose: () => void;
-}) {
-  const sample = ARCHETYPE_SAMPLES[archetypeId] as ChartSpec | undefined;
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center p-4"
-      style={{ background: "rgba(15, 23, 42, 0.55)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-3xl rounded-2xl p-6 relative"
-        style={{ background: "white" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 p-1 rounded-full"
-          style={{ color: BRAND.slate700 }}
-          aria-label="Close"
-        >
-          <X size={18} />
-        </button>
-        <div className="mb-1">
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: BRAND.purps }}
-          >
-            Sample preview · {archetype?.label ?? archetypeId}
-          </span>
-        </div>
-        {question && (
-          <h3
-            className="font-extrabold mb-1"
-            style={{ color: BRAND.slate900, fontSize: 20 }}
-          >
-            {question}
-          </h3>
-        )}
-        {archetype && (
-          <p className="text-sm mb-4" style={{ color: BRAND.slate700 }}>
-            {archetype.answers}
-          </p>
-        )}
-        <div
-          className="rounded-xl border overflow-hidden"
-          style={{
-            borderColor: BRAND.slate200,
-            background: "white",
-            height: 460,
-          }}
-        >
-          {sample ? (
-            <ChartRenderer
-              spec={sample}
-              header={{
-                title: archetype?.label ?? archetypeId,
-                subtitle: "Sample data — illustrative only",
-                question: question ?? archetype?.answers ?? "",
-              }}
-            />
-          ) : (
-            <div
-              className="h-full flex items-center justify-center text-sm"
-              style={{ color: BRAND.slate700 }}
-            >
-              Preview not yet available for this chart type.
-            </div>
-          )}
-        </div>
-        <div
-          className="mt-3 text-xs italic"
-          style={{ color: BRAND.slate700 }}
-        >
-          Numbers shown are illustrative, not from a real CE.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SuggestModal({
-  subcat,
-  archetypes,
-  onClose,
-}: {
-  subcat: SubcategoryRow;
-  archetypes: Record<ChartArchetypeId, ChartArchetype>;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const [question, setQuestion] = useState("");
-  const [recommended, setRecommended] = useState<string>("");
-  const [note, setNote] = useState("");
-  const [suggestedBy, setSuggestedBy] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-
-  const mut = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/question-bank/suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subcategoryId: subcat.id,
-          question: question.trim(),
-          recommendedArchetype: recommended || undefined,
-          note: note.trim() || undefined,
-          suggestedBy: suggestedBy.trim() || undefined,
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Failed to submit");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      setSubmitted(true);
-      qc.invalidateQueries({ queryKey: ["bank-suggestions"] });
-    },
-  });
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const archetypeIds = Object.keys(archetypes) as ChartArchetypeId[];
-
-  return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center p-4"
-      style={{ background: "rgba(15, 23, 42, 0.55)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl p-6 relative"
-        style={{ background: "white" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 p-1 rounded-full"
-          style={{ color: BRAND.slate700 }}
-          aria-label="Close"
-        >
-          <X size={18} />
-        </button>
-        <div
-          className="text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: BRAND.purps }}
-        >
-          Suggest a question · {subcat.label}
-        </div>
-        <h3
-          className="font-extrabold mt-1 mb-3"
-          style={{ color: BRAND.slate900, fontSize: 20 }}
-        >
-          What's missing from the bank?
-        </h3>
-
-        {submitted ? (
-          <div
-            className="rounded-xl p-4 text-sm"
-            style={{
-              background: BRAND.bgShell,
-              color: BRAND.slate900,
-            }}
-          >
-            <Check size={18} style={{ color: BRAND.purps }} />
-            <div className="mt-2 font-semibold">Thanks — got it.</div>
-            <div style={{ color: BRAND.slate700 }}>
-              Your suggestion is in the queue for the writing team to review.
-            </div>
-            <button
-              className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-full"
-              style={{
-                background: BRAND.purps,
-                color: "white",
-              }}
-              onClick={onClose}
-            >
-              Done
-            </button>
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!question.trim()) return;
-              mut.mutate();
-            }}
-            className="space-y-3"
-          >
-            <Field label="Question (visitor's words)">
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                rows={2}
-                placeholder="e.g. Which day has the shortest queue at the David?"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                style={{ borderColor: BRAND.slate200, fontFamily: "Manrope, system-ui, sans-serif" }}
-                required
-              />
-            </Field>
-            <Field label="Recommended chart type (optional)">
-              <select
-                value={recommended}
-                onChange={(e) => setRecommended(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                style={{ borderColor: BRAND.slate200, fontFamily: "Manrope, system-ui, sans-serif" }}
-              >
-                <option value="">— pick if you have one in mind —</option>
-                {archetypeIds.map((id) => (
-                  <option key={id} value={id}>
-                    {archetypes[id].label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Why this matters (optional)">
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder="What do visitors get wrong without this answer?"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                style={{ borderColor: BRAND.slate200, fontFamily: "Manrope, system-ui, sans-serif" }}
-              />
-            </Field>
-            <Field label="Your name (optional)">
-              <input
-                value={suggestedBy}
-                onChange={(e) => setSuggestedBy(e.target.value)}
-                placeholder="anonymous"
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                style={{ borderColor: BRAND.slate200, fontFamily: "Manrope, system-ui, sans-serif" }}
-              />
-            </Field>
-            {mut.isError && (
-              <div className="text-xs" style={{ color: BRAND.candy }}>
-                Couldn't submit. Try again.
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-xs font-semibold px-3 py-2 rounded-full"
-                style={{
-                  border: `1px solid ${BRAND.slate200}`,
-                  color: BRAND.slate700,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={mut.isPending || !question.trim()}
-                className="text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-1"
-                style={{
-                  background: BRAND.purps,
-                  color: "white",
-                  opacity:
-                    mut.isPending || !question.trim() ? 0.5 : 1,
-                }}
-              >
-                <Sparkles size={13} />
-                {mut.isPending ? "Sending…" : "Submit"}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
+  subtitle,
   children,
 }: {
-  label: string;
+  title: string;
+  subtitle: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
-      <span
-        className="block text-xs font-semibold mb-1"
-        style={{ color: BRAND.slate700 }}
-      >
-        {label}
-      </span>
+    <section>
+      <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      <p className="mb-4 mt-1 max-w-3xl text-sm text-slate-600">{subtitle}</p>
       {children}
-    </label>
+    </section>
   );
 }

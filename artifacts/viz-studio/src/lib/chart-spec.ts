@@ -1086,6 +1086,16 @@ export interface ChartProvenanceLite {
    * Both shapes coexist in the wild — counts/UI must accept either.
    */
   intelligence_refs?: (string | { id: string; kind?: string })[];
+  /** Task #99 — intent-driven assembler tags every chart with a bundle id,
+   *  the visitor intent it answers, the per-CE score the assembler picked
+   *  it at, the signals that triggered the bundle, and the page template
+   *  the deck was assembled for. All optional for back-compat with v2 rows.
+   */
+  bundle_id?: string;
+  intent_id?: string;
+  bundle_score?: number;
+  triggering_signals?: string[];
+  page_type?: string;
 }
 
 const EVIDENCE_KIND_VALUES: readonly EvidenceKind[] = [

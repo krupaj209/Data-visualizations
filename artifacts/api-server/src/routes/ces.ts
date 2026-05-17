@@ -21,6 +21,7 @@ import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
 import {
   CHART_ARCHETYPES,
   isKnownSubcategory,
+  PageType as QbPageType,
   type ChartArchetypeId,
 } from "@workspace/question-bank";
 import { openai } from "../lib/openai";
@@ -38,6 +39,7 @@ const router: IRouter = Router();
 
 const RegenerateCeBody = z.object({
   feedback: z.string().trim().max(4000).optional(),
+  pageType: QbPageType.optional(),
 });
 
 function inferSubcategoryId(ce: Ce): string {
@@ -519,6 +521,7 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
         regenConstraints: merged,
         retireTopics: Array.from(retireTopics),
         retireArchetypes: Array.from(retireArchetypes),
+        pageType: body.data.pageType,
       });
     } catch (err) {
       req.log.error({ err }, "Research regeneration failed");

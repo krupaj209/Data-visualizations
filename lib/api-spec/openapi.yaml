@@ -1243,6 +1243,20 @@ components:
             into structured constraints (banned archetypes / topics /
             phrases, must-include topics) and merged with whatever was
             persisted from prior regen runs on the same CE.
+        pageType:
+          type: string
+          enum:
+            - plan-your-visit
+            - skip-the-line
+            - entrances
+            - history
+            - map-floor-plan
+            - tickets-pricing
+            - reviews-experiences
+            - combo-deals
+          description: |
+            Listing-page template the assembler should build the deck for.
+            Defaults to plan-your-visit when omitted.
       required: []
     RegenSummary:
       type: object
@@ -1407,6 +1421,18 @@ components:
           type: array
           items:
             type: string
+        pageType:
+          type: string
+          enum:
+            - plan-your-visit
+            - skip-the-line
+            - entrances
+            - history
+            - map-floor-plan
+            - tickets-pricing
+            - reviews-experiences
+            - combo-deals
+          description: Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted.
       required:
         - ceSlug
         - subcategoryId

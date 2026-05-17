@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RegenerateCeInputPageType } from "./regenerateCeInputPageType";
 
 export interface RegenerateCeInput {
   /** Optional free-text writer feedback. Parsed by the api-server
@@ -13,4 +14,8 @@ phrases, must-include topics) and merged with whatever was
 persisted from prior regen runs on the same CE.
  */
   feedback?: string;
+  /** Listing-page template the assembler should build the deck for.
+Defaults to plan-your-visit when omitted.
+ */
+  pageType?: RegenerateCeInputPageType;
 }

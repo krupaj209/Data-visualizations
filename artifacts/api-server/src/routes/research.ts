@@ -15,6 +15,7 @@ import { runPipelineV2 } from "../lib/research-pipeline-v2";
 import { slugify } from "../lib/generate-ce";
 import { isLockedCe } from "../lib/locked-ces";
 import { PageType } from "@workspace/page-decks";
+import { PageType as QbPageType } from "@workspace/question-bank";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,7 @@ const generateBody = z.object({
   subcategoryLabel: z.string().optional(),
   subcategoryDescription: z.string().optional(),
   writerTopics: z.array(z.string()).optional(),
+  pageType: QbPageType.optional(),
 });
 
 function serializeCe(ce: Ce, chartCount: number) {
@@ -147,6 +149,7 @@ router.post("/research/generate", async (req, res): Promise<void> => {
       subcategoryDescription: parsed.data.subcategoryDescription,
       drdMarkdown: drd.markdown,
       writerTopics: parsed.data.writerTopics,
+      pageType: parsed.data.pageType,
     });
   } catch (err) {
     req.log.error({ err }, "Research pipeline failed");

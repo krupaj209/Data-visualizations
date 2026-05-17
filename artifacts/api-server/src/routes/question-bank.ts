@@ -5,10 +5,11 @@ import { db, bankSuggestionsTable, type BankSuggestion } from "@workspace/db";
 import {
   CHART_ARCHETYPES,
   CHART_ARCHETYPE_IDS,
-  STANDARD_QUESTIONS,
+  QUESTION_BUNDLES,
+  VISITOR_INTENTS,
+  PAGE_TEMPLATES,
+  listSubcategories,
   SUBCATEGORY_IDS,
-  auditQuestionBank,
-  getSubcategoryBank,
 } from "@workspace/question-bank";
 
 const KNOWN_SUBCATEGORY_IDS = new Set<string>([
@@ -21,32 +22,20 @@ const router: IRouter = Router();
 
 /**
  * GET /api/question-bank
- * Full read-only snapshot of the question bank for the public browse page.
- * Includes archetype registry, the four standard questions, and every
- * subcategory's signature questions.
+ *
+ * Read-only snapshot of the intent-driven engine. Replaces the flat
+ * per-subcategory question dump from v2 — the bank is now derived from
+ * 7 visitor intents → 7 question bundles → 8 page templates, so the
+ * snapshot exposes that structure instead.
  */
 router.get("/question-bank", (_req, res): void => {
-  const subcategories = SUBCATEGORY_IDS.map((id) => {
-    const bank = getSubcategoryBank(id);
-    return {
-      id,
-      label: bank.subcategory.label,
-      family: bank.subcategory.family ?? null,
-      description: bank.subcategory.description,
-      unratified: bank.unratified,
-      questions: bank.questions,
-    };
-  });
   res.json({
-    audit: auditQuestionBank(),
     archetypes: CHART_ARCHETYPES,
-    standardQuestions: STANDARD_QUESTIONS,
-    subcategories,
+    intents: VISITOR_INTENTS,
+    bundles: QUESTION_BUNDLES,
+    pageTemplates: PAGE_TEMPLATES,
+    subcategories: listSubcategories(),
   });
-});
-
-router.get("/question-bank/audit", (_req, res): void => {
-  res.json(auditQuestionBank());
 });
 
 const suggestionBody = z.object({
@@ -100,10 +89,6 @@ function serializeSuggestion(row: BankSuggestion) {
   };
 }
 
-/**
- * POST /api/question-bank/suggestions
- * Anyone with the URL can propose a question. No auth.
- */
 router.post("/question-bank/suggestions", async (req, res): Promise<void> => {
   const parsed = suggestionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -127,10 +112,6 @@ router.post("/question-bank/suggestions", async (req, res): Promise<void> => {
   res.status(201).json(serializeSuggestion(row));
 });
 
-/**
- * GET /api/question-bank/suggestions
- * Staff-facing list. Optional ?status=open|accepted|dismissed.
- */
 router.get("/question-bank/suggestions", async (req, res): Promise<void> => {
   const rawStatus = req.query["status"];
   let status: SuggestionStatus | null = null;
@@ -160,10 +141,6 @@ const patchBody = z.object({
   status: z.enum(["open", "accepted", "dismissed"]),
 });
 
-/**
- * PATCH /api/question-bank/suggestions/:id
- * Move a suggestion through triage states.
- */
 router.patch(
   "/question-bank/suggestions/:id",
   async (req, res): Promise<void> => {

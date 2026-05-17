@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ResearchGenerateInputPageType } from "./researchGenerateInputPageType";
 
 export interface ResearchGenerateInput {
   ceSlug: string;
@@ -16,4 +17,6 @@ export interface ResearchGenerateInput {
   country?: string;
   category?: string;
   writerTopics?: string[];
+  /** Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted. */
+  pageType?: ResearchGenerateInputPageType;
 }

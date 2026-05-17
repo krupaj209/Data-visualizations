@@ -273,9 +273,22 @@ function CeDetailInner({
   const [regenSummary, setRegenSummary] = useState<
     import("@workspace/api-client-react").RegenSummary | null
   >(null);
+  const [pageType, setPageType] = useState<
+    | "plan-your-visit"
+    | "skip-the-line"
+    | "entrances"
+    | "history"
+    | "map-floor-plan"
+    | "tickets-pricing"
+    | "reviews-experiences"
+    | "combo-deals"
+  >("plan-your-visit");
 
   async function regenerateWithFeedback(feedback: string) {
-    const result = await regenMut.mutateAsync({ slug, data: { feedback } });
+    const result = await regenMut.mutateAsync({
+      slug,
+      data: { feedback, pageType },
+    });
     qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
     setRegenSummary(result.regenSummary ?? null);
@@ -489,31 +502,58 @@ function CeDetailInner({
               ✦ Curated deck
             </span>
           ) : (
-            <button
-              type="button"
-              onClick={() => setShowRegenFeedback(true)}
-              disabled={regenMut.isPending}
-              style={{
-                background: regenMut.isPending ? BRAND.slate100 : "white",
-                color: BRAND.slate950,
-                border: `1px solid ${BRAND.slate200}`,
-                padding: "8px 14px",
-                borderRadius: 12,
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: regenMut.isPending ? "wait" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              {regenMut.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <RefreshCw size={14} />
-              )}
-              Regenerate
-            </button>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <select
+                value={pageType}
+                onChange={(e) => setPageType(e.target.value as typeof pageType)}
+                disabled={regenMut.isPending}
+                title="Page template the deck should be assembled for"
+                style={{
+                  background: "white",
+                  color: BRAND.slate950,
+                  border: `1px solid ${BRAND.slate200}`,
+                  padding: "7px 10px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: regenMut.isPending ? "wait" : "pointer",
+                }}
+              >
+                <option value="plan-your-visit">Plan your visit</option>
+                <option value="skip-the-line">Skip the line</option>
+                <option value="entrances">Entrances</option>
+                <option value="history">History</option>
+                <option value="map-floor-plan">Map & floor plan</option>
+                <option value="tickets-pricing">Tickets & pricing</option>
+                <option value="reviews-experiences">Reviews & experiences</option>
+                <option value="combo-deals">Combo deals</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowRegenFeedback(true)}
+                disabled={regenMut.isPending}
+                style={{
+                  background: regenMut.isPending ? BRAND.slate100 : "white",
+                  color: BRAND.slate950,
+                  border: `1px solid ${BRAND.slate200}`,
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: regenMut.isPending ? "wait" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {regenMut.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
+                Regenerate
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -1938,7 +1978,31 @@ function ProvenanceDisclosure({
           fontWeight: 800,
         }}
       >
-        Evidence & estimates
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          Evidence & estimates
+          {provenance.bundle_id && (
+            <span
+              title={
+                provenance.intent_id
+                  ? `Intent: ${provenance.intent_id}` +
+                    (provenance.page_type ? ` · Page: ${provenance.page_type}` : "")
+                  : "Assembler bundle"
+              }
+              style={{
+                borderRadius: 999,
+                padding: "2px 7px",
+                background: "#EEF0FF",
+                color: BRAND.purps,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              {provenance.bundle_id}
+            </span>
+          )}
+        </span>
         <span
           style={{
             borderRadius: 999,

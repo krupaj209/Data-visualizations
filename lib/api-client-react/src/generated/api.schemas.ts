@@ -172,6 +172,25 @@ export interface CeWithCharts {
   charts: Chart[];
 }
 
+/**
+ * Listing-page template the assembler should build the deck for.
+Defaults to plan-your-visit when omitted.
+
+ */
+export type RegenerateCeInputPageType =
+  (typeof RegenerateCeInputPageType)[keyof typeof RegenerateCeInputPageType];
+
+export const RegenerateCeInputPageType = {
+  "plan-your-visit": "plan-your-visit",
+  "skip-the-line": "skip-the-line",
+  entrances: "entrances",
+  history: "history",
+  "map-floor-plan": "map-floor-plan",
+  "tickets-pricing": "tickets-pricing",
+  "reviews-experiences": "reviews-experiences",
+  "combo-deals": "combo-deals",
+} as const;
+
 export interface RegenerateCeInput {
   /** Optional free-text writer feedback. Parsed by the api-server
 into structured constraints (banned archetypes / topics /
@@ -179,6 +198,10 @@ phrases, must-include topics) and merged with whatever was
 persisted from prior regen runs on the same CE.
  */
   feedback?: string;
+  /** Listing-page template the assembler should build the deck for.
+Defaults to plan-your-visit when omitted.
+ */
+  pageType?: RegenerateCeInputPageType;
 }
 
 /**
@@ -262,6 +285,23 @@ export interface Subcategory {
   description: string;
 }
 
+/**
+ * Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted.
+ */
+export type ResearchGenerateInputPageType =
+  (typeof ResearchGenerateInputPageType)[keyof typeof ResearchGenerateInputPageType];
+
+export const ResearchGenerateInputPageType = {
+  "plan-your-visit": "plan-your-visit",
+  "skip-the-line": "skip-the-line",
+  entrances: "entrances",
+  history: "history",
+  "map-floor-plan": "map-floor-plan",
+  "tickets-pricing": "tickets-pricing",
+  "reviews-experiences": "reviews-experiences",
+  "combo-deals": "combo-deals",
+} as const;
+
 export interface ResearchGenerateInput {
   ceSlug: string;
   subcategoryId: string;
@@ -272,6 +312,8 @@ export interface ResearchGenerateInput {
   country?: string;
   category?: string;
   writerTopics?: string[];
+  /** Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted. */
+  pageType?: ResearchGenerateInputPageType;
 }
 
 export type ResearchGenerateResultDroppedQuestionsItem = {

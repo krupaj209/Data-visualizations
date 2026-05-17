@@ -1,10 +1,8 @@
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CHART_ARCHETYPES,
-  STANDARD_QUESTIONS,
-  getSubcategoryBankFlexible,
+  QUESTION_BUNDLES,
   isImplementedArchetype,
-  type BankQuestion,
   type ChartArchetypeId,
 } from "@workspace/question-bank";
 import {
@@ -306,11 +304,19 @@ function archetypeCatalog(): string {
     .join("\n");
 }
 
-function questionSeedBlock(subcategoryId: string, label?: string, description?: string): string {
-  const bank = getSubcategoryBankFlexible(subcategoryId, label, description);
-  const questions: BankQuestion[] = [...STANDARD_QUESTIONS, ...bank.questions];
-  return questions
-    .map((q) => `- ${q.question} -> ${q.recommended_archetype} (${q.kind})`)
+function questionSeedBlock(_subcategoryId: string, _label?: string, _description?: string): string {
+  // Bundle-based seed: list each intent bundle and its candidate archetypes so
+  // the planner LLM has the same intent palette the deterministic assembler
+  // uses (one chart per fired bundle). The planner is free to ignore bundles
+  // not supported by the CE's evidence — the deterministic assembler is the
+  // ground truth at deck-generation time.
+  return Object.values(QUESTION_BUNDLES)
+    .map((b) => {
+      const candidates = b.candidates
+        .map((c) => `${c.archetype}`)
+        .join(", ");
+      return `- [${b.id}] ${b.label} → ${candidates}`;
+    })
     .join("\n");
 }
 

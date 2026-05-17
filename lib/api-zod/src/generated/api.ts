@@ -132,6 +132,21 @@ export const RegenerateCeBody = zod.object({
     .describe(
       "Optional free-text writer feedback. Parsed by the api-server\ninto structured constraints (banned archetypes \/ topics \/\nphrases, must-include topics) and merged with whatever was\npersisted from prior regen runs on the same CE.\n",
     ),
+  pageType: zod
+    .enum([
+      "plan-your-visit",
+      "skip-the-line",
+      "entrances",
+      "history",
+      "map-floor-plan",
+      "tickets-pricing",
+      "reviews-experiences",
+      "combo-deals",
+    ])
+    .optional()
+    .describe(
+      "Listing-page template the assembler should build the deck for.\nDefaults to plan-your-visit when omitted.\n",
+    ),
 });
 
 export const RegenerateCeResponse = zod.object({
@@ -300,6 +315,21 @@ export const GenerateFromResearchBody = zod.object({
   country: zod.string().optional(),
   category: zod.string().optional(),
   writerTopics: zod.array(zod.string()).optional(),
+  pageType: zod
+    .enum([
+      "plan-your-visit",
+      "skip-the-line",
+      "entrances",
+      "history",
+      "map-floor-plan",
+      "tickets-pricing",
+      "reviews-experiences",
+      "combo-deals",
+    ])
+    .optional()
+    .describe(
+      "Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted.",
+    ),
 });
 
 /**
