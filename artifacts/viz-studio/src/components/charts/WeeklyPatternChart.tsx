@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { Star } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
 import {
   ACCENT_FG,
   ACCENT_SOFT,
   BRAND,
-  LEVEL_FILL,
-  LEVEL_FILL_SOFT,
-  LEVEL_LABEL,
-  getLevelFill,
   type LevelKey,
 } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
@@ -22,6 +19,57 @@ import {
   DAY_ORDER,
   type WeeklyPatternSpec,
 } from "@/lib/chart-spec";
+
+/**
+ * Task #109 traffic-light ramp. Five score bands keyed on the existing
+ * 0–100 crowd score (which is what the LevelKey buckets are computed
+ * from upstream). Bar fill stays soft tint by default; saturate the
+ * called-out extremes via `getTrafficColor(score, isCallout)`.
+ *
+ *   0–20   empty     mint green
+ *   20–40  light     lime
+ *   40–60  moderate  amber
+ *   60–80  busy      orange
+ *   80–100 packed    red
+ */
+type TrafficStep = "empty" | "light" | "moderate" | "busy" | "packed";
+
+const TRAFFIC_FILL: Record<TrafficStep, string> = {
+  empty: BRAND.okayGreen,
+  light: BRAND.subtleGreen,
+  moderate: BRAND.joyMustard,
+  busy: BRAND.hola,
+  packed: BRAND.candy,
+};
+
+const TRAFFIC_FILL_SOFT: Record<TrafficStep, string> = {
+  empty: BRAND.bgMint,
+  light: BRAND.bgSage,
+  moderate: BRAND.bgCream,
+  busy: BRAND.holaSoft,
+  packed: BRAND.candySoft,
+};
+
+const TRAFFIC_LABEL: Record<TrafficStep, string> = {
+  empty: "Empty",
+  light: "Light",
+  moderate: "Moderate",
+  busy: "Busy",
+  packed: "Packed",
+};
+
+function scoreToStep(score: number): TrafficStep {
+  if (score < 20) return "empty";
+  if (score < 40) return "light";
+  if (score < 60) return "moderate";
+  if (score < 80) return "busy";
+  return "packed";
+}
+
+function getTrafficFill(score: number, isCallout: boolean): string {
+  const step = scoreToStep(score);
+  return isCallout ? TRAFFIC_FILL[step] : TRAFFIC_FILL_SOFT[step];
+}
 
 interface Props {
   spec: WeeklyPatternSpec;
@@ -60,6 +108,23 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
     const open = ordered.filter((d) => d.level !== "closed");
     if (open.length === 0) return 0;
     return open.reduce((s, d) => s + d.score, 0) / open.length;
+  }, [ordered]);
+
+  // "★ Best" marker — lowest-score open day. Task #109 traffic-light
+  // overhaul: the writer's eye should land on the day with the shortest
+  // expected wait, separately from the busiest/quietest level callouts
+  // (those are pre-tagged on the spec; this is computed).
+  const bestDayIdx = useMemo(() => {
+    let best = -1;
+    let bestScore = Infinity;
+    ordered.forEach((d, i) => {
+      if (d.level === "closed") return;
+      if (d.score < bestScore) {
+        bestScore = d.score;
+        best = i;
+      }
+    });
+    return best;
   }, [ordered]);
 
   useEffect(() => {
@@ -106,11 +171,15 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       >
         {ordered.map((d, i) => {
           const isClosed = d.level === "closed";
-          // "Soft tint by default; saturate only the called-out extremes."
-          // The two pill-bearing levels (busiest, quietest) are the only
-          // bars that get the vivid LEVEL_FILL — everything else stays muted.
-          const isCallout = d.level === "busiest" || d.level === "quietest";
-          const fill = getLevelFill(d.level, isCallout);
+          // Task #109: bar fill is now keyed on the 0–100 score via the
+          // traffic-light ramp. Extremes (busiest / quietest level pills
+          // or the computed "best" day) saturate; the rest stay soft.
+          const isBest = bestDayIdx === i;
+          const isCallout =
+            d.level === "busiest" || d.level === "quietest" || isBest;
+          const fill = isClosed
+            ? "transparent"
+            : getTrafficFill(d.score, isCallout);
           const rawPct = Math.max(d.score, isClosed ? 60 : 0);
           const heightPct = rawPct * MAX_BAR_FILL;
           const isActive = selectedIdx === i;
@@ -138,17 +207,32 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
                 transition: "opacity .2s ease",
               }}
             >
-              {(d.level === "busiest" || d.level === "quietest") && (
+              {(d.level === "busiest" || d.level === "quietest" || isBest) && (
                 <div
-                  className="absolute left-1/2 -translate-x-1/2 z-10 flex flex-col items-center pointer-events-none"
+                  className="absolute left-1/2 -translate-x-1/2 z-10 flex flex-col items-center pointer-events-none gap-1"
                   style={{ bottom: `calc(${heightPct}% + 8px)` }}
                 >
-                  <CalloutPill
-                    bg={d.level === "busiest" ? BRAND.candySoft : BRAND.bgMint}
-                    fg={d.level === "busiest" ? BRAND.candy : "#0E8F4E"}
-                  >
-                    {d.level === "busiest" ? "Busiest" : "Quietest"}
-                  </CalloutPill>
+                  {isBest && d.level !== "quietest" && (
+                    <CalloutPill bg={BRAND.purpsSoft} fg={BRAND.purps}>
+                      <Star
+                        size={10}
+                        strokeWidth={2.5}
+                        style={{ marginRight: 2 }}
+                      />
+                      Best
+                    </CalloutPill>
+                  )}
+                  {(d.level === "busiest" || d.level === "quietest") && (
+                    <CalloutPill
+                      bg={
+                        d.level === "busiest" ? BRAND.candySoft : BRAND.bgMint
+                      }
+                      fg={d.level === "busiest" ? BRAND.candy : "#0E8F4E"}
+                    >
+                      {d.level === "busiest" ? "Busiest" : "Quietest"}
+                      {isBest && d.level === "quietest" ? " · ★ Best" : ""}
+                    </CalloutPill>
+                  )}
                 </div>
               )}
               <motion.div
@@ -310,23 +394,23 @@ export function WeeklyPatternChart({ spec, context, compact = false }: Props) {
       {!compact && (
         <>
           <Legend>
-            {(["quietest", "quiet", "busy", "busiest"] as LevelKey[]).map(
-              (lvl) => {
-                // Mirror the chart's color rhythm: extremes saturate, middle
-                // levels stay in the soft tint that matches the bars.
-                const swatch =
-                  lvl === "quietest" || lvl === "busiest"
-                    ? LEVEL_FILL[lvl]
-                    : LEVEL_FILL_SOFT[lvl];
-                return (
-                  <LegendItem
-                    key={lvl}
-                    color={swatch}
-                    label={LEVEL_LABEL[lvl]}
-                  />
-                );
-              },
-            )}
+            {(
+              ["empty", "light", "moderate", "busy", "packed"] as TrafficStep[]
+            ).map((step) => {
+              // Mirror the bar rhythm: the two extremes saturate to match
+              // the called-out bars, the middle steps stay soft.
+              const swatch =
+                step === "empty" || step === "packed"
+                  ? TRAFFIC_FILL[step]
+                  : TRAFFIC_FILL_SOFT[step];
+              return (
+                <LegendItem
+                  key={step}
+                  color={swatch}
+                  label={TRAFFIC_LABEL[step]}
+                />
+              );
+            })}
           </Legend>
 
           {spec.day_notes && spec.day_notes.length > 0 && (

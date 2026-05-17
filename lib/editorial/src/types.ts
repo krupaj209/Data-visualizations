@@ -124,7 +124,7 @@ export const EditorialOverlay = z.object({
   personalizationNote: z.string().optional(),
 
   confidence: z.object({
-    level: z.enum(["high", "medium", "low"]),
+    level: z.enum(["live", "high", "medium", "low"]),
     explanation: z.string().optional(),
     dataPoints: z.number().optional(),
     dateRange: z.string().optional(),

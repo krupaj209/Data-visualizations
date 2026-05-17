@@ -20,6 +20,7 @@ import { DailyPatternChart } from "./DailyPatternChart";
 import { TribuneDensityChart } from "./TribuneDensityChart";
 import { DurationProfilesChart } from "./DurationProfilesChart";
 import { EntranceLanesChart } from "./EntranceLanesChart";
+import { QueueCompareCard } from "./QueueCompareCard";
 import { CoBookingsChart } from "./CoBookingsChart";
 import { ZoneCrowdHeatmapChart } from "./ZoneCrowdHeatmapChart";
 import { ZoneWaitHeatmapChart } from "./ZoneWaitHeatmapChart";
@@ -72,6 +73,14 @@ interface Props {
    * externally verifiable and benefit from a small "n sources" footer.
    */
   provenance?: ChartProvenanceLite | null;
+  /**
+   * Task #109: presentation variant. The CE detail page passes
+   * `"comparison"` for `queue_compare` so it renders the new
+   * red/green/purple traffic-light strip; embeds (`/studio/embed/*`)
+   * never set this and continue to render the legacy dot-grid via
+   * `EntranceLanesChart`.
+   */
+  variant?: "default" | "comparison";
 }
 
 export function ChartRenderer({
@@ -80,6 +89,7 @@ export function ChartRenderer({
   preserve,
   compact,
   provenance,
+  variant,
 }: Props) {
   const context = header?.subtitle
     ? toSentenceCase(header.subtitle, { preserve })
@@ -188,6 +198,11 @@ export function ChartRenderer({
         />
       );
     case "queue_compare":
+      if (variant === "comparison") {
+        return (
+          <QueueCompareCard spec={spec} context={context} compact={compact} />
+        );
+      }
       return (
         <EntranceLanesChart
           spec={{ ...spec, type: "entrance_lanes" }}

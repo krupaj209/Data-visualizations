@@ -70,6 +70,11 @@ import {
 import { toSentenceCase } from "@/lib/text";
 import { SpecEditor } from "@/components/SpecEditor";
 import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
+import {
+  EditorialOverlay,
+  EditorialKeyInsight,
+} from "@/components/EditorialOverlay";
+import { assembleHybridOverlay } from "@workspace/editorial";
 
 const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -800,6 +805,34 @@ function ChartRow({
   const opts = { preserve: ceName };
   const headline = toSentenceCase(chart.question || chart.title, opts);
   const insightText = chart.insight ? toSentenceCase(chart.insight, opts) : null;
+  const editorialOverlay = useMemo(() => {
+    const provenance = chart.provenance as ChartProvenanceLite | null;
+    const specLike = spec as Partial<{
+      title: string;
+      subtitle: string;
+      insight: string;
+      headline: string;
+    }>;
+    return assembleHybridOverlay(
+      {
+        type: spec.type,
+        title: chart.title || specLike.title,
+        subtitle: chart.subtitle || specLike.subtitle,
+        insight: chart.insight || specLike.insight,
+        headline: specLike.headline,
+      },
+      provenance,
+      ceName,
+      { pageType: provenance?.page_type ?? "plan-your-visit" },
+    );
+  }, [
+    spec,
+    chart.title,
+    chart.subtitle,
+    chart.insight,
+    chart.provenance,
+    ceName,
+  ]);
   const status = chart.status ?? "published";
   const isDraft = status === "draft";
 
@@ -1006,6 +1039,10 @@ function ChartRow({
         />
       )}
 
+      <div style={{ marginBottom: 12 }}>
+        <EditorialOverlay overlay={editorialOverlay} />
+      </div>
+
       <div
         className={
           sidePanelOpen
@@ -1041,6 +1078,7 @@ function ChartRow({
                 question: chart.question,
                 insight: chart.insight || undefined,
               }}
+              variant={spec.type === "queue_compare" ? "comparison" : undefined}
             />
           </div>
         </div>
@@ -1096,6 +1134,7 @@ function ChartRow({
               Block subtitle: {toSentenceCase(chart.subtitle, opts)}
             </p>
           )}
+          <EditorialKeyInsight overlay={editorialOverlay} />
           <ProvenanceDisclosure
             provenance={chart.provenance as ChartProvenanceLite | null}
           />
@@ -2675,6 +2714,21 @@ function ChartEditor({
   const previewFrame =
     CHART_FRAME[spec.type] ?? CHART_FRAME[(chart.spec as unknown as ChartSpec).type];
 
+  const editorOverlay = useMemo(() => {
+    const provenance = chart.provenance as ChartProvenanceLite | null;
+    return assembleHybridOverlay(
+      {
+        type: spec.type,
+        title,
+        subtitle: subtitle || undefined,
+        insight: insight || undefined,
+      },
+      provenance,
+      chart.title || "",
+      { pageType: provenance?.page_type ?? "plan-your-visit" },
+    );
+  }, [spec.type, title, subtitle, insight, chart.provenance, chart.title]);
+
   async function handleSave() {
     setError(null);
     setSavedAt(null);
@@ -2886,6 +2940,9 @@ function ChartEditor({
           >
             Live preview
           </div>
+          <div style={{ marginBottom: 10 }}>
+            <EditorialOverlay overlay={editorOverlay} />
+          </div>
           <div
             className="rounded-2xl overflow-hidden"
             style={{ background: BRAND.slate100 }}
@@ -2907,6 +2964,9 @@ function ChartEditor({
                   question,
                   insight: insight || undefined,
                 }}
+                variant={
+                  spec.type === "queue_compare" ? "comparison" : undefined
+                }
               />
             </div>
           </div>
