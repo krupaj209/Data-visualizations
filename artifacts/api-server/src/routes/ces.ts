@@ -65,6 +65,7 @@ function serializeCe(
   chartCount: number,
   draftCount = 0,
   publishedCount = chartCount,
+  drdUpdatedAt: Date | null = null,
 ) {
   return {
     id: ce.id,
@@ -81,6 +82,7 @@ function serializeCe(
     publishedCount,
     createdAt: ce.createdAt.toISOString(),
     updatedAt: ce.updatedAt.toISOString(),
+    drdUpdatedAt: drdUpdatedAt ? drdUpdatedAt.toISOString() : null,
   };
 }
 
@@ -188,12 +190,16 @@ function serializeIdeation(m: IdeationMessage) {
 }
 
 router.get("/ces", async (req, res): Promise<void> => {
+  // `drdUpdatedAt` is joined via a correlated subquery (rather than a second
+  // leftJoin) so the chart aggregate row-count isn't multiplied by per-CE
+  // DRD rows. MAX is safe because there's at most one DRD per ceSlug today.
   const rows = await db
     .select({
       ce: cesTable,
       chartCount: sql<number>`COALESCE(COUNT(${chartsTable.id})::int, 0)`,
       draftCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'draft')::int, 0)`,
       publishedCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'published')::int, 0)`,
+      drdUpdatedAt: sql<Date | null>`(SELECT MAX(${drdsTable.updatedAt}) FROM ${drdsTable} WHERE ${drdsTable.ceSlug} = ${cesTable.slug})`,
     })
     .from(cesTable)
     .leftJoin(chartsTable, eq(chartsTable.ceId, cesTable.id))
@@ -201,12 +207,13 @@ router.get("/ces", async (req, res): Promise<void> => {
     .orderBy(asc(cesTable.name));
 
   res.json(
-    rows.map(({ ce, chartCount, draftCount, publishedCount }) =>
+    rows.map(({ ce, chartCount, draftCount, publishedCount, drdUpdatedAt }) =>
       serializeCe(
         ce,
         Number(chartCount),
         Number(draftCount),
         Number(publishedCount),
+        drdUpdatedAt ? new Date(drdUpdatedAt) : null,
       ),
     ),
   );

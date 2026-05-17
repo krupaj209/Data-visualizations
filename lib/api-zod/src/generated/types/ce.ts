@@ -21,4 +21,10 @@ export interface Ce {
   publishedCount: number;
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp of the most recent DRD upload for this CE, or
+null if no DRD has been uploaded. Surfaced in the library
+list so the UI can flag stale research without an extra
+per-CE round trip.
+ */
+  drdUpdatedAt?: string | null;
 }

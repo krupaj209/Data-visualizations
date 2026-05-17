@@ -987,6 +987,14 @@ components:
           type: string
         updatedAt:
           type: string
+        drdUpdatedAt:
+          type: string
+          nullable: true
+          description: |
+            ISO timestamp of the most recent DRD upload for this CE, or
+            null if no DRD has been uploaded. Surfaced in the library
+            list so the UI can flag stale research without an extra
+            per-CE round trip.
       required:
         - id
         - slug

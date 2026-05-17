@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   BookOpen,
+  Copy,
+  Edit3,
+  ExternalLink,
   FileText,
   Loader2,
   Palette,
@@ -43,6 +47,84 @@ const CURATED_CE_SLUGS = new Set([
   "colosseum",
   "vatican-museums",
 ]);
+
+type CeStatusKind = "locked" | "drafts_waiting" | "stale" | "published" | "empty";
+
+interface CeStatusInfo {
+  kind: CeStatusKind;
+  label: string;
+  bg: string;
+  color: string;
+}
+
+/**
+ * Derive the status badge for a CE. Priority:
+ *   1. LOCKED — curated decks (immune to regen), always wins.
+ *   2. DRAFTS — any draft chart pending review.
+ *   3. STALE — DRD older than 30 days (research likely outdated).
+ *   4. PUBLISHED — at least one published chart and a fresh-enough DRD.
+ *   5. EMPTY — fallback for CEs with no charts at all.
+ * DRD freshness intentionally does not block PUBLISHED for curated CEs;
+ * curated decks don't depend on DRDs.
+ */
+function deriveCeStatus(
+  ce: Ce,
+  isCurated: boolean,
+  drdAgeDays: number | null,
+): CeStatusInfo {
+  if (isCurated) {
+    return {
+      kind: "locked",
+      label: "LOCKED",
+      bg: "#EFE2FF",
+      color: "#6B00CC",
+    };
+  }
+  if ((ce.draftCount ?? 0) > 0) {
+    return {
+      kind: "drafts_waiting",
+      label: "DRAFTS",
+      bg: "#DCEBFF",
+      color: "#1255B3",
+    };
+  }
+  if (drdAgeDays !== null && drdAgeDays > 30) {
+    return {
+      kind: "stale",
+      label: "STALE",
+      bg: "#FFF1D9",
+      color: "#946100",
+    };
+  }
+  if ((ce.publishedCount ?? ce.chartCount ?? 0) > 0) {
+    return {
+      kind: "published",
+      label: "PUBLISHED",
+      bg: "#D2FDEB",
+      color: "#0E8F4E",
+    };
+  }
+  return {
+    kind: "empty",
+    label: "EMPTY",
+    bg: "#F2F2F2",
+    color: "#5A5A5A",
+  };
+}
+
+function drdAgeDaysOf(ce: Ce): number | null {
+  if (!ce.drdUpdatedAt) return null;
+  const then = new Date(ce.drdUpdatedAt).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24)));
+}
+
+function drdAgeColor(days: number | null): string {
+  if (days === null) return "#A6A6A6";
+  if (days < 7) return "#0E8F4E";
+  if (days < 30) return "#946100";
+  return "#B3001F";
+}
 
 function formatTimeAgo(iso: string): string {
   const then = new Date(iso).getTime();
@@ -331,6 +413,8 @@ export default function Home() {
           </span>
         </div>
       </header>
+
+      <AttentionBanner ces={ces} />
 
       <main className="max-w-7xl mx-auto px-6 py-10 grid lg:grid-cols-[420px_1fr] gap-10">
         {/* CREATE PANEL */}
@@ -922,6 +1006,19 @@ export default function Home() {
                     await deleteMut.mutateAsync({ slug: ce.slug });
                     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
                   }}
+                  onCopyLink={async () => {
+                    // Copy the absolute studio link for the CE so writers
+                    // can paste it into tickets / chat. Uses window.origin
+                    // + BASE_URL (the artifact's mounted path prefix).
+                    const url = `${window.location.origin}${apiBase}/ce/${ce.slug}`;
+                    try {
+                      await navigator.clipboard.writeText(url);
+                    } catch {
+                      // Older browsers / non-secure contexts: fall back to
+                      // a no-op prompt so the writer still sees the value.
+                      window.prompt("Copy CE link", url);
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -1009,11 +1106,93 @@ function BreakdownPill({
   );
 }
 
-function CeCard({ ce, onDelete }: { ce: Ce; onDelete: () => void }) {
+/**
+ * AttentionBanner — a single skim-line above the main grid that surfaces
+ * the two things that block writers from shipping: charts pending review
+ * (status='draft') and DRDs older than 30 days (research likely stale).
+ * Hidden entirely when there's nothing to do, so the page doesn't carry
+ * a permanent "nag" strip.
+ */
+function AttentionBanner({ ces }: { ces: Ce[] | undefined }) {
+  const stats = useMemo(() => {
+    if (!ces || ces.length === 0)
+      return { draftCharts: 0, draftCes: 0, staleCes: 0 };
+    let draftCharts = 0;
+    let draftCes = 0;
+    let staleCes = 0;
+    for (const ce of ces) {
+      const drafts = ce.draftCount ?? 0;
+      if (drafts > 0) {
+        draftCharts += drafts;
+        draftCes += 1;
+      }
+      // STALE excludes curated decks (they don't depend on DRDs) and
+      // excludes CEs without a DRD at all (those need an upload, not a
+      // freshness nag).
+      if (!CURATED_CE_SLUGS.has(ce.slug)) {
+        const days = drdAgeDaysOf(ce);
+        if (days !== null && days > 30) staleCes += 1;
+      }
+    }
+    return { draftCharts, draftCes, staleCes };
+  }, [ces]);
+
+  if (stats.draftCharts === 0 && stats.staleCes === 0) return null;
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 pt-6">
+      <div
+        className="rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap"
+        style={{
+          background: "#FFF7E6",
+          border: "1px solid #F5D793",
+          color: "#7A4F00",
+        }}
+      >
+        <AlertTriangle size={16} strokeWidth={2.5} />
+        <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "-0.01em" }}>
+          Needs attention
+        </span>
+        <div className="flex items-center gap-3 flex-wrap" style={{ fontSize: 12, fontWeight: 600 }}>
+          {stats.draftCharts > 0 && (
+            <span>
+              <b>{stats.draftCharts}</b> draft chart
+              {stats.draftCharts === 1 ? "" : "s"} pending review across{" "}
+              <b>{stats.draftCes}</b> CE{stats.draftCes === 1 ? "" : "s"}
+            </span>
+          )}
+          {stats.draftCharts > 0 && stats.staleCes > 0 && (
+            <span style={{ color: "#C19A3D" }}>•</span>
+          )}
+          {stats.staleCes > 0 && (
+            <span>
+              <b>{stats.staleCes}</b> CE{stats.staleCes === 1 ? "" : "s"} with DRD
+              older than 30 days
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CeCard({
+  ce,
+  onDelete,
+  onCopyLink,
+}: {
+  ce: Ce;
+  onDelete: () => void;
+  onCopyLink: () => void;
+}) {
+  const isCurated = CURATED_CE_SLUGS.has(ce.slug);
+  const drdDays = drdAgeDaysOf(ce);
+  const status = deriveCeStatus(ce, isCurated, drdDays);
+  const drdColor = drdAgeColor(drdDays);
   return (
     <Link
       href={`/ce/${ce.slug}`}
-      className="block rounded-2xl p-5 transition hover:-translate-y-0.5"
+      className="ce-card block rounded-2xl p-5 transition hover:-translate-y-0.5"
       style={{
         background: "white",
         border: `1px solid ${BRAND.slate100}`,
@@ -1063,25 +1242,46 @@ function CeCard({ ce, onDelete }: { ce: Ce; onDelete: () => void }) {
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete();
-          }}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: BRAND.slate500,
-            cursor: "pointer",
-            padding: 6,
-            borderRadius: 8,
-          }}
-          title="Delete"
-        >
-          <Trash2 size={16} />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span
+            title={`Status: ${status.label}`}
+            style={{
+              background: status.bg,
+              color: status.color,
+              padding: "3px 8px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {status.label}
+          </span>
+          {/* Locked / curated CEs are guarded server-side (409). Hiding
+              the Delete button here keeps the UI consistent with that
+              contract instead of inviting a guaranteed-to-fail action. */}
+          {!isCurated && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete();
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: BRAND.slate500,
+                cursor: "pointer",
+                padding: 6,
+                borderRadius: 8,
+              }}
+              title="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
       {ce.summary && (
         <p
@@ -1101,32 +1301,117 @@ function CeCard({ ce, onDelete }: { ce: Ce; onDelete: () => void }) {
         </p>
       )}
       <div
-        className="mt-4 flex items-center justify-between"
+        className="mt-4 flex items-center justify-between flex-wrap gap-2"
         style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 10 }}
       >
-        <span
-          style={{
-            background: BRAND.bgMint,
-            color: "#0E8F4E",
-            padding: "3px 8px",
-            borderRadius: 999,
-            fontSize: 10,
-            fontWeight: 800,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {ce.chartCount} chart{ce.chartCount === 1 ? "" : "s"}
-        </span>
-        <span
-          style={{
-            color: BRAND.purps,
-            fontSize: 12,
-            fontWeight: 800,
-          }}
-        >
-          View →
-        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span
+            style={{
+              background: BRAND.bgMint,
+              color: "#0E8F4E",
+              padding: "3px 8px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {ce.chartCount} chart{ce.chartCount === 1 ? "" : "s"}
+          </span>
+          {(ce.draftCount ?? 0) > 0 && (
+            <span
+              style={{
+                background: "#DCEBFF",
+                color: "#1255B3",
+                padding: "3px 8px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              +{ce.draftCount} draft
+            </span>
+          )}
+          <span
+            title={
+              drdDays === null
+                ? "No DRD uploaded"
+                : `DRD updated ${drdDays} day${drdDays === 1 ? "" : "s"} ago`
+            }
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: drdColor,
+              letterSpacing: "0.02em",
+              textTransform: "uppercase",
+            }}
+          >
+            ◐ DRD {drdDays === null ? "—" : `${drdDays}d`}
+          </span>
+        </div>
+        {/* Quick actions row — always visible (keyboard- and touch-friendly).
+            Earlier iteration tried hover-only reveal but it hid useful CTAs
+            on touch devices and was redundant with the parent card hover. */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onCopyLink();
+            }}
+            className="ce-action"
+            title="Copy CE detail link"
+            style={{
+              background: BRAND.slate50,
+              border: `1px solid ${BRAND.slate100}`,
+              color: BRAND.slate700,
+              padding: "4px 8px",
+              borderRadius: 8,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.02em",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Copy size={11} strokeWidth={2.5} />
+            Copy
+          </button>
+          <span
+            className="ce-action"
+            style={{
+              background: BRAND.purpsSoft,
+              color: BRAND.purps,
+              padding: "4px 8px",
+              borderRadius: 8,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.02em",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Edit3 size={11} strokeWidth={2.5} />
+            Edit
+          </span>
+          <span
+            style={{
+              color: BRAND.purps,
+              fontSize: 12,
+              fontWeight: 800,
+              marginLeft: 4,
+            }}
+          >
+            View →
+          </span>
+        </div>
       </div>
     </Link>
   );

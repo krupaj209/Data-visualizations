@@ -33,6 +33,12 @@ export const ListCesResponseItem = zod.object({
   publishedCount: zod.number(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
+  drdUpdatedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+    ),
 });
 export const ListCesResponse = zod.array(ListCesResponseItem);
 
@@ -69,6 +75,12 @@ export const GetCeResponse = zod.object({
     publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
   }),
   charts: zod.array(
     zod.object({
@@ -138,6 +150,12 @@ export const RegenerateCeResponse = zod.object({
     publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
   }),
   charts: zod.array(
     zod.object({
@@ -529,6 +547,12 @@ export const GetChartResponse = zod.object({
     publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
   }),
 });
 
@@ -635,6 +659,12 @@ export const RegenerateChartResponse = zod.object({
     publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
   }),
 });
 
@@ -883,6 +913,12 @@ export const ListAllFeedbackResponseItem = zod.object({
     publishedCount: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
   }),
   chartEditCount: zod.number(),
 });
