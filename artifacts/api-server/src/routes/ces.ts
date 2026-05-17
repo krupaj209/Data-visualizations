@@ -1,6 +1,16 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import { and, eq, asc, sql, inArray, notInArray } from "drizzle-orm";
+import {
+  and,
+  eq,
+  asc,
+  desc,
+  sql,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 import { z } from "zod";
 import { extractPdfToMarkdown } from "../lib/extract-drd";
 import {
@@ -89,6 +99,7 @@ function serializeCe(
     publishedCount,
     createdAt: ce.createdAt.toISOString(),
     updatedAt: ce.updatedAt.toISOString(),
+    archivedAt: ce.archivedAt ? ce.archivedAt.toISOString() : null,
     drdUpdatedAt: drdUpdatedAt ? drdUpdatedAt.toISOString() : null,
   };
 }
@@ -199,6 +210,15 @@ function serializeIdeation(m: IdeationMessage) {
 }
 
 router.get("/ces", async (req, res): Promise<void> => {
+  // `?archived=true` returns the Archive tab — soft-deleted CEs only,
+  // most-recently-archived first. Anything else (including no param)
+  // returns live CEs, hiding archived rows from the main library so
+  // the default Home view never shows them.
+  const archivedParam = String(req.query.archived ?? "").toLowerCase();
+  const wantArchived = archivedParam === "true" || archivedParam === "1";
+  const archivedFilter = wantArchived
+    ? isNotNull(cesTable.archivedAt)
+    : isNull(cesTable.archivedAt);
   // `drdUpdatedAt` is joined via a correlated subquery (rather than a second
   // leftJoin) so the chart aggregate row-count isn't multiplied by per-CE
   // DRD rows. MAX is safe because there's at most one DRD per ceSlug today.
@@ -212,8 +232,11 @@ router.get("/ces", async (req, res): Promise<void> => {
     })
     .from(cesTable)
     .leftJoin(chartsTable, eq(chartsTable.ceId, cesTable.id))
+    .where(archivedFilter)
     .groupBy(cesTable.id)
-    .orderBy(asc(cesTable.name));
+    .orderBy(
+      wantArchived ? desc(cesTable.archivedAt) : asc(cesTable.name),
+    );
 
   res.json(
     rows.map(({ ce, chartCount, draftCount, publishedCount, drdUpdatedAt }) =>
@@ -378,16 +401,75 @@ router.delete("/ces/:slug", async (req, res): Promise<void> => {
     return;
   }
 
-  const [deleted] = await db
-    .delete(cesTable)
-    .where(eq(cesTable.slug, params.data.slug))
+  // Soft-delete: stamp `archivedAt` so the row disappears from the
+  // default library list but can be restored from the Archive tab.
+  // Charts/DRDs/feedback stay intact via the existing FK cascades so
+  // a restore brings them back untouched.
+  const [archived] = await db
+    .update(cesTable)
+    .set({ archivedAt: new Date() })
+    .where(
+      and(
+        eq(cesTable.slug, params.data.slug),
+        isNull(cesTable.archivedAt),
+      ),
+    )
     .returning();
-  if (!deleted) {
+  if (!archived) {
     res.status(404).json({ error: "CE not found" });
     return;
   }
 
   res.sendStatus(204);
+});
+
+router.post("/ces/:slug/restore", async (req, res): Promise<void> => {
+  const params = GetCeParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [restored] = await db
+    .update(cesTable)
+    .set({ archivedAt: null })
+    .where(
+      and(
+        eq(cesTable.slug, params.data.slug),
+        isNotNull(cesTable.archivedAt),
+      ),
+    )
+    .returning();
+  if (!restored) {
+    res.status(404).json({ error: "Archived CE not found" });
+    return;
+  }
+
+  // Recompute chart counts so the returned CE payload matches the
+  // shape served by listCes / getCe — clients otherwise see
+  // chartCount/draftCount/publishedCount stuck at 0 after restore.
+  const [counts] = await db
+    .select({
+      chartCount: sql<number>`COALESCE(COUNT(${chartsTable.id})::int, 0)`,
+      draftCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'draft')::int, 0)`,
+      publishedCount: sql<number>`COALESCE(COUNT(${chartsTable.id}) FILTER (WHERE ${chartsTable.status} = 'published')::int, 0)`,
+    })
+    .from(chartsTable)
+    .where(eq(chartsTable.ceId, restored.id));
+  const [drd] = await db
+    .select({ updatedAt: drdsTable.updatedAt })
+    .from(drdsTable)
+    .where(eq(drdsTable.ceSlug, restored.slug));
+
+  res.json({
+    ce: serializeCe(
+      restored,
+      counts?.chartCount ?? 0,
+      counts?.draftCount ?? 0,
+      counts?.publishedCount ?? 0,
+      drd?.updatedAt ?? null,
+    ),
+  });
 });
 
 router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
@@ -416,6 +498,16 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
     .where(eq(cesTable.slug, params.data.slug));
   if (!ce) {
     res.status(404).json({ error: "CE not found" });
+    return;
+  }
+  // Archived CEs are restorable but not editable in place — refuse
+  // regeneration so a writer doesn't accidentally rebuild a deck on
+  // a soft-deleted row (which would also leave the new charts
+  // invisible from the default library view).
+  if (ce.archivedAt) {
+    res.status(409).json({
+      error: "This CE is archived. Restore it before regenerating.",
+    });
     return;
   }
 

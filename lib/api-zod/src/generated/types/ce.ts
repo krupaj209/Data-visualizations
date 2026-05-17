@@ -27,4 +27,10 @@ list so the UI can flag stale research without an extra
 per-CE round trip.
  */
   drdUpdatedAt?: string | null;
+  /** ISO timestamp when this CE was soft-deleted, or null if
+live. Soft-deleted CEs are hidden from the default
+`listCes` response and surfaced via `?archived=true` for
+the Archive tab.
+ */
+  archivedAt?: string | null;
 }

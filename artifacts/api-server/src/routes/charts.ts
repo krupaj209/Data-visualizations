@@ -210,18 +210,14 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
   }
   const existing = existingRow.chart;
 
-  // Task #151 — presentation-only updates are render-time overrides and
-  // never modify the chart spec, so locked CEs allow them.
-  if (
-    LOCKED_CE_SLUGS.has(existingRow.ce.slug) &&
-    !isPresentationOnlyUpdate(parsed.data)
-  ) {
-    res.status(409).json({
-      error:
-        "This CE has a hand-curated chart set and its charts cannot be edited.",
-    });
-    return;
-  }
+  // Locked CEs (curated reference set) used to reject any non-
+  // presentation update — writers couldn't even fix a typo in an
+  // entrance name. Edits are now allowed on locked CEs; the lock is
+  // narrowed to delete/regenerate (which would change chart IDs and
+  // break external embeds). `isPresentationOnlyUpdate` is kept around
+  // because other code paths still consult it.
+  void isPresentationOnlyUpdate;
+  void LOCKED_CE_SLUGS;
 
   const update: Partial<typeof chartsTable.$inferInsert> = {};
   if (parsed.data.question !== undefined) update.question = parsed.data.question;

@@ -43,6 +43,7 @@ import type {
   IdeationInput,
   IdeationMessage,
   ListAllFeedbackParams,
+  ListCesParams,
   MergeSuggestionInput,
   PublishAllDraftsInput,
   PublishAllDraftsResult,
@@ -63,6 +64,7 @@ import type {
   RegenerateFeedbackInput,
   ResearchGenerateInput,
   ResearchGenerateResult,
+  RestoreCe200,
   Subcategory,
   TopicChartInput,
   TriageFeedback,
@@ -984,37 +986,59 @@ export function useHealthCheck<
 }
 
 /**
+ * Returns live CEs by default (excludes soft-deleted rows). Pass
+`?archived=true` to list only soft-deleted CEs for the Archive
+tab, ordered most-recently-archived first.
+
  * @summary List all CEs
  */
-export const getListCesUrl = () => {
-  return `/api/ces`;
+export const getListCesUrl = (params?: ListCesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ces?${stringifiedParams}`
+    : `/api/ces`;
 };
 
-export const listCes = async (options?: RequestInit): Promise<Ce[]> => {
-  return customFetch<Ce[]>(getListCesUrl(), {
+export const listCes = async (
+  params?: ListCesParams,
+  options?: RequestInit,
+): Promise<Ce[]> => {
+  return customFetch<Ce[]>(getListCesUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListCesQueryKey = () => {
-  return [`/api/ces`] as const;
+export const getListCesQueryKey = (params?: ListCesParams) => {
+  return [`/api/ces`, ...(params ? [params] : [])] as const;
 };
 
 export const getListCesQueryOptions = <
   TData = Awaited<ReturnType<typeof listCes>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListCesParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListCesQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListCesQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listCes>>> = ({
     signal,
-  }) => listCes({ signal, ...requestOptions });
+  }) => listCes(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listCes>>,
@@ -1035,11 +1059,14 @@ export type ListCesQueryError = ErrorType<unknown>;
 export function useListCes<
   TData = Awaited<ReturnType<typeof listCes>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListCesQueryOptions(options);
+>(
+  params?: ListCesParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listCes>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -1210,7 +1237,12 @@ export function useGetCe<
 }
 
 /**
- * @summary Delete a CE and its charts
+ * Soft-deletes the CE by stamping `archivedAt`. The row stops
+appearing in the default library list but can be restored
+from the Archive tab via `POST /ces/{slug}/restore`. Locked
+curated CEs refuse the operation with 409.
+
+ * @summary Soft-delete (archive) a CE
  */
 export const getDeleteCeUrl = (slug: string) => {
   return `/api/ces/${slug}`;
@@ -1271,7 +1303,7 @@ export type DeleteCeMutationResult = NonNullable<
 export type DeleteCeMutationError = ErrorType<ApiError>;
 
 /**
- * @summary Delete a CE and its charts
+ * @summary Soft-delete (archive) a CE
  */
 export const useDeleteCe = <
   TError = ErrorType<ApiError>,
@@ -1291,6 +1323,94 @@ export const useDeleteCe = <
   TContext
 > => {
   return useMutation(getDeleteCeMutationOptions(options));
+};
+
+/**
+ * Clears `archivedAt` on a previously archived CE so it
+reappears in the default library list. Charts/DRDs/feedback
+survive archival untouched, so they come back as-is.
+
+ * @summary Restore a soft-deleted CE
+ */
+export const getRestoreCeUrl = (slug: string) => {
+  return `/api/ces/${slug}/restore`;
+};
+
+export const restoreCe = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<RestoreCe200> => {
+  return customFetch<RestoreCe200>(getRestoreCeUrl(slug), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRestoreCeMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof restoreCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["restoreCe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof restoreCe>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return restoreCe(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RestoreCeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof restoreCe>>
+>;
+
+export type RestoreCeMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Restore a soft-deleted CE
+ */
+export const useRestoreCe = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof restoreCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getRestoreCeMutationOptions(options));
 };
 
 /**

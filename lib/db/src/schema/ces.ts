@@ -30,6 +30,14 @@ export const cesTable = pgTable("ces", {
   regenConstraints: jsonb("regen_constraints").$type<
     Record<string, unknown> | null
   >(),
+  /**
+   * Soft-delete marker. `DELETE /api/ces/:slug` stamps this with the
+   * current time instead of removing the row, so the CE can be
+   * restored from the Archive tab. `null` for live CEs. Locked CEs
+   * (curated reference set) refuse delete entirely and never end up
+   * here.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

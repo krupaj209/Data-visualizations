@@ -309,6 +309,19 @@ paths:
       operationId: listCes
       tags: [ces]
       summary: List all CEs
+      description: |
+        Returns live CEs by default (excludes soft-deleted rows). Pass
+        `?archived=true` to list only soft-deleted CEs for the Archive
+        tab, ordered most-recently-archived first.
+      parameters:
+        - in: query
+          name: archived
+          required: false
+          schema:
+            type: boolean
+          description: |
+            When true, return only soft-deleted (archived) CEs. When
+            false or omitted, return only live CEs.
       responses:
         "200":
           description: List of CEs
@@ -374,7 +387,12 @@ paths:
     delete:
       operationId: deleteCe
       tags: [ces]
-      summary: Delete a CE and its charts
+      summary: Soft-delete (archive) a CE
+      description: |
+        Soft-deletes the CE by stamping `archivedAt`. The row stops
+        appearing in the default library list but can be restored
+        from the Archive tab via `POST /ces/{slug}/restore`. Locked
+        curated CEs refuse the operation with 409.
       parameters:
         - in: path
           name: slug
@@ -383,9 +401,47 @@ paths:
             type: string
       responses:
         "204":
-          description: Deleted
+          description: Archived
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is curated/locked and cannot be archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/restore:
+    post:
+      operationId: restoreCe
+      tags: [ces]
+      summary: Restore a soft-deleted CE
+      description: |
+        Clears `archivedAt` on a previously archived CE so it
+        reappears in the default library list. Charts/DRDs/feedback
+        survive archival untouched, so they come back as-is.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ce:
+                    $ref: "#/components/schemas/Ce"
+                required: [ce]
+        "404":
+          description: Archived CE not found
           content:
             application/json:
               schema:
@@ -1471,6 +1527,14 @@ components:
             null if no DRD has been uploaded. Surfaced in the library
             list so the UI can flag stale research without an extra
             per-CE round trip.
+        archivedAt:
+          type: string
+          nullable: true
+          description: |
+            ISO timestamp when this CE was soft-deleted, or null if
+            live. Soft-deleted CEs are hidden from the default
+            `listCes` response and surfaced via `?archived=true` for
+            the Archive tab.
       required:
         - id
         - slug

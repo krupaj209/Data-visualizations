@@ -121,6 +121,15 @@ router.post("/research/generate", async (req, res): Promise<void> => {
 
   // Resolve or bootstrap the CE row.
   let [ce] = await db.select().from(cesTable).where(eq(cesTable.slug, slug));
+  if (ce?.archivedAt) {
+    // Archived rows are restore-only — refuse to generate charts
+    // onto a soft-deleted CE so the new deck never lands somewhere
+    // the default library view can't see.
+    res.status(409).json({
+      error: `CE "${slug}" is archived. Restore it before generating.`,
+    });
+    return;
+  }
   if (!ce) {
     if (!parsed.data.name || !parsed.data.city || !parsed.data.country) {
       res.status(400).json({

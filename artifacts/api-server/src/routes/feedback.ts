@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
@@ -228,7 +228,13 @@ router.get("/feedback", async (req, res): Promise<void> => {
     status = parsed.data;
   }
 
-  const where = status ? eq(chartFeedbackTable.status, status) : undefined;
+  // Always hide feedback on archived CEs — the writer can restore
+  // the CE first if they want to act on it. Combined with the
+  // optional status filter via `and()`.
+  const liveOnly = isNull(cesTable.archivedAt);
+  const where = status
+    ? and(eq(chartFeedbackTable.status, status), liveOnly)
+    : liveOnly;
 
   const rows = await db
     .select({
@@ -297,13 +303,16 @@ router.patch("/feedback/:id", async (req, res): Promise<void> => {
 
 router.get("/triage/questions", async (_req, res): Promise<void> => {
   // Fetch all charts joined with their CE and aggregate counts.
+  // Archived CEs are excluded — they're restore-only and shouldn't
+  // surface in the writer's triage queue.
   const charts = await db
     .select({
       chart: chartsTable,
       ce: cesTable,
     })
     .from(chartsTable)
-    .innerJoin(cesTable, eq(cesTable.id, chartsTable.ceId));
+    .innerJoin(cesTable, eq(cesTable.id, chartsTable.ceId))
+    .where(isNull(cesTable.archivedAt));
 
   const feedbackRows = await db.select().from(chartFeedbackTable);
   const editRows = await db.select().from(chartEditsTable);

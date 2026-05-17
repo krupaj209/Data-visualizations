@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Archive,
   BookOpen,
   Copy,
   Edit3,
@@ -11,6 +12,7 @@ import {
   Loader2,
   Palette,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   X,
@@ -19,6 +21,7 @@ import {
   useListCes,
   useCreateCe,
   useDeleteCe,
+  useRestoreCe,
   getListCesQueryKey,
   type Ce,
 } from "@workspace/api-client-react";
@@ -169,14 +172,26 @@ export default function Home() {
     return () => clearInterval(id);
   }, [createMut.isPending]);
 
-  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">(
-    "all",
-  );
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "published" | "draft" | "archive"
+  >("all");
+
+  // Separate query for the Archive tab — soft-deleted CEs only. The
+  // server splits live vs archived rows by `?archived=true`, so the
+  // default `useListCes()` above never returns archived rows and we
+  // can keep both buckets in independently-cached queries.
+  const { data: archivedCes } = useListCes({ archived: true });
+  const restoreMut = useRestoreCe();
 
   const sortedCes = useMemo(
     () => [...(ces ?? [])].sort((a, b) => b.id - a.id),
     [ces],
   );
+  const sortedArchivedCes = useMemo(
+    () => [...(archivedCes ?? [])],
+    [archivedCes],
+  );
+  const archivedCount = sortedArchivedCes.length;
 
   // CE-level filter buckets are derived from the per-CE chart status counts
   // returned by GET /ces (draftCount / publishedCount). `ce.status` is the
@@ -186,12 +201,13 @@ export default function Home() {
   // - "published" bucket: any CE with at least one published chart.
   // (A CE with both will show in both buckets, matching writer intent.)
   const filteredCes = useMemo(() => {
+    if (statusFilter === "archive") return sortedArchivedCes;
     if (statusFilter === "all") return sortedCes;
     if (statusFilter === "draft") {
       return sortedCes.filter((c) => (c.draftCount ?? 0) > 0);
     }
     return sortedCes.filter((c) => (c.publishedCount ?? c.chartCount ?? 0) > 0);
-  }, [sortedCes, statusFilter]);
+  }, [sortedCes, sortedArchivedCes, statusFilter]);
 
   const draftCesCount = sortedCes.filter((c) => (c.draftCount ?? 0) > 0).length;
   const publishedCesCount = sortedCes.filter(
@@ -850,6 +866,7 @@ export default function Home() {
                   ["all", `All (${sortedCes.length})`],
                   ["published", `Published (${publishedCesCount})`],
                   ["draft", `Drafts (${draftCesCount})`],
+                  ["archive", `Archive (${archivedCount})`],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -1001,10 +1018,25 @@ export default function Home() {
                 <CeCard
                   key={ce.id}
                   ce={ce}
+                  isArchived={statusFilter === "archive"}
+                  onRestore={async () => {
+                    await restoreMut.mutateAsync({ slug: ce.slug });
+                    // Invalidate both live + archived lists since the row
+                    // moves between buckets.
+                    qc.invalidateQueries({
+                      queryKey: getListCesQueryKey(),
+                    });
+                    qc.invalidateQueries({
+                      queryKey: getListCesQueryKey({ archived: true }),
+                    });
+                  }}
                   onDelete={async () => {
-                    if (!confirm(`Delete "${ce.name}" and all its charts?`)) return;
+                    if (!confirm(`Archive "${ce.name}"? You can restore it from the Archive tab.`)) return;
                     await deleteMut.mutateAsync({ slug: ce.slug });
                     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+                    qc.invalidateQueries({
+                      queryKey: getListCesQueryKey({ archived: true }),
+                    });
                   }}
                   onCopyLink={async () => {
                     // Copy the absolute studio link for the CE so writers
@@ -1179,11 +1211,20 @@ function AttentionBanner({ ces }: { ces: Ce[] | undefined }) {
 function CeCard({
   ce,
   onDelete,
+  onRestore,
   onCopyLink,
+  isArchived = false,
 }: {
   ce: Ce;
   onDelete: () => void;
+  onRestore?: () => void;
   onCopyLink: () => void;
+  /**
+   * When true the card represents a soft-deleted CE in the Archive
+   * tab. We swap the Delete affordance for a Restore button and
+   * surface an "Archived" pill instead of the live status badge.
+   */
+  isArchived?: boolean;
 }) {
   const isCurated = CURATED_CE_SLUGS.has(ce.slug);
   const drdDays = drdAgeDaysOf(ce);
@@ -1243,43 +1284,96 @@ function CeCard({
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span
-            title={`Status: ${status.label}`}
-            style={{
-              background: status.bg,
-              color: status.color,
-              padding: "3px 8px",
-              borderRadius: 999,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-            }}
-          >
-            {status.label}
-          </span>
-          {/* Locked / curated CEs are guarded server-side (409). Hiding
-              the Delete button here keeps the UI consistent with that
-              contract instead of inviting a guaranteed-to-fail action. */}
-          {!isCurated && (
+          {isArchived ? (
+            <span
+              title={
+                ce.archivedAt
+                  ? `Archived ${new Date(ce.archivedAt).toLocaleString()}`
+                  : "Archived"
+              }
+              style={{
+                background: BRAND.slate100,
+                color: BRAND.slate700,
+                padding: "3px 8px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Archive size={11} />
+              ARCHIVED
+            </span>
+          ) : (
+            <span
+              title={`Status: ${status.label}`}
+              style={{
+                background: status.bg,
+                color: status.color,
+                padding: "3px 8px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {status.label}
+            </span>
+          )}
+          {isArchived && onRestore ? (
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onDelete();
+                onRestore();
               }}
               style={{
-                background: "transparent",
-                border: "none",
-                color: BRAND.slate500,
+                background: BRAND.purpsSoft,
+                border: `1px solid ${BRAND.purpsSoft}`,
+                color: BRAND.purps,
                 cursor: "pointer",
-                padding: 6,
-                borderRadius: 8,
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
               }}
-              title="Delete"
+              title="Restore this CE"
             >
-              <Trash2 size={16} />
+              <RotateCcw size={12} />
+              Restore
             </button>
+          ) : (
+            // Locked / curated CEs are guarded server-side (409). Hiding
+            // the Delete button here keeps the UI consistent with that
+            // contract instead of inviting a guaranteed-to-fail action.
+            !isCurated && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: BRAND.slate500,
+                  cursor: "pointer",
+                  padding: 6,
+                  borderRadius: 8,
+                }}
+                title="Archive"
+              >
+                <Trash2 size={16} />
+              </button>
+            )
           )}
         </div>
       </div>

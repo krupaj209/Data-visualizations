@@ -938,8 +938,21 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Returns live CEs by default (excludes soft-deleted rows). Pass
+`?archived=true` to list only soft-deleted CEs for the Archive
+tab, ordered most-recently-archived first.
+
  * @summary List all CEs
  */
+export const ListCesQueryParams = zod.object({
+  archived: zod.coerce
+    .boolean()
+    .optional()
+    .describe(
+      "When true, return only soft-deleted (archived) CEs. When\nfalse or omitted, return only live CEs.\n",
+    ),
+});
+
 export const ListCesResponseItem = zod.object({
   id: zod.number(),
   slug: zod.string(),
@@ -960,6 +973,12 @@ export const ListCesResponseItem = zod.object({
     .nullish()
     .describe(
       "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+    ),
+  archivedAt: zod
+    .string()
+    .nullish()
+    .describe(
+      "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
     ),
 });
 export const ListCesResponse = zod.array(ListCesResponseItem);
@@ -1002,6 +1021,12 @@ export const GetCeResponse = zod.object({
       .nullish()
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
       ),
   }),
   charts: zod.array(
@@ -1058,10 +1083,57 @@ export const GetCeResponse = zod.object({
 });
 
 /**
- * @summary Delete a CE and its charts
+ * Soft-deletes the CE by stamping `archivedAt`. The row stops
+appearing in the default library list but can be restored
+from the Archive tab via `POST /ces/{slug}/restore`. Locked
+curated CEs refuse the operation with 409.
+
+ * @summary Soft-delete (archive) a CE
  */
 export const DeleteCeParams = zod.object({
   slug: zod.coerce.string(),
+});
+
+/**
+ * Clears `archivedAt` on a previously archived CE so it
+reappears in the default library list. Charts/DRDs/feedback
+survive archival untouched, so they come back as-is.
+
+ * @summary Restore a soft-deleted CE
+ */
+export const RestoreCeParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const RestoreCeResponse = zod.object({
+  ce: zod.object({
+    id: zod.number(),
+    slug: zod.string(),
+    name: zod.string(),
+    city: zod.string(),
+    country: zod.string(),
+    category: zod.string(),
+    summary: zod.string(),
+    emoji: zod.string(),
+    status: zod.string(),
+    chartCount: zod.number(),
+    draftCount: zod.number(),
+    publishedCount: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+    drdUpdatedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
+      ),
+  }),
 });
 
 /**
@@ -1122,6 +1194,12 @@ export const RegenerateCeResponse = zod.object({
       .nullish()
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
       ),
   }),
   charts: zod.array(
@@ -1593,6 +1671,12 @@ export const GetChartResponse = zod.object({
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
       ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
+      ),
   }),
 });
 
@@ -1794,6 +1878,12 @@ export const RegenerateChartResponse = zod.object({
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
       ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
+      ),
   }),
 });
 
@@ -1879,6 +1969,12 @@ export const RegenerateSuggestedContentResponse = zod.object({
       .nullish()
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
       ),
   }),
 });
@@ -2334,6 +2430,12 @@ export const ListAllFeedbackResponseItem = zod.object({
       .nullish()
       .describe(
         "ISO timestamp of the most recent DRD upload for this CE, or\nnull if no DRD has been uploaded. Surfaced in the library\nlist so the UI can flag stale research without an extra\nper-CE round trip.\n",
+      ),
+    archivedAt: zod
+      .string()
+      .nullish()
+      .describe(
+        "ISO timestamp when this CE was soft-deleted, or null if\nlive. Soft-deleted CEs are hidden from the default\n`listCes` response and surfaced via `?archived=true` for\nthe Archive tab.\n",
       ),
   }),
   chartEditCount: zod.number(),

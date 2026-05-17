@@ -13,7 +13,6 @@ import {
   Eye,
   EyeOff,
   Loader2,
-  Lock,
   MessageSquare,
   MoreHorizontal,
   Pencil,
@@ -1400,7 +1399,6 @@ function ChartRow({
               <ChartEditor
                 chart={chart}
                 ceSlug={ceSlug}
-                isLocked={LOCKED_CE_SLUGS_CLIENT.has(ceSlug)}
                 onCancel={() => {
                   setMode("view");
                   setEditorSeed(null);
@@ -3750,7 +3748,6 @@ type UpdateMut = ReturnType<typeof useUpdateChart>;
 function ChartEditor({
   chart,
   ceSlug,
-  isLocked,
   onCancel,
   onSaved,
   updateMut,
@@ -3759,13 +3756,6 @@ function ChartEditor({
 }: {
   chart: Chart;
   ceSlug: string;
-  /**
-   * Curated/locked CEs (Florence cluster + Colosseum) reject any non-
-   * presentation update with a 409 server-side. When true the editor is
-   * surfaced read-only with a banner so writers can browse the spec but
-   * not waste time editing fields that won't persist.
-   */
-  isLocked: boolean;
   onCancel: () => void;
   onSaved: () => void;
   updateMut: UpdateMut;
@@ -3915,33 +3905,16 @@ function ChartEditor({
           <button
             type="button"
             onClick={handleSave}
-            disabled={updateMut.isPending || isLocked}
-            title={
-              isLocked
-                ? "This CE is curated — spec edits are locked."
-                : undefined
-            }
+            disabled={updateMut.isPending}
             style={{
-              background: isLocked
-                ? BRAND.slate200
-                : savedAt
-                ? BRAND.bgMint
-                : BRAND.purps,
-              color: isLocked
-                ? BRAND.slate700
-                : savedAt
-                ? "#0E8F4E"
-                : "white",
+              background: savedAt ? BRAND.bgMint : BRAND.purps,
+              color: savedAt ? "#0E8F4E" : "white",
               border: "none",
               padding: "8px 14px",
               borderRadius: 10,
               fontWeight: 800,
               fontSize: 12,
-              cursor: isLocked
-                ? "not-allowed"
-                : updateMut.isPending
-                ? "wait"
-                : "pointer",
+              cursor: updateMut.isPending ? "wait" : "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
@@ -3954,7 +3927,7 @@ function ChartEditor({
             ) : (
               <Check size={14} />
             )}
-            {savedAt ? "Saved" : isLocked ? "Locked" : "Save changes"}
+            {savedAt ? "Saved" : "Save changes"}
           </button>
           <button
             type="button"
@@ -3994,32 +3967,6 @@ function ChartEditor({
             overflowY: "auto",
           }}
         >
-          {isLocked && (
-            <div
-              role="status"
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-                background: BRAND.holaSoft,
-                color: "#A65A00",
-                border: `1px solid #F1C089`,
-                borderRadius: 12,
-                padding: "10px 12px",
-                fontSize: 12,
-                fontWeight: 700,
-                lineHeight: 1.4,
-              }}
-            >
-              <Lock size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-              <span>
-                This CE is part of the curated reference set, so chart
-                spec edits won't save. You can still tweak the
-                presentation (palette, view, density, emphasis) from
-                the chart card on the CE detail page.
-              </span>
-            </div>
-          )}
           <EditField
             label="Visitor question"
             value={question}
