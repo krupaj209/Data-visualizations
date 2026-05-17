@@ -31,8 +31,13 @@ import {
   useDeleteCategoryOverride,
   useBulkApplyCategoryOverride,
   useBulkRevertCategoryOverride,
+  useCreateCeOverride,
+  useUpdateCeOverride,
+  useDeleteCeOverride,
+  useListCes,
   getGetQuestionBankQueryKey,
   getGetQuestionBankQueryOptions,
+  type Ce,
   type MergedQuestionBundle,
   type MergedQuestionCandidate,
   type QuestionBankView,
@@ -47,15 +52,24 @@ const PILL = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px
 type Scope =
   | { kind: "global" }
   | { kind: "category"; categoryId: number }
-  | { kind: "subcategory"; categoryId: number; subcategoryId: string };
+  | { kind: "subcategory"; categoryId: number; subcategoryId: string }
+  | { kind: "ce"; ceSlug: string };
 
 interface EditorState {
-  mode: "edit-existing" | "edit-globally" | "add-subcategory" | "bulk-edit";
+  mode:
+    | "edit-existing"
+    | "edit-globally"
+    | "add-subcategory"
+    | "bulk-edit"
+    | "edit-ce"
+    | "add-ce";
   scope: Scope;
   bundleId: string;
   archetype: string;
   defaultTemplate: string;
   existingOverrideId?: number;
+  /** When true, existingOverrideId refers to a CE override row (not a category override). */
+  existingIsCeOverride?: boolean;
   initialTemplate?: string;
   initialNotes?: string;
   /** For bulk mode: pool of subcategories the user can target. */
@@ -79,6 +93,10 @@ export default function QuestionBank() {
   // ---- URL state (?sub=, ?cat=) -------------------------------------------
   const initialScope = useMemo<Scope>(() => {
     const qs = new URLSearchParams(window.location.search);
+    const ce = qs.get("ce");
+    if (ce) {
+      return { kind: "ce", ceSlug: ce };
+    }
     const sub = qs.get("sub") ?? qs.get("subcategory");
     if (sub) {
       const match = CATEGORIES.find((c) =>
@@ -110,7 +128,9 @@ export default function QuestionBank() {
 
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     const s = new Set<number>();
-    if (initialScope.kind !== "global") s.add(initialScope.categoryId);
+    if (initialScope.kind === "category" || initialScope.kind === "subcategory") {
+      s.add(initialScope.categoryId);
+    }
     return s;
   });
   const [search, setSearch] = useState("");
@@ -138,7 +158,7 @@ export default function QuestionBank() {
 
   function selectScope(next: Scope) {
     setScope(next);
-    if (next.kind !== "global") {
+    if (next.kind === "category" || next.kind === "subcategory") {
       setExpanded((prev) => new Set(prev).add(next.categoryId));
     }
     const params = new URLSearchParams();
@@ -146,6 +166,8 @@ export default function QuestionBank() {
       params.set("sub", next.subcategoryId);
     } else if (next.kind === "category") {
       params.set("cat", String(next.categoryId));
+    } else if (next.kind === "ce") {
+      params.set("ce", next.ceSlug);
     }
     const qs = params.toString();
     navigate(qs ? `/question-bank?${qs}` : "/question-bank", {
@@ -168,7 +190,9 @@ export default function QuestionBank() {
       ? { categoryId: scope.categoryId }
       : scope.kind === "subcategory"
         ? { subcategoryId: scope.subcategoryId }
-        : undefined;
+        : scope.kind === "ce"
+          ? { ceSlug: scope.ceSlug }
+          : undefined;
 
   const { data: view, isLoading, error } = useGetQuestionBank(params);
 
@@ -347,6 +371,10 @@ export default function QuestionBank() {
             >
               ▦ Global · code defaults
             </button>
+            <CePicker
+              activeSlug={scope.kind === "ce" ? scope.ceSlug : null}
+              onSelect={(slug) => selectScope({ kind: "ce", ceSlug: slug })}
+            />
           </div>
           <nav className="p-2">
             {CATEGORIES.map((cat) => (
@@ -455,6 +483,120 @@ function WriterNameInput({
         width: 200,
       }}
     />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Left-rail CE picker                                                        */
+/* -------------------------------------------------------------------------- */
+
+function CePicker({
+  activeSlug,
+  onSelect,
+}: {
+  activeSlug: string | null;
+  onSelect: (slug: string) => void;
+}) {
+  const { data: ces, isLoading } = useListCes();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!ces) return [] as Ce[];
+    const q = query.trim().toLowerCase();
+    if (!q) return ces.slice(0, 20);
+    return ces
+      .filter(
+        (c) =>
+          c.slug.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q) ||
+          (c.city ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 30);
+  }, [ces, query]);
+
+  const activeCe = useMemo(
+    () => (activeSlug ? ces?.find((c) => c.slug === activeSlug) : null),
+    [activeSlug, ces],
+  );
+
+  return (
+    <div className="mt-2">
+      <label
+        className="mb-1 block text-[10px] font-bold uppercase tracking-wide"
+        style={{ color: BRAND.slate500 }}
+      >
+        Filter by CE
+      </label>
+      <div className="relative">
+        <input
+          value={open ? query : activeCe ? `${activeCe.name} · ${activeCe.slug}` : query}
+          onFocus={() => {
+            setOpen(true);
+            setQuery("");
+          }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onChange={(e) => {
+            setOpen(true);
+            setQuery(e.target.value);
+          }}
+          placeholder={isLoading ? "Loading CEs…" : "Search CE name or slug…"}
+          className="w-full rounded-lg border py-1.5 px-2 text-xs"
+          style={{
+            borderColor: activeSlug ? BRAND.hola : BRAND.slate200,
+            background: activeSlug ? BRAND.holaSoft : BRAND.slate50,
+            color: BRAND.slate900,
+          }}
+        />
+        {open && filtered.length > 0 && (
+          <ul
+            className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-auto rounded-lg border"
+            style={{
+              background: "white",
+              borderColor: BRAND.slate200,
+              boxShadow: "0 8px 24px rgba(15,15,16,0.08)",
+            }}
+          >
+            {filtered.map((c) => (
+              <li key={c.slug}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onSelect(c.slug);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className="block w-full px-2 py-1.5 text-left text-xs"
+                  style={{
+                    background:
+                      c.slug === activeSlug
+                        ? BRAND.holaSoft
+                        : "transparent",
+                    color: BRAND.slate900,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className="font-bold">{c.name}</span>
+                  <span className="ml-1" style={{ color: BRAND.slate500 }}>
+                    · {c.slug}
+                  </span>
+                  {c.city && (
+                    <span
+                      className="ml-1"
+                      style={{ color: BRAND.slate500, fontSize: 10 }}
+                    >
+                      ({c.city})
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -642,7 +784,7 @@ function ScopeView({
   applyView: (v: QuestionBankView) => void;
 }) {
   const cat =
-    scope.kind !== "global"
+    scope.kind === "category" || scope.kind === "subcategory"
       ? CATEGORIES.find((c) => c.categoryId === scope.categoryId)
       : null;
   const sub =
@@ -689,6 +831,21 @@ function ScopeView({
       <SubcategoryScopeView
         cat={cat}
         sub={sub}
+        view={view}
+        writerName={writerName}
+        compareToDefault={compareToDefault}
+        setCompareToDefault={setCompareToDefault}
+        onEdit={onEdit}
+        onAction={onAction}
+        applyView={applyView}
+      />
+    );
+  }
+
+  if (scope.kind === "ce") {
+    return (
+      <CeScopeView
+        ceSlug={scope.ceSlug}
         view={view}
         writerName={writerName}
         compareToDefault={compareToDefault}
@@ -1121,6 +1278,215 @@ function SubcategoryScopeView({
 }
 
 /* -------------------------------------------------------------------------- */
+/* CE scope                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function CeScopeView({
+  ceSlug,
+  view,
+  writerName,
+  compareToDefault,
+  setCompareToDefault,
+  onEdit,
+  onAction,
+  applyView,
+}: {
+  ceSlug: string;
+  view: QuestionBankView;
+  writerName: string;
+  compareToDefault: boolean;
+  setCompareToDefault: (v: boolean) => void;
+  onEdit: (s: EditorState) => void;
+  onAction: () => Promise<void>;
+  applyView: (v: QuestionBankView) => void;
+}) {
+  const createMut = useCreateCeOverride();
+  const deleteMut = useDeleteCeOverride();
+  const resolvedSubId = view.scope?.resolvedSubcategoryId ?? null;
+  const sub = resolvedSubId
+    ? CATEGORIES.flatMap((c) => c.subcategories).find(
+        (s) => subIdToString(s.subcategoryId) === resolvedSubId,
+      )
+    : null;
+  const cat = sub
+    ? CATEGORIES.find((c) =>
+        c.subcategories.some(
+          (s) => subIdToString(s.subcategoryId) === resolvedSubId,
+        ),
+      )
+    : null;
+
+  async function requestRevert(overrideId: number) {
+    if (!confirm("Revert this CE override and restore the previous source?"))
+      return;
+    const res = await deleteMut.mutateAsync({ id: overrideId });
+    applyView(res.view);
+    await onAction();
+  }
+
+  async function quickMute(bundleId: string, archetype: string) {
+    if (!writerName) {
+      alert("Enter your name in the header before muting.");
+      return;
+    }
+    if (!confirm(`Mute ${archetype} for ${ceSlug}?`)) return;
+    const res = await createMut.mutateAsync({
+      data: {
+        ceSlug,
+        bundleId,
+        archetype,
+        action: "mute",
+        createdBy: writerName,
+      },
+    });
+    applyView(res.view);
+    await onAction();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="rounded-2xl border p-4"
+        style={{ background: "white", borderColor: BRAND.slate200 }}
+      >
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2
+            className="text-lg font-extrabold"
+            style={{ color: BRAND.slate950 }}
+          >
+            {ceSlug}
+          </h2>
+          <span
+            className={PILL}
+            style={{
+              background: BRAND.holaSoft,
+              color: BRAND.hola,
+            }}
+          >
+            CE scope
+          </span>
+          {sub && cat && (
+            <span
+              className={PILL}
+              style={{ background: BRAND.slate100, color: BRAND.slate700 }}
+              title="Resolved subcategory used to apply category-scope overrides"
+            >
+              {cat.categoryName} · {sub.subcategoryName}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-xs" style={{ color: BRAND.slate700 }}>
+          Edits here apply only to{" "}
+          <span className="font-bold">{ceSlug}</span>. Category-scope
+          overrides for the CE's resolved subcategory are merged in
+          automatically — edit those at the subcategory scope.
+        </p>
+      </div>
+
+      <CompareToggle value={compareToDefault} onChange={setCompareToDefault} />
+
+      <BundleGroupedList
+        bundles={view.mergedBundles}
+        showActions={true}
+        compareToDefault={compareToDefault}
+        renderActions={(bundle, c) => (
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              disabled={!writerName}
+              title={
+                !writerName
+                  ? "Enter your name first"
+                  : "Edit just for this CE"
+              }
+              onClick={() =>
+                onEdit({
+                  mode: "edit-ce",
+                  scope: { kind: "ce", ceSlug },
+                  bundleId: bundle.bundleId,
+                  archetype: c.archetype,
+                  defaultTemplate: c.questionTemplate,
+                  existingOverrideId:
+                    c.source === "ce_override"
+                      ? (c.overrideId ?? undefined)
+                      : undefined,
+                  existingIsCeOverride: c.source === "ce_override",
+                  initialTemplate:
+                    c.source === "ce_override"
+                      ? c.questionTemplate
+                      : undefined,
+                })
+              }
+              className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
+              style={{
+                borderColor: BRAND.slate200,
+                color: BRAND.hola,
+                background: "white",
+              }}
+            >
+              <Edit3 size={11} /> Edit for this CE
+            </button>
+            {!c.muted && (
+              <button
+                type="button"
+                disabled={!writerName || createMut.isPending}
+                onClick={() => quickMute(bundle.bundleId, c.archetype)}
+                className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
+                style={{
+                  borderColor: BRAND.candySoft,
+                  color: BRAND.candy,
+                  background: "white",
+                }}
+              >
+                <VolumeX size={11} /> Mute
+              </button>
+            )}
+            {c.source === "ce_override" && c.overrideId && (
+              <button
+                type="button"
+                onClick={() => requestRevert(c.overrideId!)}
+                disabled={deleteMut.isPending}
+                className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
+                style={{
+                  borderColor: BRAND.slate200,
+                  color: BRAND.candy,
+                  background: "white",
+                }}
+              >
+                <RotateCcw size={11} /> Revert
+              </button>
+            )}
+          </div>
+        )}
+        bundleFooter={(bundle) => (
+          <button
+            type="button"
+            disabled={!writerName}
+            onClick={() =>
+              onEdit({
+                mode: "add-ce",
+                scope: { kind: "ce", ceSlug },
+                bundleId: bundle.bundleId,
+                archetype: "",
+                defaultTemplate: "",
+              })
+            }
+            className="mt-2 inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
+            style={{
+              borderColor: BRAND.holaSoft,
+              color: BRAND.hola,
+              background: "white",
+            }}
+          >
+            <Plus size={11} /> Add CE question
+          </button>
+        )}
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Bundle-grouped list (shared by global, category, subcategory, CE)          */
 /* -------------------------------------------------------------------------- */
 
@@ -1441,12 +1807,17 @@ function EditorModal({
   const createCatMut = useCreateCategoryOverride();
   const updateCatMut = useUpdateCategoryOverride();
   const bulkApplyMut = useBulkApplyCategoryOverride();
+  const createCeMut = useCreateCeOverride();
+  const updateCeMut = useUpdateCeOverride();
 
   const isPending =
     createCatMut.isPending ||
     updateCatMut.isPending ||
-    bulkApplyMut.isPending;
-  const isAdd = state.mode === "add-subcategory";
+    bulkApplyMut.isPending ||
+    createCeMut.isPending ||
+    updateCeMut.isPending;
+  const isAdd =
+    state.mode === "add-subcategory" || state.mode === "add-ce";
   const isBulk =
     state.mode === "bulk-edit" || state.mode === "edit-globally";
   const bulkAppliesToAll =
@@ -1517,7 +1888,7 @@ function EditorModal({
           }
         }
       } else if (state.scope.kind === "subcategory") {
-        if (state.existingOverrideId) {
+        if (state.existingOverrideId && !state.existingIsCeOverride) {
           const res = await updateCatMut.mutateAsync({
             id: state.existingOverrideId,
             data: {
@@ -1541,6 +1912,31 @@ function EditorModal({
           });
           lastView = res.view;
         }
+      } else if (state.scope.kind === "ce") {
+        if (state.existingOverrideId && state.existingIsCeOverride) {
+          const res = await updateCeMut.mutateAsync({
+            id: state.existingOverrideId,
+            data: {
+              questionTemplate: template.trim(),
+              notes: notes.trim() || null,
+              createdBy: name.trim(),
+            },
+          });
+          lastView = res.view;
+        } else {
+          const res = await createCeMut.mutateAsync({
+            data: {
+              ceSlug: state.scope.ceSlug,
+              bundleId: state.bundleId,
+              archetype: archetype || state.archetype,
+              action: isAdd ? "add" : "edit",
+              questionTemplate: template.trim(),
+              notes: notes.trim() || undefined,
+              createdBy: name.trim(),
+            },
+          });
+          lastView = res.view;
+        }
       }
       if (lastView) applyView(lastView);
       onSaved();
@@ -1551,11 +1947,16 @@ function EditorModal({
     }
   }
 
-  const titleText = isAdd
-    ? "Add subcategory question"
-    : isBulk
-      ? "Bulk-apply across category"
-      : "Edit question";
+  const titleText =
+    state.mode === "add-ce"
+      ? "Add CE question"
+      : state.mode === "edit-ce"
+        ? "Edit question for CE"
+        : isAdd
+          ? "Add subcategory question"
+          : isBulk
+            ? "Bulk-apply across category"
+            : "Edit question";
 
   return (
     <div
