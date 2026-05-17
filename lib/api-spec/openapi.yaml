@@ -2017,6 +2017,17 @@ components:
           description: |
             Listing-page template the assembler should build the deck for.
             Defaults to plan-your-visit when omitted.
+        customChartMode:
+          type: string
+          enum:
+            - keep
+            - replace
+          description: |
+            How to handle writer-added "custom" charts (drafts whose
+            provenance.origin is set by `POST /ces/:slug/charts`, e.g.
+            `topic_to_chart`). `keep` (default) preserves them and only
+            replaces AI-assembled drafts; `replace` wipes every draft as
+            the legacy behaviour did. Published charts are always kept.
       required: []
     RegenSummary:
       type: object
@@ -2071,6 +2082,17 @@ components:
           description: |
             Count of `published` charts preserved across the run (only
             `draft` rows are deleted by the research pipeline).
+        customChartsKept:
+          type: integer
+          description: |
+            Count of writer-added "custom" draft charts preserved across
+            this run. Always 0 when `customChartMode` was `replace`.
+        customChartMode:
+          type: string
+          enum:
+            - keep
+            - replace
+          description: Mode that actually ran on the server.
         droppedQuestions:
           type: array
           items:

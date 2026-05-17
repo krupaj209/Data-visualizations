@@ -7,6 +7,7 @@
  */
 import type { Ce } from "./ce";
 import type { Chart } from "./chart";
+import type { RegenerateCeResultCustomChartMode } from "./regenerateCeResultCustomChartMode";
 import type { RegenerateCeResultDroppedQuestionsItem } from "./regenerateCeResultDroppedQuestionsItem";
 import type { RegenerateCeResultProposedHeroQuestionsItem } from "./regenerateCeResultProposedHeroQuestionsItem";
 import type { RegenSummary } from "./regenSummary";
@@ -18,6 +19,12 @@ export interface RegenerateCeResult {
 `draft` rows are deleted by the research pipeline).
  */
   publishedChartsKept?: number;
+  /** Count of writer-added "custom" draft charts preserved across
+this run. Always 0 when `customChartMode` was `replace`.
+ */
+  customChartsKept?: number;
+  /** Mode that actually ran on the server. */
+  customChartMode?: RegenerateCeResultCustomChartMode;
   droppedQuestions?: RegenerateCeResultDroppedQuestionsItem[];
   proposedHeroQuestions?: RegenerateCeResultProposedHeroQuestionsItem[];
   regenSummary?: RegenSummary;

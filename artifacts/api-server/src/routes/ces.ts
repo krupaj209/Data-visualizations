@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import { and, eq, asc, sql, inArray } from "drizzle-orm";
+import { and, eq, asc, sql, inArray, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { extractPdfToMarkdown } from "../lib/extract-drd";
 import {
@@ -47,7 +47,23 @@ const router: IRouter = Router();
 const RegenerateCeBody = z.object({
   feedback: z.string().trim().max(4000).optional(),
   pageType: QbPageType.optional(),
+  customChartMode: z.enum(["keep", "replace"]).optional(),
 });
+
+/**
+ * Classify a chart row as writer-added "custom" vs AI-assembled. Pipeline
+ * rows produced by `runResearchPipeline` never set `provenance.origin`;
+ * the `POST /ces/:slug/charts` topic flow stamps `origin` with
+ * `topic_to_chart` or another non-pipeline value. Any non-empty origin
+ * string is therefore treated as custom.
+ */
+export function isCustomChartProvenance(
+  provenance: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!provenance || typeof provenance !== "object") return false;
+  const origin = (provenance as Record<string, unknown>)["origin"];
+  return typeof origin === "string" && origin.length > 0;
+}
 
 import { inferSubcategoryId } from "../lib/infer-subcategory";
 
@@ -525,16 +541,44 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
       return;
     }
 
+    const customChartMode = body.data.customChartMode ?? "keep";
+    const priorCustomDraftIds =
+      customChartMode === "keep"
+        ? priorRows
+            .filter(
+              (r) =>
+                r.status === "draft" &&
+                isCustomChartProvenance(
+                  r.provenance as Record<string, unknown> | null,
+                ),
+            )
+            .map((r) => r.id)
+        : [];
+
     try {
       const persisted = await db.transaction(async (tx) => {
-        await tx
-          .delete(chartsTable)
-          .where(
-            and(
-              eq(chartsTable.ceId, ce.id),
-              eq(chartsTable.status, "draft"),
-            ),
-          );
+        if (customChartMode === "keep" && priorCustomDraftIds.length > 0) {
+          // Delete only AI-assembled draft rows; keep custom drafts intact
+          // (same id/slug/sortOrder/feedback history).
+          await tx
+            .delete(chartsTable)
+            .where(
+              and(
+                eq(chartsTable.ceId, ce.id),
+                eq(chartsTable.status, "draft"),
+                notInArray(chartsTable.id, priorCustomDraftIds),
+              ),
+            );
+        } else {
+          await tx
+            .delete(chartsTable)
+            .where(
+              and(
+                eq(chartsTable.ceId, ce.id),
+                eq(chartsTable.status, "draft"),
+              ),
+            );
+        }
 
         const publishedCount = await tx.$count(
           chartsTable,
@@ -543,6 +587,9 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
             eq(chartsTable.status, "published"),
           ),
         );
+
+        const customDraftCount =
+          customChartMode === "keep" ? priorCustomDraftIds.length : 0;
 
         const [updated] = await tx
           .update(cesTable)
@@ -580,7 +627,12 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
           )
           .returning();
 
-        return { ce: updated, charts: insertedCharts, publishedKept: publishedCount };
+        return {
+          ce: updated,
+          charts: insertedCharts,
+          publishedKept: publishedCount,
+          customKept: customDraftCount,
+        };
       });
 
       // Combine the parser-side honored bullets (rule matches that fired
@@ -597,12 +649,14 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
       res.json({
         ce: serializeCe(
           persisted.ce,
-          persisted.publishedKept + persisted.charts.length,
-          persisted.charts.length,
+          persisted.publishedKept + persisted.charts.length + persisted.customKept,
+          persisted.charts.length + persisted.customKept,
           persisted.publishedKept,
         ),
         charts: persisted.charts.map((c) => serializeChart(c)),
         publishedChartsKept: persisted.publishedKept,
+        customChartsKept: persisted.customKept,
+        customChartMode,
         droppedQuestions: result.dropped_questions,
         proposedHeroQuestions: result.proposed_hero_questions,
         regenSummary: {

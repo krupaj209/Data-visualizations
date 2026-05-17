@@ -419,6 +419,22 @@ export const RegenerateCeInputPageType = {
   "combo-deals": "combo-deals",
 } as const;
 
+/**
+ * How to handle writer-added "custom" charts (drafts whose
+provenance.origin is set by `POST /ces/:slug/charts`, e.g.
+`topic_to_chart`). `keep` (default) preserves them and only
+replaces AI-assembled drafts; `replace` wipes every draft as
+the legacy behaviour did. Published charts are always kept.
+
+ */
+export type RegenerateCeInputCustomChartMode =
+  (typeof RegenerateCeInputCustomChartMode)[keyof typeof RegenerateCeInputCustomChartMode];
+
+export const RegenerateCeInputCustomChartMode = {
+  keep: "keep",
+  replace: "replace",
+} as const;
+
 export interface RegenerateCeInput {
   /** Optional free-text writer feedback. Parsed by the api-server
 into structured constraints (banned archetypes / topics /
@@ -430,6 +446,13 @@ persisted from prior regen runs on the same CE.
 Defaults to plan-your-visit when omitted.
  */
   pageType?: RegenerateCeInputPageType;
+  /** How to handle writer-added "custom" charts (drafts whose
+provenance.origin is set by `POST /ces/:slug/charts`, e.g.
+`topic_to_chart`). `keep` (default) preserves them and only
+replaces AI-assembled drafts; `replace` wipes every draft as
+the legacy behaviour did. Published charts are always kept.
+ */
+  customChartMode?: RegenerateCeInputCustomChartMode;
 }
 
 /**
@@ -461,6 +484,17 @@ the UI can show the writer what's "sticky" for next regen.
   storedConstraints: RegenSummaryStoredConstraints;
 }
 
+/**
+ * Mode that actually ran on the server.
+ */
+export type RegenerateCeResultCustomChartMode =
+  (typeof RegenerateCeResultCustomChartMode)[keyof typeof RegenerateCeResultCustomChartMode];
+
+export const RegenerateCeResultCustomChartMode = {
+  keep: "keep",
+  replace: "replace",
+} as const;
+
 export type RegenerateCeResultDroppedQuestionsItem = {
   question: string;
   reason: string;
@@ -477,6 +511,12 @@ export interface RegenerateCeResult {
 `draft` rows are deleted by the research pipeline).
  */
   publishedChartsKept?: number;
+  /** Count of writer-added "custom" draft charts preserved across
+this run. Always 0 when `customChartMode` was `replace`.
+ */
+  customChartsKept?: number;
+  /** Mode that actually ran on the server. */
+  customChartMode?: RegenerateCeResultCustomChartMode;
   droppedQuestions?: RegenerateCeResultDroppedQuestionsItem[];
   proposedHeroQuestions?: RegenerateCeResultProposedHeroQuestionsItem[];
   regenSummary?: RegenSummary;

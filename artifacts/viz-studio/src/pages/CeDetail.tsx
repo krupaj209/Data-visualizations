@@ -372,19 +372,43 @@ function CeDetailInner({
   const effectiveRegenPageType: PageTypeValue =
     pageType === "all" ? DEFAULT_PAGE_TYPE : pageType;
 
-  async function regenerateWithFeedback(feedback: string) {
+  // Custom drafts = writer-added charts (provenance.origin is set by the
+  // POST /ces/:slug/charts topic flow). Pipeline-generated drafts never
+  // carry an `origin`.
+  const customDraftCount = charts.filter((c) => {
+    if ((c.status ?? "published") !== "draft") return false;
+    const prov = c.provenance as { origin?: unknown } | null | undefined;
+    return typeof prov?.origin === "string" && prov.origin.length > 0;
+  }).length;
+
+  async function regenerateWithFeedback(
+    feedback: string,
+    customChartMode: "keep" | "replace",
+  ) {
     const result = await regenMut.mutateAsync({
       slug,
-      data: { feedback, pageType: effectiveRegenPageType },
+      data: { feedback, pageType: effectiveRegenPageType, customChartMode },
     });
     qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
     setRegenSummary(result.regenSummary ?? null);
+    setRegenStats({
+      mode: result.customChartMode ?? customChartMode,
+      aiReplaced: (result.charts ?? []).length,
+      customKept: result.customChartsKept ?? 0,
+    });
   }
+
+  const [regenStats, setRegenStats] = useState<{
+    mode: "keep" | "replace";
+    aiReplaced: number;
+    customKept: number;
+  } | null>(null);
 
   function closeRegenDialog() {
     setShowRegenFeedback(false);
     setRegenSummary(null);
+    setRegenStats(null);
   }
 
   async function handlePublishAll() {
@@ -689,6 +713,8 @@ function CeDetailInner({
           onCancel={closeRegenDialog}
           onSubmit={regenerateWithFeedback}
           summary={regenSummary}
+          customDraftCount={customDraftCount}
+          regenStats={regenStats}
         />
       )}
 
@@ -2839,18 +2865,33 @@ function RegenerateFeedbackDialog({
   onCancel,
   onSubmit,
   summary,
+  customDraftCount = 0,
+  regenStats,
 }: {
   title: string;
   description: string;
   isPending: boolean;
   onCancel: () => void;
-  onSubmit: (feedback: string) => Promise<void>;
+  onSubmit: (
+    feedback: string,
+    customChartMode: "keep" | "replace",
+  ) => Promise<void>;
   summary?: import("@workspace/api-client-react").RegenSummary | null;
+  customDraftCount?: number;
+  regenStats?: {
+    mode: "keep" | "replace";
+    aiReplaced: number;
+    customKept: number;
+  } | null;
 }) {
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [customChartMode, setCustomChartMode] = useState<"keep" | "replace">(
+    "keep",
+  );
   const trimmed = feedback.trim();
   const showSummary = !!summary;
+  const hasCustomCharts = customDraftCount > 0;
 
   async function handleSubmit() {
     if (trimmed.length < 8) {
@@ -2859,7 +2900,7 @@ function RegenerateFeedbackDialog({
     }
     setError(null);
     try {
-      await onSubmit(trimmed);
+      await onSubmit(trimmed, hasCustomCharts ? customChartMode : "keep");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Regeneration failed.");
     }
@@ -2918,6 +2959,100 @@ function RegenerateFeedbackDialog({
           </button>
         </div>
 
+        {!showSummary && hasCustomCharts && (
+          <div
+            className="mt-4 rounded-2xl"
+            style={{
+              background: BRAND.slate50,
+              border: `1px solid ${BRAND.slate200}`,
+              padding: 12,
+            }}
+          >
+            <div
+              style={{
+                color: BRAND.slate700,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+              }}
+            >
+              Your custom charts ({customDraftCount})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {(
+                [
+                  {
+                    value: "keep" as const,
+                    label: "Keep my custom charts",
+                    hint: "Only AI-assembled drafts are replaced.",
+                  },
+                  {
+                    value: "replace" as const,
+                    label: "Regenerate everything",
+                    hint: "Wipes every draft, including custom ones.",
+                  },
+                ]
+              ).map((opt) => (
+                <label
+                  key={opt.value}
+                  title={
+                    opt.value === "keep"
+                      ? "Custom charts are ones you added with 'Add a chart' rather than ones the AI assembled."
+                      : "All current drafts will be deleted and replaced."
+                  }
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    cursor: isPending ? "wait" : "pointer",
+                    background:
+                      customChartMode === opt.value ? "white" : "transparent",
+                    border: `1px solid ${
+                      customChartMode === opt.value
+                        ? BRAND.purps
+                        : BRAND.slate200
+                    }`,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="customChartMode"
+                    value={opt.value}
+                    checked={customChartMode === opt.value}
+                    disabled={isPending}
+                    onChange={() => setCustomChartMode(opt.value)}
+                    style={{ marginTop: 2, accentColor: BRAND.purps }}
+                  />
+                  <div>
+                    <div
+                      style={{
+                        color: BRAND.slate950,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {opt.label}
+                    </div>
+                    <div
+                      style={{
+                        color: BRAND.slate700,
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {opt.hint}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {!showSummary && (
           <label className="mt-4 flex flex-col gap-2">
             <span
@@ -2955,7 +3090,32 @@ function RegenerateFeedbackDialog({
         )}
 
         {showSummary && summary && (
-          <RegenSummaryPanel summary={summary} />
+          <>
+            {regenStats && (
+              <div
+                className="mt-4 rounded-2xl"
+                style={{
+                  background: BRAND.purpsSoft,
+                  border: `1px solid ${BRAND.purps}`,
+                  color: BRAND.purps,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                {regenStats.mode === "keep"
+                  ? `Replaced ${regenStats.aiReplaced} AI draft${
+                      regenStats.aiReplaced === 1 ? "" : "s"
+                    } · kept ${regenStats.customKept} custom chart${
+                      regenStats.customKept === 1 ? "" : "s"
+                    }`
+                  : `Replaced ${regenStats.aiReplaced} draft${
+                      regenStats.aiReplaced === 1 ? "" : "s"
+                    } (full reset)`}
+              </div>
+            )}
+            <RegenSummaryPanel summary={summary} />
+          </>
         )}
 
         {error && (

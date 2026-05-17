@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RegenerateCeInputCustomChartMode } from "./regenerateCeInputCustomChartMode";
 import type { RegenerateCeInputPageType } from "./regenerateCeInputPageType";
 
 export interface RegenerateCeInput {
@@ -18,4 +19,11 @@ persisted from prior regen runs on the same CE.
 Defaults to plan-your-visit when omitted.
  */
   pageType?: RegenerateCeInputPageType;
+  /** How to handle writer-added "custom" charts (drafts whose
+provenance.origin is set by `POST /ces/:slug/charts`, e.g.
+`topic_to_chart`). `keep` (default) preserves them and only
+replaces AI-assembled drafts; `replace` wipes every draft as
+the legacy behaviour did. Published charts are always kept.
+ */
+  customChartMode?: RegenerateCeInputCustomChartMode;
 }

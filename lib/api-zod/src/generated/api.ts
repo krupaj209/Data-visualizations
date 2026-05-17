@@ -1087,6 +1087,12 @@ export const RegenerateCeBody = zod.object({
     .describe(
       "Listing-page template the assembler should build the deck for.\nDefaults to plan-your-visit when omitted.\n",
     ),
+  customChartMode: zod
+    .enum(["keep", "replace"])
+    .optional()
+    .describe(
+      'How to handle writer-added \"custom\" charts (drafts whose\nprovenance.origin is set by `POST \/ces\/:slug\/charts`, e.g.\n`topic_to_chart`). `keep` (default) preserves them and only\nreplaces AI-assembled drafts; `replace` wipes every draft as\nthe legacy behaviour did. Published charts are always kept.\n',
+    ),
 });
 
 export const RegenerateCeResponse = zod.object({
@@ -1163,6 +1169,16 @@ export const RegenerateCeResponse = zod.object({
     .describe(
       "Count of `published` charts preserved across the run (only\n`draft` rows are deleted by the research pipeline).\n",
     ),
+  customChartsKept: zod
+    .number()
+    .optional()
+    .describe(
+      'Count of writer-added \"custom\" draft charts preserved across\nthis run. Always 0 when `customChartMode` was `replace`.\n',
+    ),
+  customChartMode: zod
+    .enum(["keep", "replace"])
+    .optional()
+    .describe("Mode that actually ran on the server."),
   droppedQuestions: zod
     .array(
       zod.object({
