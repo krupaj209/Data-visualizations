@@ -719,6 +719,13 @@ router.get("/ces/:slug/ideation", async (req, res): Promise<void> => {
     .from(ideationMessagesTable)
     .where(eq(ideationMessagesTable.ceId, ce.id))
     .orderBy(asc(ideationMessagesTable.id));
+  // Disable browser/proxy caching. Without this, Express 5 emits an
+  // ETag on the JSON body and the react-query refetch after a POST
+  // can come back as 304 with a stale cached body, hiding the rows
+  // we just persisted. `no-store` is the strong fix: the browser
+  // won't cache the body and therefore can't revalidate with
+  // If-None-Match, so the ETag becomes inert.
+  res.setHeader("Cache-Control", "no-store, max-age=0");
   res.json(rows.map(serializeIdeation));
 });
 
@@ -896,11 +903,13 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     ...llmTranscript,
   ];
 
-  // Default to a real model supported by the AI Integrations OpenAI proxy
-  // (gpt-5 is listed as a general-purpose chat model). Overridable via
-  // env so prod can pin a newer family member without a redeploy.
+  // Default to gpt-5.4, the AI Integrations proxy's recommended
+  // general-purpose chat model. gpt-5 reasoning tokens consume the
+  // entire max_completion_tokens budget at low limits and return
+  // empty content, so we also bump the token budget. Overridable via
+  // env so prod can pin a different family member without a redeploy.
   const ideationModel =
-    process.env["IDEATION_MODEL"] ?? process.env["OPENAI_MODEL"] ?? "gpt-5";
+    process.env["IDEATION_MODEL"] ?? process.env["OPENAI_MODEL"] ?? "gpt-5.4";
   const parsedTimeout = Number(process.env["IDEATION_TIMEOUT_MS"]);
   const ideationTimeoutMs =
     Number.isFinite(parsedTimeout) && parsedTimeout > 0
@@ -926,7 +935,7 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     const response = await openai.chat.completions.create(
       {
         model: ideationModel,
-        max_completion_tokens: 800,
+        max_completion_tokens: 8192,
         messages,
       },
       { signal: abort.signal },
