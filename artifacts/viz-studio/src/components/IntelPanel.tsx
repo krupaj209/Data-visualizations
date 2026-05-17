@@ -877,6 +877,15 @@ export function IntelPanel({
   );
   const selectedEligibleCount = selectedEligibleIdeas.length;
 
+  // Ideas that failed during the most recent bulk run, in their original
+  // plan order. Used to power the "Retry failed" affordance on the bulk bar.
+  const failedBulkIdeas = useMemo(() => {
+    const errored = new Set(Object.keys(bulkErrors));
+    if (errored.size === 0) return [];
+    const list = plan?.recommended_visualizations ?? [];
+    return list.filter((item) => errored.has(item.question));
+  }, [bulkErrors, plan]);
+
   return (
     <aside
       style={{
@@ -1163,11 +1172,41 @@ export function IntelPanel({
                     </span>
                   )}
                 </div>
+                {failedBulkIdeas.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleBulkCreate(failedBulkIdeas)}
+                    disabled={isBusyGenerating}
+                    style={{
+                      marginLeft: "auto",
+                      border: "none",
+                      borderRadius: 9,
+                      padding: "6px 11px",
+                      background: isBusyGenerating
+                        ? BRAND.slate100
+                        : BRAND.purps,
+                      color: isBusyGenerating ? BRAND.slate500 : "white",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      cursor: isBusyGenerating ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <Loader2
+                      size={12}
+                      style={{ display: isBusyGenerating ? "block" : "none" }}
+                      className="animate-spin"
+                    />
+                    Retry failed ({failedBulkIdeas.length})
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setBulkSummary(null)}
                   style={{
-                    marginLeft: "auto",
+                    marginLeft: failedBulkIdeas.length > 0 ? 0 : "auto",
                     border: `1px solid ${BRAND.slate200}`,
                     background: "white",
                     color: BRAND.slate700,
