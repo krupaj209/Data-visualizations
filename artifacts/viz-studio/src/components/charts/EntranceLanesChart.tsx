@@ -140,12 +140,16 @@ export function EntranceLanesChart({
   // the CMS uses (~280, 320, 400, 480, 560, 640, 800, 1024 tall).
   const chromeReserve = compact ? 90 : 170;
   const stackMaxPx = Math.max(
-    140,
+    80,
     Math.min(availH > 0 ? availH - chromeReserve : 220, 520),
   );
+  // Allow dots to shrink to 1px on extreme compact embeds — the stack
+  // visualisation degrades to a continuous bar but never overflows the
+  // budget. The hard min was the source of overflow flagged in code review:
+  // 40 dots * 3px min + 39 * 2px gap = 198px, which exceeded an 80px budget.
   const dotPx = Math.max(
-    3,
-    Math.min(12, Math.floor((stackMaxPx - maxDots * DOT_GAP_PX) / maxDots)),
+    1,
+    Math.min(12, Math.floor((stackMaxPx - (maxDots - 1) * DOT_GAP_PX) / maxDots)),
   );
 
   return (
@@ -316,6 +320,11 @@ export function EntranceLanesChart({
                           placeItems: "center",
                           alignContent: "start",
                           width: "100%",
+                          // Defense-in-depth cap: even if the dotPx math is
+                          // ever off, the stack can never exceed the measured
+                          // budget and overflow the iframe.
+                          maxHeight: stackMaxPx,
+                          overflow: "hidden",
                         }}
                       >
                         {Array.from({ length: lane.dots }).map((_, di) => (

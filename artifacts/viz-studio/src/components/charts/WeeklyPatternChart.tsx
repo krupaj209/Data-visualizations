@@ -93,8 +93,12 @@ const DAY_NOTE_TONE: Record<
   info: { bg: ACCENT_SOFT.purps, fg: ACCENT_FG.purps },
 };
 
-const PILL_HEADROOM = 26;
-const MAX_BAR_FILL = 0.78;
+// Fixed-px reserve at the top of the bar area so the absolutely-positioned
+// "Busiest" / "Quietest" / "★ Best" pill never collides with the iframe edge.
+// Bars then fill 100% of the remaining height (no percentage cap) so a tall
+// embed actually uses its space instead of leaving ~22% empty above the bars.
+const PILL_HEADROOM = 36;
+const MAX_BAR_FILL = 1.0;
 
 export function WeeklyPatternChart({
   spec,
