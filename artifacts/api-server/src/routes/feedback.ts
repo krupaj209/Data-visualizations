@@ -12,7 +12,6 @@ import {
   type Chart,
   type ChartFeedback,
 } from "@workspace/db";
-import { isLockedCe } from "../lib/locked-ces";
 import { regenerateSingleChart } from "../lib/research-pipeline";
 import {
   CHART_ARCHETYPES,
@@ -434,13 +433,10 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
     return;
   }
 
-  if (isLockedCe(ce.slug)) {
-    res.status(409).json({
-      error:
-        "This CE has a hand-curated chart set and is locked from automated regeneration.",
-    });
-    return;
-  }
+  // NOTE: locked (curated) CEs allow single-chart feedback-driven regen.
+  // It updates one chart's spec in place — chart IDs (and therefore embed
+  // URLs) stay stable. Full-deck regen and chart deletion remain locked
+  // (see routes/research.ts and routes/charts.ts).
 
   const [drd] = await db
     .select()
