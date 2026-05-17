@@ -111,6 +111,18 @@ export function EntranceLanesChart({
   const locked = lockedIdx !== null ? lanes[lockedIdx] : null;
   const lockedTone = locked ? TONES[locked.tone] : null;
 
+  // The dot stack can grow tall when the wait is long (spec allows up to 40
+  // dots per lane). Cap the rendered column to a bounded height and scale
+  // each dot to fit so the chart card never overflows its frame regardless
+  // of `dots` count, while preserving the relative-length visual.
+  const maxDots = Math.max(1, ...lanes.map((l) => l.dots));
+  const STACK_MAX_PX = 220;
+  const DOT_GAP_PX = 2;
+  const dotPx = Math.max(
+    2,
+    Math.min(7, Math.floor((STACK_MAX_PX - maxDots * DOT_GAP_PX) / maxDots)),
+  );
+
   return (
     <ChartCard compact={compact}>
       <div className="flex-1 flex flex-col min-h-0">
@@ -275,7 +287,7 @@ export function EntranceLanesChart({
                         className="grid"
                         style={{
                           gridTemplateColumns: `repeat(${dotsPerRow}, minmax(0, 1fr))`,
-                          gap: "clamp(1px, 0.2cqi, 3px)",
+                          gap: `${DOT_GAP_PX}px`,
                           placeItems: "center",
                           alignContent: "start",
                           width: "100%",
@@ -285,8 +297,8 @@ export function EntranceLanesChart({
                           <span
                             key={di}
                             style={{
-                              width: "clamp(5px, 0.7cqi, 7px)",
-                              height: "clamp(5px, 0.7cqi, 7px)",
+                              width: dotPx,
+                              height: dotPx,
                               borderRadius: "50%",
                               background: tone.dot,
                               display: "block",

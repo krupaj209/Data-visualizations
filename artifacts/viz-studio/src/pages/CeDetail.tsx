@@ -1328,7 +1328,7 @@ function ChartRow({
             presentation={normalizePresentation(
               (chart as unknown as { presentation?: unknown }).presentation,
             )}
-            embedUrl={`${window.location.origin}${BASE}/studio/embed/${chart.id}`}
+            embedUrl={`${window.location.origin}${BASE}/embed/${chart.id}`}
           />
           <ChartFactTable
             chartId={chart.id}
@@ -2262,6 +2262,18 @@ function PresentationPanel({
   const qc = useQueryClient();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Writers stage changes locally so they can preview the result inline
+  // before committing. The chart on the main page only re-renders once
+  // `save()` succeeds and `getCe` invalidates.
+  const [draft, setDraft] = useState<PresentationOverrides>(presentation);
+  // Re-sync the local draft whenever the persisted value changes from
+  // elsewhere (e.g. a fresh refetch after save).
+  const presentationKey = JSON.stringify(presentation);
+  useEffect(() => {
+    setDraft(presentation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentationKey]);
+  const isDirty = JSON.stringify(draft) !== presentationKey;
 
   if (!opts) return null;
 
@@ -2279,18 +2291,19 @@ function PresentationPanel({
   }
 
   function patch(partial: Partial<PresentationOverrides>) {
-    const merged = normalizePresentation({ ...presentation, ...partial });
-    void save(merged);
+    setSaveError(null);
+    setDraft((prev) => normalizePresentation({ ...prev, ...partial }));
   }
 
-  // Build a preview URL with the current overrides as query params so writers
-  // can copy a sharable embed link reflecting their selections.
+  // Build a preview URL with the *staged* overrides as query params so
+  // writers can see exactly what the CMS embed will render, and copy a
+  // sharable link reflecting their selections.
   const previewQuery = new URLSearchParams();
-  if (presentation.palette) previewQuery.set("palette", presentation.palette);
-  if (presentation.direction) previewQuery.set("direction", presentation.direction);
-  if (presentation.view) previewQuery.set("view", presentation.view);
-  if (presentation.density) previewQuery.set("density", presentation.density);
-  if (presentation.emphasis) previewQuery.set("emphasis", presentation.emphasis);
+  if (draft.palette) previewQuery.set("palette", draft.palette);
+  if (draft.direction) previewQuery.set("direction", draft.direction);
+  if (draft.view) previewQuery.set("view", draft.view);
+  if (draft.density) previewQuery.set("density", draft.density);
+  if (draft.emphasis) previewQuery.set("emphasis", draft.emphasis);
   const previewUrl = previewQuery.toString()
     ? `${embedUrl}?${previewQuery.toString()}`
     : embedUrl;
@@ -2369,7 +2382,7 @@ function PresentationPanel({
           <select
             style={selectStyle}
             disabled={updateMut.isPending}
-            value={presentation.palette ?? ""}
+            value={draft.palette ?? ""}
             onChange={(e) =>
               patch({
                 palette: (e.target.value || undefined) as PaletteId | undefined,
@@ -2391,7 +2404,7 @@ function PresentationPanel({
             <select
               style={selectStyle}
               disabled={updateMut.isPending}
-              value={presentation.direction ?? ""}
+              value={draft.direction ?? ""}
               onChange={(e) =>
                 patch({
                   direction: (e.target.value || undefined) as
@@ -2416,7 +2429,7 @@ function PresentationPanel({
             <select
               style={selectStyle}
               disabled={updateMut.isPending}
-              value={presentation.view ?? ""}
+              value={draft.view ?? ""}
               onChange={(e) =>
                 patch({ view: e.target.value || undefined })
               }
@@ -2437,7 +2450,7 @@ function PresentationPanel({
             <select
               style={selectStyle}
               disabled={updateMut.isPending}
-              value={presentation.density ?? ""}
+              value={draft.density ?? ""}
               onChange={(e) =>
                 patch({
                   density: (e.target.value || undefined) as
@@ -2471,26 +2484,81 @@ function PresentationPanel({
               placeholder="e.g. mon, 14, slot-0"
               style={{ ...selectStyle, cursor: "text" }}
               disabled={updateMut.isPending}
-              defaultValue={presentation.emphasis ?? ""}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if ((v || undefined) !== presentation.emphasis) {
-                  patch({ emphasis: v || undefined });
-                }
-              }}
+              value={draft.emphasis ?? ""}
+              onChange={(e) =>
+                patch({ emphasis: e.target.value || undefined })
+              }
             />
           </label>
         )}
       </div>
 
       <div
+        className="mt-3"
+        style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 10 }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 6,
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: BRAND.slate500,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            Live preview
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: BRAND.slate500,
+            }}
+          >
+            {isDirty ? "Unsaved changes" : "Matches saved version"}
+          </span>
+        </div>
+        <div
+          style={{
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 10,
+            overflow: "hidden",
+            background: "white",
+          }}
+        >
+          <iframe
+            key={previewUrl}
+            src={previewUrl}
+            title="Chart preview"
+            style={{
+              display: "block",
+              width: "100%",
+              height: 320,
+              border: "none",
+            }}
+          />
+        </div>
+      </div>
+
+      <div
         className="mt-3 flex items-center justify-between gap-2 flex-wrap"
-        style={{ borderTop: `1px solid ${BRAND.slate100}`, paddingTop: 8 }}
       >
         <button
           type="button"
-          onClick={() => save({})}
-          disabled={updateMut.isPending}
+          onClick={() => {
+            setSaveError(null);
+            setDraft(presentation);
+          }}
+          disabled={!isDirty || updateMut.isPending}
           style={{
             background: "white",
             color: BRAND.slate700,
@@ -2499,35 +2567,59 @@ function PresentationPanel({
             borderRadius: 8,
             fontWeight: 800,
             fontSize: 11,
-            cursor: updateMut.isPending ? "wait" : "pointer",
+            cursor: !isDirty || updateMut.isPending ? "default" : "pointer",
+            opacity: !isDirty ? 0.5 : 1,
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
           }}
         >
           <RotateCcw size={11} />
-          Reset
+          Discard
         </button>
-        <button
-          type="button"
-          onClick={copyPreviewUrl}
-          style={{
-            background: BRAND.purps,
-            color: "white",
-            border: `1px solid ${BRAND.purps}`,
-            padding: "5px 10px",
-            borderRadius: 8,
-            fontWeight: 800,
-            fontSize: 11,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          {copied ? <Check size={11} /> : <Copy size={11} />}
-          {copied ? "Copied" : "Copy preview URL"}
-        </button>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={copyPreviewUrl}
+            style={{
+              background: "white",
+              color: BRAND.slate700,
+              border: `1px solid ${BRAND.slate200}`,
+              padding: "5px 10px",
+              borderRadius: 8,
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {copied ? <Check size={11} /> : <Copy size={11} />}
+            {copied ? "Copied" : "Copy preview URL"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void save(draft)}
+            disabled={!isDirty || updateMut.isPending}
+            style={{
+              background: !isDirty ? BRAND.slate200 : BRAND.purps,
+              color: "white",
+              border: `1px solid ${!isDirty ? BRAND.slate200 : BRAND.purps}`,
+              padding: "5px 10px",
+              borderRadius: 8,
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: !isDirty || updateMut.isPending ? "default" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Check size={11} />
+            {updateMut.isPending ? "Saving…" : "Save changes"}
+          </button>
+        </div>
       </div>
 
       {saveError && (
