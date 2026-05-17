@@ -54,6 +54,20 @@ export const chartsTable = pgTable("charts", {
    * for archetypes whose locked panels aren't yet content-complete.
    */
   interactive: boolean("interactive").notNull().default(true),
+  /**
+   * Page-type-aware metadata (research pipeline v2). Optional — legacy and
+   * v1 rows have `null`. Identifies which page deck (e.g. "plan-your-visit",
+   * "skip-the-line") a chart was generated for and which section slot it
+   * fills inside that deck.
+   */
+  pageType: text("page_type"),
+  sectionId: text("section_id"),
+  /**
+   * Editorial overlay produced by the v2 pipeline alongside the chart spec.
+   * Shape mirrors `EDITORIAL_OVERLAY_PROMPT`: headline, subheadline, cta,
+   * confidence, tip, warning, personalizationNote. Optional for v1 rows.
+   */
+  editorial: jsonb("editorial").$type<Record<string, unknown> | null>(),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

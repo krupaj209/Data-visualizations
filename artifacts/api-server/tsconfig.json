@@ -24,6 +24,9 @@
     },
     {
       "path": "../../lib/page-decks"
+    },
+    {
+      "path": "../../lib/prompts"
     }
   ]
 }

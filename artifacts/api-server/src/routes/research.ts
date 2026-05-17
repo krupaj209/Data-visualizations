@@ -11,8 +11,10 @@ import {
 } from "@workspace/db";
 import { listSubcategories } from "@workspace/question-bank";
 import { runResearchPipeline } from "../lib/research-pipeline";
+import { runPipelineV2 } from "../lib/research-pipeline-v2";
 import { slugify } from "../lib/generate-ce";
 import { isLockedCe } from "../lib/locked-ces";
+import { PageType } from "@workspace/page-decks";
 
 const router: IRouter = Router();
 
@@ -241,6 +243,66 @@ router.post("/research/generate", async (req, res): Promise<void> => {
         err instanceof Error
           ? `Failed to persist draft deck: ${err.message}`
           : "Failed to persist draft deck",
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Research pipeline v2 — page-type-aware deck generation
+// ─────────────────────────────────────────────────────────────
+
+const generateV2Body = z.object({
+  ceSlug: z.string().min(1),
+  pageTypes: z.array(PageType).min(1),
+  useExistingCharts: z.boolean().optional(),
+});
+
+router.post("/research/generate-v2", async (req, res): Promise<void> => {
+  // Allow toggling v2 via `?v2=1` for symmetry with the existing v1
+  // route — if the flag is present and explicitly disabled, refuse.
+  const v2Flag = req.query["v2"];
+  if (v2Flag !== undefined && v2Flag !== "1" && v2Flag !== "true") {
+    res.status(400).json({
+      error:
+        "Pipeline v2 is gated behind ?v2=1. Pass the flag (or omit it) to opt in.",
+    });
+    return;
+  }
+
+  const parsed = generateV2Body.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const slug = slugify(parsed.data.ceSlug);
+  if (!slug) {
+    res.status(400).json({ error: "ceSlug could not be normalised" });
+    return;
+  }
+
+  if (isLockedCe(slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and is locked from automated draft generation.",
+    });
+    return;
+  }
+
+  try {
+    const result = await runPipelineV2({
+      ceSlug: slug,
+      pageTypes: parsed.data.pageTypes,
+      useExistingCharts: parsed.data.useExistingCharts ?? true,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    req.log.error({ err, slug }, "Research pipeline v2 failed");
+    res.status(502).json({
+      error:
+        err instanceof Error
+          ? `Research pipeline v2 failed: ${err.message}`
+          : "Research pipeline v2 failed",
     });
   }
 });
