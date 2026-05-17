@@ -88,6 +88,34 @@ const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
 const LOCKED_SLUGS = new Set(["galleria-dellaccademia"]);
 
+type PageTypeValue =
+  | "plan-your-visit"
+  | "skip-the-line"
+  | "entrances"
+  | "history"
+  | "map-floor-plan"
+  | "tickets-pricing"
+  | "reviews-experiences"
+  | "combo-deals";
+type PageFilterValue = "all" | PageTypeValue;
+const DEFAULT_PAGE_TYPE: PageTypeValue = "plan-your-visit";
+const PAGE_TYPE_LABELS: Record<PageTypeValue, string> = {
+  "plan-your-visit": "Plan your visit",
+  "skip-the-line": "Skip the line",
+  entrances: "Entrances",
+  history: "History",
+  "map-floor-plan": "Map & floor plan",
+  "tickets-pricing": "Tickets & pricing",
+  "reviews-experiences": "Reviews & experiences",
+  "combo-deals": "Combo deals",
+};
+function getChartPageType(chart: Chart): PageTypeValue | null {
+  const prov = chart.provenance as { page_type?: string } | null | undefined;
+  const raw = prov?.page_type;
+  if (typeof raw !== "string") return null;
+  return raw in PAGE_TYPE_LABELS ? (raw as PageTypeValue) : null;
+}
+
 // Mirrors LOCKED_CE_SLUGS on the api-server (artifacts/api-server/src/lib/locked-ces.ts).
 // Used to hide writer actions (Edit / Regenerate) on the Suggested content panel for
 // hand-curated CEs whose chart specs are immutable. The server still enforces this
@@ -340,21 +368,14 @@ function CeDetailInner({
   const [regenSummary, setRegenSummary] = useState<
     import("@workspace/api-client-react").RegenSummary | null
   >(null);
-  const [pageType, setPageType] = useState<
-    | "plan-your-visit"
-    | "skip-the-line"
-    | "entrances"
-    | "history"
-    | "map-floor-plan"
-    | "tickets-pricing"
-    | "reviews-experiences"
-    | "combo-deals"
-  >("plan-your-visit");
+  const [pageType, setPageType] = useState<PageFilterValue>("all");
+  const effectiveRegenPageType: PageTypeValue =
+    pageType === "all" ? DEFAULT_PAGE_TYPE : pageType;
 
   async function regenerateWithFeedback(feedback: string) {
     const result = await regenMut.mutateAsync({
       slug,
-      data: { feedback, pageType },
+      data: { feedback, pageType: effectiveRegenPageType },
     });
     qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
@@ -378,11 +399,22 @@ function CeDetailInner({
     qc.invalidateQueries({ queryKey: getListCesQueryKey() });
   }
 
-  const visibleCharts = charts.filter((c) => {
+  const pageFilteredCharts =
+    pageType === "all"
+      ? charts
+      : charts.filter((c) => getChartPageType(c) === pageType);
+  const pageFilteredDraftCount = pageFilteredCharts.filter(
+    (c) => (c.status ?? "published") === "draft",
+  ).length;
+  const pageFilteredPublishedCount =
+    pageFilteredCharts.length - pageFilteredDraftCount;
+  const visibleCharts = pageFilteredCharts.filter((c) => {
     const s = c.status ?? "published";
     if (statusFilter === "all") return true;
     return s === statusFilter;
   });
+  const isPageFiltered = pageType !== "all";
+  const hasAnyChartsForCe = charts.length > 0;
 
   return (
     <div className="min-h-screen" style={{ background: BRAND.bgShell }}>
@@ -577,11 +609,24 @@ function CeDetailInner({
             </span>
           ) : (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span
+                style={{
+                  color: BRAND.slate700,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Page:
+              </span>
               <select
                 value={pageType}
-                onChange={(e) => setPageType(e.target.value as typeof pageType)}
+                onChange={(e) =>
+                  setPageType(e.target.value as PageFilterValue)
+                }
                 disabled={regenMut.isPending}
-                title="Page template the deck should be assembled for"
+                title="Filter charts by page template — also drives Regenerate"
                 style={{
                   background: "white",
                   color: BRAND.slate950,
@@ -593,14 +638,14 @@ function CeDetailInner({
                   cursor: regenMut.isPending ? "wait" : "pointer",
                 }}
               >
-                <option value="plan-your-visit">Plan your visit</option>
-                <option value="skip-the-line">Skip the line</option>
-                <option value="entrances">Entrances</option>
-                <option value="history">History</option>
-                <option value="map-floor-plan">Map & floor plan</option>
-                <option value="tickets-pricing">Tickets & pricing</option>
-                <option value="reviews-experiences">Reviews & experiences</option>
-                <option value="combo-deals">Combo deals</option>
+                <option value="all">All pages</option>
+                {(
+                  Object.keys(PAGE_TYPE_LABELS) as PageTypeValue[]
+                ).map((pt) => (
+                  <option key={pt} value={pt}>
+                    {PAGE_TYPE_LABELS[pt]}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -634,8 +679,12 @@ function CeDetailInner({
 
       {showRegenFeedback && (
         <RegenerateFeedbackDialog
-          title="Regenerate chart set"
-          description="Tell the AI what should improve. The current chart set will be replaced with a fresh version guided by this feedback."
+          title={`Regenerate “${PAGE_TYPE_LABELS[effectiveRegenPageType]}” deck`}
+          description={
+            pageType === "all"
+              ? `“All pages” is selected, so Regenerate will rebuild the default ${PAGE_TYPE_LABELS[DEFAULT_PAGE_TYPE]} page. Pick a specific page in the dropdown to rebuild a different one. Tell the AI what should improve below.`
+              : `Regenerate will rebuild the ${PAGE_TYPE_LABELS[effectiveRegenPageType]} page. Tell the AI what should improve — the current chart set will be replaced with a fresh version guided by this feedback.`
+          }
           isPending={regenMut.isPending}
           onCancel={closeRegenDialog}
           onSubmit={regenerateWithFeedback}
@@ -668,22 +717,34 @@ function CeDetailInner({
             </p>
           )}
 
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
             <FilterPill
               active={statusFilter === "all"}
               onClick={() => setStatusFilter("all")}
-              label={`All (${charts.length})`}
+              label={`All (${pageFilteredCharts.length})`}
             />
             <FilterPill
               active={statusFilter === "published"}
               onClick={() => setStatusFilter("published")}
-              label={`Published (${publishedCount})`}
+              label={`Published (${pageFilteredPublishedCount})`}
             />
             <FilterPill
               active={statusFilter === "draft"}
               onClick={() => setStatusFilter("draft")}
-              label={`Drafts (${draftCount})`}
+              label={`Drafts (${pageFilteredDraftCount})`}
             />
+            {isPageFiltered && (
+              <span
+                style={{
+                  color: BRAND.slate700,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  marginLeft: 4,
+                }}
+              >
+                Page: {PAGE_TYPE_LABELS[pageType as PageTypeValue]}
+              </span>
+            )}
           </div>
 
           {showNewChart && (
@@ -724,7 +785,38 @@ function CeDetailInner({
                   fontWeight: 600,
                 }}
               >
-                No charts match this filter.
+                {!hasAnyChartsForCe ? (
+                  <span>This CE has no charts yet.</span>
+                ) : isPageFiltered && pageFilteredCharts.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <span>
+                      No charts are tagged for{" "}
+                      <strong>
+                        {PAGE_TYPE_LABELS[pageType as PageTypeValue]}
+                      </strong>
+                      . Charts generated before page tagging was added only
+                      appear under “All pages.”
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPageType("all")}
+                      style={{
+                        background: BRAND.purps,
+                        color: "white",
+                        border: `1px solid ${BRAND.purps}`,
+                        padding: "6px 12px",
+                        borderRadius: 10,
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Show all pages
+                    </button>
+                  </div>
+                ) : (
+                  <span>No charts match this filter.</span>
+                )}
               </div>
             )}
           </div>
