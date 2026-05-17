@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
@@ -238,6 +238,34 @@ export function IntelPanel({
   >(
     () => ({}),
   );
+  const [selectedIdeas, setSelectedIdeas] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkProgress, setBulkProgress] = useState<{
+    total: number;
+    done: number;
+    failed: number;
+    running: boolean;
+  } | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<{
+    created: number;
+    failed: number;
+  } | null>(null);
+  const [bulkErrors, setBulkErrors] = useState<Record<string, string>>(
+    () => ({}),
+  );
+
+  function toggleSelectedIdea(question: string) {
+    setSelectedIdeas((prev) => {
+      const next = new Set(prev);
+      if (next.has(question)) next.delete(question);
+      else next.add(question);
+      return next;
+    });
+  }
+  function clearSelectedIdeas() {
+    setSelectedIdeas(new Set());
+  }
 
   const intel = (data ?? null) as CeIntelligence | null;
   const savedPlan = (intel as unknown as { visualizationPlan?: unknown } | null)
@@ -473,11 +501,10 @@ export function IntelPanel({
     }
   }
 
-  async function handleCreateFromPlan(
+  async function runCreateForIdea(
     item: VisualizationPlan["recommended_visualizations"][number],
-  ) {
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     setCreatingQuestion(item.question);
-    setPlanError(null);
     try {
       const evidenceSnippets = relevantEvidenceForVisualization(plan, item);
       const plannerContext = [
@@ -576,11 +603,72 @@ export function IntelPanel({
           },
         }));
       }
+      return { ok: true } as const;
     } catch (err) {
-      setPlanError(err instanceof Error ? err.message : "Chart generation failed");
+      const message =
+        err instanceof Error ? err.message : "Chart generation failed";
+      return { ok: false, error: message } as const;
     } finally {
       setCreatingQuestion(null);
     }
+  }
+
+  async function handleCreateFromPlan(
+    item: VisualizationPlan["recommended_visualizations"][number],
+  ) {
+    setPlanError(null);
+    setBulkErrors((prev) => {
+      if (!(item.question in prev)) return prev;
+      const next = { ...prev };
+      delete next[item.question];
+      return next;
+    });
+    const result = await runCreateForIdea(item);
+    if (!result.ok) {
+      setPlanError(result.error);
+      setBulkErrors((prev) => ({ ...prev, [item.question]: result.error }));
+    }
+  }
+
+  async function handleBulkCreate(
+    ideas: VisualizationPlan["recommended_visualizations"],
+  ) {
+    if (ideas.length === 0) return;
+    setPlanError(null);
+    setBulkSummary(null);
+    setBulkErrors({});
+    setBulkProgress({
+      total: ideas.length,
+      done: 0,
+      failed: 0,
+      running: true,
+    });
+    let created = 0;
+    let failed = 0;
+    for (const item of ideas) {
+      const result = await runCreateForIdea(item);
+      if (result.ok) {
+        created += 1;
+      } else {
+        failed += 1;
+        setBulkErrors((prev) => ({
+          ...prev,
+          [item.question]: result.error,
+        }));
+      }
+      setBulkProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              done: prev.done + 1,
+              failed: prev.failed + (result.ok ? 0 : 1),
+            }
+          : prev,
+      );
+    }
+    setBulkProgress(null);
+    setBulkSummary({ created, failed });
+    clearSelectedIdeas();
   }
 
   async function handleCreateRejected(
@@ -722,6 +810,18 @@ export function IntelPanel({
   const questionsByText = new Map(
     (plan?.traveler_questions ?? []).map((q) => [q.question, q]),
   );
+
+  const isBusyGenerating = creatingQuestion !== null || !!bulkProgress?.running;
+  const eligibleRecommended = useMemo(() => {
+    const list = plan?.recommended_visualizations ?? [];
+    return list.filter((item) => !createdCharts[item.question]);
+  }, [plan, createdCharts]);
+  const selectedEligibleIdeas = useMemo(
+    () =>
+      eligibleRecommended.filter((i) => selectedIdeas.has(i.question)),
+    [eligibleRecommended, selectedIdeas],
+  );
+  const selectedEligibleCount = selectedEligibleIdeas.length;
 
   return (
     <aside
@@ -957,6 +1057,141 @@ export function IntelPanel({
       </button>
 
       <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+        {(selectedEligibleCount > 0 || bulkProgress || bulkSummary) && (
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              background: "white",
+              border: `1px solid ${BRAND.purps}`,
+              borderRadius: 12,
+              padding: "8px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              boxShadow: "0 2px 10px rgba(128, 0, 255, 0.08)",
+            }}
+          >
+            {bulkProgress?.running ? (
+              <>
+                <Loader2 size={14} className="animate-spin" color={BRAND.purps} />
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 850,
+                    color: BRAND.slate950,
+                  }}
+                >
+                  Generating {Math.min(bulkProgress.done + 1, bulkProgress.total)}{" "}
+                  of {bulkProgress.total}
+                  {bulkProgress.failed > 0 && (
+                    <span style={{ color: BRAND.candy, marginLeft: 6 }}>
+                      · {bulkProgress.failed} failed
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : bulkSummary ? (
+              <>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 850,
+                    color: BRAND.slate950,
+                  }}
+                >
+                  Done · {bulkSummary.created} created
+                  {bulkSummary.failed > 0 && (
+                    <span style={{ color: BRAND.candy, marginLeft: 6 }}>
+                      · {bulkSummary.failed} failed
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBulkSummary(null)}
+                  style={{
+                    marginLeft: "auto",
+                    border: `1px solid ${BRAND.slate200}`,
+                    background: "white",
+                    color: BRAND.slate700,
+                    borderRadius: 9,
+                    padding: "4px 9px",
+                    fontSize: 11,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  Dismiss
+                </button>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 850,
+                    color: BRAND.slate950,
+                  }}
+                >
+                  {selectedEligibleCount} idea
+                  {selectedEligibleCount === 1 ? "" : "s"} selected
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelectedIdeas}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: BRAND.slate500,
+                    fontSize: 11,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Clear selection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBulkCreate(selectedEligibleIdeas)}
+                  disabled={
+                    selectedEligibleCount === 0 || isBusyGenerating
+                  }
+                  style={{
+                    marginLeft: "auto",
+                    border: "none",
+                    borderRadius: 9,
+                    padding: "6px 11px",
+                    background:
+                      selectedEligibleCount === 0 || isBusyGenerating
+                        ? BRAND.slate100
+                        : BRAND.purps,
+                    color:
+                      selectedEligibleCount === 0 || isBusyGenerating
+                        ? BRAND.slate500
+                        : "white",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor:
+                      selectedEligibleCount === 0 || isBusyGenerating
+                        ? "not-allowed"
+                        : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <Plus size={12} />
+                  Generate {selectedEligibleCount} chart
+                  {selectedEligibleCount === 1 ? "" : "s"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {planError && (
           <div
             style={{
@@ -1014,9 +1249,40 @@ export function IntelPanel({
                 )}
               <PlanList
                 title={`Recommended (${plan.recommended_visualizations.length})`}
+                selectAll={
+                  eligibleRecommended.length > 0
+                    ? {
+                        state:
+                          selectedEligibleCount === 0
+                            ? "none"
+                            : selectedEligibleCount ===
+                                eligibleRecommended.length
+                              ? "all"
+                              : "some",
+                        eligibleCount: eligibleRecommended.length,
+                        disabled: isBusyGenerating,
+                        onToggle: () => {
+                          if (
+                            selectedEligibleCount ===
+                            eligibleRecommended.length
+                          ) {
+                            clearSelectedIdeas();
+                          } else {
+                            setSelectedIdeas(
+                              new Set(
+                                eligibleRecommended.map((i) => i.question),
+                              ),
+                            );
+                          }
+                        },
+                      }
+                    : undefined
+                }
                 items={plan.recommended_visualizations.map((item) => {
                   const question = questionsByText.get(item.question);
                   const created = createdCharts[item.question];
+                  const isEligible = !created;
+                  const checkboxDisabled = isBusyGenerating;
                   return {
                     key: `${item.priority}-${item.question}`,
                     title: item.question,
@@ -1040,10 +1306,17 @@ export function IntelPanel({
                       : undefined,
                     createdChart: created,
                     actionLabel: created ? "Created" : "Create chart",
-                    actionDisabled:
-                      !!created || creatingQuestion !== null,
+                    actionDisabled: !!created || isBusyGenerating,
                     actionBusy: creatingQuestion === item.question,
                     onAction: () => handleCreateFromPlan(item),
+                    cardError: bulkErrors[item.question],
+                    selectable: isEligible,
+                    selectDisabled: checkboxDisabled,
+                    selected: selectedIdeas.has(item.question),
+                    onSelectToggle:
+                      isEligible && !checkboxDisabled
+                        ? () => toggleSelectedIdea(item.question)
+                        : undefined,
                   };
                 })}
               />
@@ -1872,31 +2145,45 @@ function RepairButton({
   );
 }
 
+type PlanListItemData = {
+  key: string;
+  title: string;
+  meta: string;
+  body: string;
+  tone: "good" | "warn";
+  evidenceStatus?: string;
+  confidence?: number;
+  sourceRefs?: string[];
+  createdChart?: CreatedPlanChart;
+  qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
+  editorial?: EditorialJudgements;
+  editorialVerdict?: EditorialVerdict;
+  promotedBadge?: string;
+  extra?: ReactNode;
+  actionLabel?: string;
+  actionDisabled?: boolean;
+  actionBusy?: boolean;
+  onAction?: () => void;
+  cardError?: string;
+  selectable?: boolean;
+  selectDisabled?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+};
+
 function PlanList({
   title,
   items,
+  selectAll,
 }: {
   title: string;
-  items: {
-    key: string;
-    title: string;
-    meta: string;
-    body: string;
-    tone: "good" | "warn";
-    evidenceStatus?: string;
-    confidence?: number;
-    sourceRefs?: string[];
-    createdChart?: CreatedPlanChart;
-    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
-    editorial?: EditorialJudgements;
-    editorialVerdict?: EditorialVerdict;
-    promotedBadge?: string;
-    extra?: ReactNode;
-    actionLabel?: string;
-    actionDisabled?: boolean;
-    actionBusy?: boolean;
-    onAction?: () => void;
-  }[];
+  items: PlanListItemData[];
+  selectAll?: {
+    state: "none" | "some" | "all";
+    eligibleCount: number;
+    onToggle: () => void;
+    disabled?: boolean;
+  };
 }) {
   const [openItems, setOpenItems] = useState<Record<string, boolean>>(
     () => ({}),
@@ -1906,15 +2193,82 @@ function PlanList({
     <div>
       <div
         style={{
-          fontSize: 10,
-          fontWeight: 900,
-          color: BRAND.slate500,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
           marginBottom: 6,
         }}
       >
-        {title}
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 900,
+            color: BRAND.slate500,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
+          {title}
+        </div>
+        {selectAll && selectAll.eligibleCount > 0 && (
+          <button
+            type="button"
+            onClick={selectAll.onToggle}
+            disabled={selectAll.disabled}
+            style={{
+              border: `1px solid ${BRAND.slate200}`,
+              background: "white",
+              color: BRAND.slate700,
+              borderRadius: 999,
+              padding: "3px 9px",
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              cursor: selectAll.disabled ? "not-allowed" : "pointer",
+              opacity: selectAll.disabled ? 0.5 : 1,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            aria-label={
+              selectAll.state === "all"
+                ? "Clear all selections"
+                : "Select all eligible ideas"
+            }
+          >
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                border: `1.5px solid ${
+                  selectAll.state === "none" ? BRAND.slate300 : BRAND.purps
+                }`,
+                background:
+                  selectAll.state === "all"
+                    ? BRAND.purps
+                    : selectAll.state === "some"
+                      ? BRAND.purpsSoft
+                      : "white",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 9,
+                lineHeight: 1,
+              }}
+            >
+              {selectAll.state === "all"
+                ? "✓"
+                : selectAll.state === "some"
+                  ? "–"
+                  : ""}
+            </span>
+            {selectAll.state === "all" ? "Clear" : "Select all"}
+          </button>
+        )}
       </div>
       <ul
         style={{
@@ -1949,26 +2303,7 @@ function PlanListItem({
   isOpen,
   onToggle,
 }: {
-  item: {
-    key: string;
-    title: string;
-    meta: string;
-    body: string;
-    tone: "good" | "warn";
-    evidenceStatus?: string;
-    confidence?: number;
-    sourceRefs?: string[];
-    createdChart?: CreatedPlanChart;
-    qualityScore?: VisualizationPlan["recommended_visualizations"][number]["quality_score"];
-    editorial?: EditorialJudgements;
-    editorialVerdict?: EditorialVerdict;
-    promotedBadge?: string;
-    extra?: ReactNode;
-    actionLabel?: string;
-    actionDisabled?: boolean;
-    actionBusy?: boolean;
-    onAction?: () => void;
-  };
+  item: PlanListItemData;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -1980,10 +2315,52 @@ function PlanListItem({
       style={{
         borderRadius: 10,
         background: "white",
-        border: `1px solid ${isOpen ? toneBg : BRAND.slate100}`,
+        border: `1px solid ${
+          item.selected
+            ? BRAND.purps
+            : isOpen
+              ? toneBg
+              : BRAND.slate100
+        }`,
         overflow: "hidden",
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "stretch",
       }}
     >
+      {item.selectable && (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            paddingTop: 11,
+            paddingLeft: 10,
+            cursor: item.selectDisabled ? "not-allowed" : "pointer",
+            opacity: item.selectDisabled ? 0.4 : 1,
+          }}
+          title={
+            item.selectDisabled
+              ? "Wait for the current generation to finish"
+              : "Select to generate in bulk"
+          }
+        >
+          <input
+            type="checkbox"
+            checked={!!item.selected}
+            onChange={item.onSelectToggle ?? (() => {})}
+            disabled={item.selectDisabled || !item.onSelectToggle}
+            aria-label={`Select "${item.title}" for bulk generation`}
+            style={{
+              width: 14,
+              height: 14,
+              accentColor: BRAND.purps,
+              cursor: item.selectDisabled ? "not-allowed" : "pointer",
+              margin: 0,
+            }}
+          />
+        </label>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
       <button
         type="button"
         onClick={onToggle}
@@ -2273,6 +2650,24 @@ function PlanListItem({
           )}
         </div>
       )}
+      {item.cardError && (
+        <div
+          style={{
+            margin: "0 10px 8px",
+            color: BRAND.candy,
+            background: "#fff7f7",
+            border: `1px solid ${BRAND.candySoft ?? BRAND.slate200}`,
+            borderRadius: 9,
+            padding: "6px 8px",
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: 1.35,
+          }}
+        >
+          {item.cardError}
+        </div>
+      )}
+      </div>
     </li>
   );
 }
