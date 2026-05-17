@@ -144,10 +144,23 @@ export function FeedbackButton({
         setRegenState("idle");
       }, 1200);
     } catch (err) {
+      const rawMessage =
+        err && typeof err === "object" && "data" in err
+          ? (err as { data?: { error?: string } }).data?.error ??
+            (err instanceof Error ? err.message : null)
+          : err instanceof Error
+            ? err.message
+            : null;
+      // Special-case the 412 "No DRD uploaded" path so the writer sees a
+      // clear next-step instead of a bare server string. The Intel panel
+      // on the right side of CE Detail is where DRDs are attached.
+      const isMissingDrd =
+        typeof rawMessage === "string" && /no drd uploaded/i.test(rawMessage);
       setRegenError(
-        err instanceof Error
-          ? err.message
-          : "Regeneration failed. The feedback was saved and is queryable from Triage.",
+        isMissingDrd
+          ? 'This CE has no research doc (DRD) yet — regeneration needs one for grounding. Open the "Intel & sources" panel on the right and click "Add DRD" to paste notes or upload a PDF, then try again. (Your feedback was saved.)'
+          : rawMessage ??
+            "Regeneration failed. The feedback was saved and is queryable from Triage.",
       );
       setRegenState("error");
     }

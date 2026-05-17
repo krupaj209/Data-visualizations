@@ -69,6 +69,7 @@ import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { FeedbackButton } from "@/components/FeedbackButton";
+import { ArchetypeGalleryModal } from "@/components/ArchetypeGalleryModal";
 import {
   EVIDENCE_KIND_META,
   evidenceKindCounts,
@@ -4607,6 +4608,7 @@ function NewChartForm({
 }) {
   const [topic, setTopic] = useState(seed?.topic ?? "");
   const [archetype, setArchetype] = useState<string>(seed?.archetype ?? "");
+  const [showArchetypeGallery, setShowArchetypeGallery] = useState(false);
   const [pastedData, setPastedData] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -4745,30 +4747,64 @@ function NewChartForm({
           multiline
         />
         <label className="flex flex-col gap-1.5">
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 800,
-              color: BRAND.slate700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
+          <div
+            className="flex items-center justify-between"
+            style={{ gap: 8 }}
           >
-            Archetype (optional)
-          </span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: BRAND.slate700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              Archetype (optional)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowArchetypeGallery(true)}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: BRAND.purps,
+                fontWeight: 800,
+                fontSize: 11,
+                padding: 0,
+                textDecoration: "underline",
+              }}
+              title="Browse all chart types with examples"
+            >
+              See examples →
+            </button>
+          </div>
           <select
             value={archetype}
             onChange={(e) => setArchetype(e.target.value)}
             style={inputStyle()}
           >
-            <option value="">Auto-detect</option>
-            {ARCHETYPE_OPTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
+            <option value="">Auto-detect (recommended)</option>
+            {ARCHETYPE_OPTIONS.map((a) => {
+              const meta = CHART_TYPE_META[a as ChartSpec["type"]] ?? {
+                label: a,
+                emoji: "📈",
+              };
+              return (
+                <option key={a} value={a}>
+                  {meta.emoji} {meta.label}
+                </option>
+              );
+            })}
           </select>
         </label>
+        <ArchetypeGalleryModal
+          open={showArchetypeGallery}
+          onClose={() => setShowArchetypeGallery(false)}
+          onPick={(a) => setArchetype(a)}
+          options={ARCHETYPE_OPTIONS}
+        />
         <EditField
           label="Pasted data (optional)"
           value={pastedData}
