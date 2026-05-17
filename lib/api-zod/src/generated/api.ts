@@ -2127,7 +2127,58 @@ export const GetIdeationResponseItem = zod.object({
   ceId: zod.number(),
   role: zod.string(),
   content: zod.string(),
+  kind: zod
+    .string()
+    .optional()
+    .describe(
+      'Turn kind — `\"chat\"` for free-form ideation turns, `\"topic\"`\nfor the structured topic-to-chart flow. Defaults to \"chat\".\n',
+    ),
   proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+  feasibility: zod
+    .object({
+      verdict: zod.enum(["ready", "needs_more", "out_of_scope"]),
+      topic: zod
+        .string()
+        .describe("The writer-supplied topic (normalised, sentence case)."),
+      question: zod
+        .string()
+        .optional()
+        .describe("Visitor-facing question the chart would answer."),
+      archetype: zod
+        .string()
+        .optional()
+        .describe("Recommended chart archetype id."),
+      rationale: zod
+        .string()
+        .describe("One- or two-sentence explanation of the verdict."),
+      missing_data: zod
+        .array(
+          zod.object({
+            label: zod.string(),
+            hint: zod.string().optional(),
+          }),
+        )
+        .describe(
+          "Specific data points the writer needs to supply for a\n`needs_more` verdict. Empty for `ready`\/`out_of_scope`.\n",
+        ),
+      drd_snippets: zod.array(zod.string()),
+      web_sources: zod.array(
+        zod.object({
+          title: zod.string(),
+          url: zod.string(),
+        }),
+      ),
+      generated_chart_id: zod
+        .number()
+        .nullish()
+        .describe(
+          'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+        ),
+    })
+    .describe(
+      "Structured feasibility check for a proposed chart topic. Returned\nby `POST \/ces\/{slug}\/ideation\/feasibility` and persisted on the\nassistant turn so the panel can re-render verdict cards from\nhistory.\n",
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 export const GetIdeationResponse = zod.array(GetIdeationResponseItem);
@@ -2149,7 +2200,58 @@ export const PostIdeationResponse = zod.object({
   ceId: zod.number(),
   role: zod.string(),
   content: zod.string(),
+  kind: zod
+    .string()
+    .optional()
+    .describe(
+      'Turn kind — `\"chat\"` for free-form ideation turns, `\"topic\"`\nfor the structured topic-to-chart flow. Defaults to \"chat\".\n',
+    ),
   proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+  feasibility: zod
+    .object({
+      verdict: zod.enum(["ready", "needs_more", "out_of_scope"]),
+      topic: zod
+        .string()
+        .describe("The writer-supplied topic (normalised, sentence case)."),
+      question: zod
+        .string()
+        .optional()
+        .describe("Visitor-facing question the chart would answer."),
+      archetype: zod
+        .string()
+        .optional()
+        .describe("Recommended chart archetype id."),
+      rationale: zod
+        .string()
+        .describe("One- or two-sentence explanation of the verdict."),
+      missing_data: zod
+        .array(
+          zod.object({
+            label: zod.string(),
+            hint: zod.string().optional(),
+          }),
+        )
+        .describe(
+          "Specific data points the writer needs to supply for a\n`needs_more` verdict. Empty for `ready`\/`out_of_scope`.\n",
+        ),
+      drd_snippets: zod.array(zod.string()),
+      web_sources: zod.array(
+        zod.object({
+          title: zod.string(),
+          url: zod.string(),
+        }),
+      ),
+      generated_chart_id: zod
+        .number()
+        .nullish()
+        .describe(
+          'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+        ),
+    })
+    .describe(
+      "Structured feasibility check for a proposed chart topic. Returned\nby `POST \/ces\/{slug}\/ideation\/feasibility` and persisted on the\nassistant turn so the panel can re-render verdict cards from\nhistory.\n",
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -2158,6 +2260,196 @@ export const PostIdeationResponse = zod.object({
  */
 export const ClearIdeationParams = zod.object({
   slug: zod.coerce.string(),
+});
+
+/**
+ * Topic-to-chart entry point. Persists a user turn (the topic + any
+one-shot context) and an assistant turn whose `feasibility` field
+carries a structured verdict (`ready` | `needs_more` |
+`out_of_scope`) plus the specific missing data points the writer
+should supply when more evidence is needed.
+
+ * @summary Check whether the CE has enough evidence for a chart topic
+ */
+export const PostIdeationFeasibilityParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const PostIdeationFeasibilityBody = zod.object({
+  topic: zod.string().min(1),
+  contextText: zod.string().optional(),
+});
+
+export const PostIdeationFeasibilityResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  kind: zod
+    .string()
+    .optional()
+    .describe(
+      'Turn kind — `\"chat\"` for free-form ideation turns, `\"topic\"`\nfor the structured topic-to-chart flow. Defaults to \"chat\".\n',
+    ),
+  proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+  feasibility: zod
+    .object({
+      verdict: zod.enum(["ready", "needs_more", "out_of_scope"]),
+      topic: zod
+        .string()
+        .describe("The writer-supplied topic (normalised, sentence case)."),
+      question: zod
+        .string()
+        .optional()
+        .describe("Visitor-facing question the chart would answer."),
+      archetype: zod
+        .string()
+        .optional()
+        .describe("Recommended chart archetype id."),
+      rationale: zod
+        .string()
+        .describe("One- or two-sentence explanation of the verdict."),
+      missing_data: zod
+        .array(
+          zod.object({
+            label: zod.string(),
+            hint: zod.string().optional(),
+          }),
+        )
+        .describe(
+          "Specific data points the writer needs to supply for a\n`needs_more` verdict. Empty for `ready`\/`out_of_scope`.\n",
+        ),
+      drd_snippets: zod.array(zod.string()),
+      web_sources: zod.array(
+        zod.object({
+          title: zod.string(),
+          url: zod.string(),
+        }),
+      ),
+      generated_chart_id: zod
+        .number()
+        .nullish()
+        .describe(
+          'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+        ),
+    })
+    .describe(
+      "Structured feasibility check for a proposed chart topic. Returned\nby `POST \/ces\/{slug}\/ideation\/feasibility` and persisted on the\nassistant turn so the panel can re-render verdict cards from\nhistory.\n",
+    )
+    .nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * Runs the existing per-archetype research pipeline for a single
+topic+question+archetype, inserts the result as a draft chart
+whose provenance ties back to the ideation turn that produced
+it, and appends a confirmation message to the transcript.
+Locked Florence CEs reject this with 409, mirroring regenerate.
+
+ * @summary Generate a draft chart from an approved ideation topic
+ */
+export const PostIdeationGenerateChartParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const PostIdeationGenerateChartBody = zod.object({
+  messageId: zod
+    .number()
+    .optional()
+    .describe(
+      "Optional id of the assistant turn that produced the\nfeasibility verdict. The new chart's provenance carries this\nso writers can trace it back, and the turn is updated with\n`generated_chart_id`.\n",
+    ),
+  topic: zod.string(),
+  question: zod.string(),
+  archetype: zod.string(),
+});
+
+export const PostIdeationGenerateChartResponse = zod.object({
+  chart: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    slug: zod.string(),
+    question: zod.string(),
+    title: zod.string(),
+    subtitle: zod.string(),
+    insight: zod.string(),
+    chartType: zod.string(),
+    spec: zod.record(zod.string(), zod.unknown()),
+    status: zod.string(),
+    provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+    lastEditedByWriterAt: zod.string().nullish(),
+    interactive: zod
+      .boolean()
+      .describe(
+        "Whether interactive affordances render in embeds. Default true.",
+      ),
+    sortOrder: zod.number(),
+    openFeedbackCount: zod.number().optional(),
+    topFeedbackSeverity: zod.string().nullish(),
+    editCount: zod.number().optional(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  message: zod.object({
+    id: zod.number(),
+    ceId: zod.number(),
+    role: zod.string(),
+    content: zod.string(),
+    kind: zod
+      .string()
+      .optional()
+      .describe(
+        'Turn kind — `\"chat\"` for free-form ideation turns, `\"topic\"`\nfor the structured topic-to-chart flow. Defaults to \"chat\".\n',
+      ),
+    proposals: zod.array(zod.record(zod.string(), zod.unknown())).nullish(),
+    feasibility: zod
+      .object({
+        verdict: zod.enum(["ready", "needs_more", "out_of_scope"]),
+        topic: zod
+          .string()
+          .describe("The writer-supplied topic (normalised, sentence case)."),
+        question: zod
+          .string()
+          .optional()
+          .describe("Visitor-facing question the chart would answer."),
+        archetype: zod
+          .string()
+          .optional()
+          .describe("Recommended chart archetype id."),
+        rationale: zod
+          .string()
+          .describe("One- or two-sentence explanation of the verdict."),
+        missing_data: zod
+          .array(
+            zod.object({
+              label: zod.string(),
+              hint: zod.string().optional(),
+            }),
+          )
+          .describe(
+            "Specific data points the writer needs to supply for a\n`needs_more` verdict. Empty for `ready`\/`out_of_scope`.\n",
+          ),
+        drd_snippets: zod.array(zod.string()),
+        web_sources: zod.array(
+          zod.object({
+            title: zod.string(),
+            url: zod.string(),
+          }),
+        ),
+        generated_chart_id: zod
+          .number()
+          .nullish()
+          .describe(
+            'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+          ),
+      })
+      .describe(
+        "Structured feasibility check for a proposed chart topic. Returned\nby `POST \/ces\/{slug}\/ideation\/feasibility` and persisted on the\nassistant turn so the panel can re-render verdict cards from\nhistory.\n",
+      )
+      .nullish(),
+    createdAt: zod.string(),
+  }),
 });
 
 /**

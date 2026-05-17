@@ -192,18 +192,94 @@ export interface ChartVerification {
 
 export type IdeationMessageProposalsItem = { [key: string]: unknown };
 
+export type FeasibilityVerdictVerdict =
+  (typeof FeasibilityVerdictVerdict)[keyof typeof FeasibilityVerdictVerdict];
+
+export const FeasibilityVerdictVerdict = {
+  ready: "ready",
+  needs_more: "needs_more",
+  out_of_scope: "out_of_scope",
+} as const;
+
+export type FeasibilityVerdictMissingDataItem = {
+  label: string;
+  hint?: string;
+};
+
+export type FeasibilityVerdictWebSourcesItem = {
+  title: string;
+  url: string;
+};
+
+/**
+ * Structured feasibility check for a proposed chart topic. Returned
+by `POST /ces/{slug}/ideation/feasibility` and persisted on the
+assistant turn so the panel can re-render verdict cards from
+history.
+
+ */
+export interface FeasibilityVerdict {
+  verdict: FeasibilityVerdictVerdict;
+  /** The writer-supplied topic (normalised, sentence case). */
+  topic: string;
+  /** Visitor-facing question the chart would answer. */
+  question?: string;
+  /** Recommended chart archetype id. */
+  archetype?: string;
+  /** One- or two-sentence explanation of the verdict. */
+  rationale: string;
+  /** Specific data points the writer needs to supply for a
+`needs_more` verdict. Empty for `ready`/`out_of_scope`.
+ */
+  missing_data: FeasibilityVerdictMissingDataItem[];
+  drd_snippets: string[];
+  web_sources: FeasibilityVerdictWebSourcesItem[];
+  /** Set once the writer clicks "Generate this chart" and the draft
+is created. Lets the transcript deep-link to the draft card.
+ */
+  generated_chart_id?: number | null;
+}
+
 export interface IdeationMessage {
   id: number;
   ceId: number;
   role: string;
   content: string;
+  /** Turn kind — `"chat"` for free-form ideation turns, `"topic"`
+for the structured topic-to-chart flow. Defaults to "chat".
+ */
+  kind?: string;
   proposals?: IdeationMessageProposalsItem[] | null;
+  feasibility?: FeasibilityVerdict | null;
   createdAt: string;
 }
 
 export interface IdeationInput {
   message: string;
   writerId?: string;
+}
+
+export interface IdeationFeasibilityInput {
+  /** @minLength 1 */
+  topic: string;
+  contextText?: string;
+}
+
+export interface IdeationGenerateChartInput {
+  /** Optional id of the assistant turn that produced the
+feasibility verdict. The new chart's provenance carries this
+so writers can trace it back, and the turn is updated with
+`generated_chart_id`.
+ */
+  messageId?: number;
+  topic: string;
+  question: string;
+  archetype: string;
+}
+
+export interface IdeationGeneratedChart {
+  chart: Chart;
+  message: IdeationMessage;
 }
 
 export interface ChartWithCe {

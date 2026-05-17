@@ -36,6 +36,9 @@ import type {
   FeedbackUpdate,
   GetQuestionBankParams,
   HealthStatus,
+  IdeationFeasibilityInput,
+  IdeationGenerateChartInput,
+  IdeationGeneratedChart,
   IdeationInput,
   IdeationMessage,
   ListAllFeedbackParams,
@@ -3549,6 +3552,197 @@ export const useClearIdeation = <
   TContext
 > => {
   return useMutation(getClearIdeationMutationOptions(options));
+};
+
+/**
+ * Topic-to-chart entry point. Persists a user turn (the topic + any
+one-shot context) and an assistant turn whose `feasibility` field
+carries a structured verdict (`ready` | `needs_more` |
+`out_of_scope`) plus the specific missing data points the writer
+should supply when more evidence is needed.
+
+ * @summary Check whether the CE has enough evidence for a chart topic
+ */
+export const getPostIdeationFeasibilityUrl = (slug: string) => {
+  return `/api/ces/${slug}/ideation/feasibility`;
+};
+
+export const postIdeationFeasibility = async (
+  slug: string,
+  ideationFeasibilityInput: IdeationFeasibilityInput,
+  options?: RequestInit,
+): Promise<IdeationMessage> => {
+  return customFetch<IdeationMessage>(getPostIdeationFeasibilityUrl(slug), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ideationFeasibilityInput),
+  });
+};
+
+export const getPostIdeationFeasibilityMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeationFeasibility>>,
+    TError,
+    { slug: string; data: BodyType<IdeationFeasibilityInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postIdeationFeasibility>>,
+  TError,
+  { slug: string; data: BodyType<IdeationFeasibilityInput> },
+  TContext
+> => {
+  const mutationKey = ["postIdeationFeasibility"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postIdeationFeasibility>>,
+    { slug: string; data: BodyType<IdeationFeasibilityInput> }
+  > = (props) => {
+    const { slug, data } = props ?? {};
+
+    return postIdeationFeasibility(slug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostIdeationFeasibilityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postIdeationFeasibility>>
+>;
+export type PostIdeationFeasibilityMutationBody =
+  BodyType<IdeationFeasibilityInput>;
+export type PostIdeationFeasibilityMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Check whether the CE has enough evidence for a chart topic
+ */
+export const usePostIdeationFeasibility = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeationFeasibility>>,
+    TError,
+    { slug: string; data: BodyType<IdeationFeasibilityInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postIdeationFeasibility>>,
+  TError,
+  { slug: string; data: BodyType<IdeationFeasibilityInput> },
+  TContext
+> => {
+  return useMutation(getPostIdeationFeasibilityMutationOptions(options));
+};
+
+/**
+ * Runs the existing per-archetype research pipeline for a single
+topic+question+archetype, inserts the result as a draft chart
+whose provenance ties back to the ideation turn that produced
+it, and appends a confirmation message to the transcript.
+Locked Florence CEs reject this with 409, mirroring regenerate.
+
+ * @summary Generate a draft chart from an approved ideation topic
+ */
+export const getPostIdeationGenerateChartUrl = (slug: string) => {
+  return `/api/ces/${slug}/ideation/generate-chart`;
+};
+
+export const postIdeationGenerateChart = async (
+  slug: string,
+  ideationGenerateChartInput: IdeationGenerateChartInput,
+  options?: RequestInit,
+): Promise<IdeationGeneratedChart> => {
+  return customFetch<IdeationGeneratedChart>(
+    getPostIdeationGenerateChartUrl(slug),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ideationGenerateChartInput),
+    },
+  );
+};
+
+export const getPostIdeationGenerateChartMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeationGenerateChart>>,
+    TError,
+    { slug: string; data: BodyType<IdeationGenerateChartInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postIdeationGenerateChart>>,
+  TError,
+  { slug: string; data: BodyType<IdeationGenerateChartInput> },
+  TContext
+> => {
+  const mutationKey = ["postIdeationGenerateChart"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postIdeationGenerateChart>>,
+    { slug: string; data: BodyType<IdeationGenerateChartInput> }
+  > = (props) => {
+    const { slug, data } = props ?? {};
+
+    return postIdeationGenerateChart(slug, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostIdeationGenerateChartMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postIdeationGenerateChart>>
+>;
+export type PostIdeationGenerateChartMutationBody =
+  BodyType<IdeationGenerateChartInput>;
+export type PostIdeationGenerateChartMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Generate a draft chart from an approved ideation topic
+ */
+export const usePostIdeationGenerateChart = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postIdeationGenerateChart>>,
+    TError,
+    { slug: string; data: BodyType<IdeationGenerateChartInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postIdeationGenerateChart>>,
+  TError,
+  { slug: string; data: BodyType<IdeationGenerateChartInput> },
+  TContext
+> => {
+  return useMutation(getPostIdeationGenerateChartMutationOptions(options));
 };
 
 /**

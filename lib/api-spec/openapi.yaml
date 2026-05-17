@@ -1194,6 +1194,104 @@ paths:
       responses:
         "204":
           description: Cleared
+  /ces/{slug}/ideation/feasibility:
+    post:
+      operationId: postIdeationFeasibility
+      tags: [ces]
+      summary: Check whether the CE has enough evidence for a chart topic
+      description: |
+        Topic-to-chart entry point. Persists a user turn (the topic + any
+        one-shot context) and an assistant turn whose `feasibility` field
+        carries a structured verdict (`ready` | `needs_more` |
+        `out_of_scope`) plus the specific missing data points the writer
+        should supply when more evidence is needed.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: |
+          Accepts `application/json` with `IdeationFeasibilityInput`. A
+          `multipart/form-data` variant with the same `topic` + optional
+          `contextText` + `contextPdf` file exists at runtime for PDF
+          uploads but is intentionally omitted from the spec because
+          Orval's Zod generator can't model `Blob` bodies — call it via
+          `fetch` + `FormData` from the client (mirrors the existing
+          `POST /ces/{slug}/ideation` PDF upload pattern).
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeationFeasibilityInput"
+      responses:
+        "200":
+          description: Assistant turn carrying the feasibility verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeationMessage"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Feasibility check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/ideation/generate-chart:
+    post:
+      operationId: postIdeationGenerateChart
+      tags: [ces]
+      summary: Generate a draft chart from an approved ideation topic
+      description: |
+        Runs the existing per-archetype research pipeline for a single
+        topic+question+archetype, inserts the result as a draft chart
+        whose provenance ties back to the ideation turn that produced
+        it, and appends a confirmation message to the transcript.
+        Locked Florence CEs reject this with 409, mirroring regenerate.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdeationGenerateChartInput"
+      responses:
+        "200":
+          description: The new draft chart + the confirmation transcript turn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeationGeneratedChart"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Locked CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Chart generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /triage/questions:
     get:
       operationId: listQuestionTroubleScores
@@ -1505,12 +1603,21 @@ components:
           type: string
         content:
           type: string
+        kind:
+          type: string
+          description: |
+            Turn kind — `"chat"` for free-form ideation turns, `"topic"`
+            for the structured topic-to-chart flow. Defaults to "chat".
         proposals:
           type: array
           nullable: true
           items:
             type: object
             additionalProperties: true
+        feasibility:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/FeasibilityVerdict"
         createdAt:
           type: string
       required:
@@ -1527,6 +1634,112 @@ components:
         writerId:
           type: string
       required:
+        - message
+    FeasibilityVerdict:
+      type: object
+      description: |
+        Structured feasibility check for a proposed chart topic. Returned
+        by `POST /ces/{slug}/ideation/feasibility` and persisted on the
+        assistant turn so the panel can re-render verdict cards from
+        history.
+      properties:
+        verdict:
+          type: string
+          enum: [ready, needs_more, out_of_scope]
+        topic:
+          type: string
+          description: The writer-supplied topic (normalised, sentence case).
+        question:
+          type: string
+          description: Visitor-facing question the chart would answer.
+        archetype:
+          type: string
+          description: Recommended chart archetype id.
+        rationale:
+          type: string
+          description: One- or two-sentence explanation of the verdict.
+        missing_data:
+          type: array
+          description: |
+            Specific data points the writer needs to supply for a
+            `needs_more` verdict. Empty for `ready`/`out_of_scope`.
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              hint:
+                type: string
+            required:
+              - label
+        drd_snippets:
+          type: array
+          items:
+            type: string
+        web_sources:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              url:
+                type: string
+            required:
+              - title
+              - url
+        generated_chart_id:
+          type: integer
+          nullable: true
+          description: |
+            Set once the writer clicks "Generate this chart" and the draft
+            is created. Lets the transcript deep-link to the draft card.
+      required:
+        - verdict
+        - topic
+        - rationale
+        - missing_data
+        - drd_snippets
+        - web_sources
+    IdeationFeasibilityInput:
+      type: object
+      properties:
+        topic:
+          type: string
+          minLength: 1
+        contextText:
+          type: string
+      required:
+        - topic
+    IdeationGenerateChartInput:
+      type: object
+      properties:
+        messageId:
+          type: integer
+          description: |
+            Optional id of the assistant turn that produced the
+            feasibility verdict. The new chart's provenance carries this
+            so writers can trace it back, and the turn is updated with
+            `generated_chart_id`.
+        topic:
+          type: string
+        question:
+          type: string
+        archetype:
+          type: string
+      required:
+        - topic
+        - question
+        - archetype
+    IdeationGeneratedChart:
+      type: object
+      properties:
+        chart:
+          $ref: "#/components/schemas/Chart"
+        message:
+          $ref: "#/components/schemas/IdeationMessage"
+      required:
+        - chart
         - message
     ChartWithCe:
       type: object

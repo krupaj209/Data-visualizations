@@ -28,6 +28,23 @@ export const ideationMessagesTable = pgTable("ideation_messages", {
    * `IdeationMessage.proposals` schema (array, not wrapper object).
    */
   proposals: jsonb("proposals").$type<Record<string, unknown>[] | null>(),
+  /**
+   * Optional structured feasibility verdict attached to assistant turns
+   * produced by the topic-to-chart flow. Stored as a `FeasibilityVerdict`
+   * (mirrors the OpenAPI schema) — null for free-form chat turns.
+   *
+   * Shape: `{ verdict, topic, question?, archetype?, rationale,
+   *   missing_data[], drd_snippets[], web_sources[], generated_chart_id? }`.
+   * `generated_chart_id` is filled in after the writer clicks "Generate"
+   * so the transcript stays linked to its draft chart.
+   */
+  feasibility: jsonb("feasibility").$type<Record<string, unknown> | null>(),
+  /**
+   * Turn kind. `"chat"` for legacy free-form ideation turns, `"topic"`
+   * for the structured topic-to-chart flow. Defaults to "chat" so old
+   * rows stay valid.
+   */
+  kind: text("kind").notNull().default("chat"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

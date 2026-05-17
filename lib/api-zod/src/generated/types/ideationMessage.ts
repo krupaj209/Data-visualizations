@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FeasibilityVerdict } from "./feasibilityVerdict";
 import type { IdeationMessageProposalsItem } from "./ideationMessageProposalsItem";
 
 export interface IdeationMessage {
@@ -12,6 +13,11 @@ export interface IdeationMessage {
   ceId: number;
   role: string;
   content: string;
+  /** Turn kind — `"chat"` for free-form ideation turns, `"topic"`
+for the structured topic-to-chart flow. Defaults to "chat".
+ */
+  kind?: string;
   proposals?: IdeationMessageProposalsItem[] | null;
+  feasibility?: FeasibilityVerdict | null;
   createdAt: string;
 }

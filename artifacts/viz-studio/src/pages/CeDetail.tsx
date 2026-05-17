@@ -36,6 +36,7 @@ import {
   useCreateChartFromTopic,
   useGetIdeation,
   useClearIdeation,
+  usePostIdeationGenerateChart,
   useUpsertChartFactReview,
   useClearChartFactReview,
   useGetCeIntelligence,
@@ -3534,6 +3535,10 @@ function IdeationPanel({
   const { data: messages = [], isLoading } = useGetIdeation(slug);
   const clearMut = useClearIdeation();
   const qc = useQueryClient();
+  // "chat" = legacy free-form ideation. "topic" = topic-to-chart flow that
+  // first asks the assistant for a structured feasibility verdict (ready /
+  // needs_more / out_of_scope) before generating anything.
+  const [mode, setMode] = useState<"chat" | "topic">("topic");
   const [draft, setDraft] = useState("");
   const [contextText, setContextText] = useState("");
   const [contextPdf, setContextPdf] = useState<File | null>(null);
@@ -3590,11 +3595,15 @@ function IdeationPanel({
     }, CLIENT_TIMEOUT_MS);
 
     try {
-      const url = `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation`;
+      const url =
+        mode === "topic"
+          ? `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation/feasibility`
+          : `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation`;
+      const messageField = mode === "topic" ? "topic" : "message";
       let res: Response;
       if (ctxText || ctxPdf) {
         const fd = new FormData();
-        fd.append("message", text);
+        fd.append(messageField, text);
         if (ctxText) fd.append("contextText", ctxText);
         if (ctxPdf) fd.append("contextPdf", ctxPdf);
         res = await fetch(url, {
@@ -3606,7 +3615,7 @@ function IdeationPanel({
         res = await fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ [messageField]: text }),
           signal: controller.signal,
         });
       }
@@ -3744,14 +3753,29 @@ function IdeationPanel({
               lineHeight: 1.5,
             }}
           >
-            Brainstorm chart ideas with the AI partner. It knows your DRD and
-            existing deck. Ask things like "what charts would help peak-season
-            visitors?" or "is there a better question for the duration chart?"
+            {mode === "topic" ? (
+              <>
+                Suggest a chart topic (e.g. "weekend vs weekday wait times" or
+                "rooftop ticket tiers"). The assistant checks your DRD + live
+                web sources, returns a feasibility verdict, and — if there's
+                enough evidence — generates the chart into your draft deck in
+                one click. If something's missing, it tells you exactly which
+                data points to paste or upload.
+              </>
+            ) : (
+              <>
+                Brainstorm chart ideas with the AI partner. It knows your DRD
+                and existing deck. Ask things like "what charts would help
+                peak-season visitors?" or "is there a better question for the
+                duration chart?"
+              </>
+            )}
           </div>
         )}
         {messages.map((m) => (
           <IdeationBubble
             key={m.id}
+            slug={slug}
             message={m}
             onUseProposal={onUseProposal}
           />
@@ -3965,11 +3989,48 @@ function IdeationPanel({
       )}
 
       <form onSubmit={handleSend} className="flex flex-col gap-2">
+        <div
+          className="flex items-center gap-1"
+          style={{
+            background: BRAND.slate50,
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 999,
+            padding: 3,
+            alignSelf: "flex-start",
+          }}
+        >
+          {(["topic", "chat"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              disabled={isSending}
+              style={{
+                background: mode === m ? BRAND.purps : "transparent",
+                color: mode === m ? "white" : BRAND.slate700,
+                border: "none",
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.02em",
+                textTransform: "uppercase",
+                cursor: isSending ? "not-allowed" : "pointer",
+              }}
+            >
+              {m === "topic" ? "Suggest a topic" : "Free-form chat"}
+            </button>
+          ))}
+        </div>
         <div className="flex items-end gap-2">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Ask for chart ideas, critique, archetype matches…"
+            placeholder={
+              mode === "topic"
+                ? 'Topic for a new chart — e.g. "weekend vs weekday wait times"'
+                : "Ask for chart ideas, critique, archetype matches…"
+            }
             rows={2}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -4036,13 +4097,16 @@ function IdeationPanel({
 }
 
 function IdeationBubble({
+  slug,
   message,
   onUseProposal,
 }: {
+  slug: string;
   message: IdeationMessage;
   onUseProposal?: (p: { topic: string; archetype?: string }) => void;
 }) {
   const isUser = message.role === "user";
+  const feasibility = message.feasibility ?? null;
   // Backend now persists proposals as a raw array (see #ces.ts ideation
   // route). Older rows might still carry the legacy `{items: [...]}` shape
   // — keep the fallback so historical transcripts still render.
@@ -4083,6 +4147,9 @@ function IdeationBubble({
       >
         {display || "(empty)"}
       </div>
+      {feasibility && (
+        <FeasibilityCard slug={slug} message={message} feasibility={feasibility} />
+      )}
       {items.length > 0 && (
         <div className="flex flex-col gap-1.5 w-full">
           {items.map((raw, i) => {
@@ -4167,6 +4234,279 @@ function IdeationBubble({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function FeasibilityCard({
+  slug,
+  message,
+  feasibility,
+}: {
+  slug: string;
+  message: IdeationMessage;
+  feasibility: NonNullable<IdeationMessage["feasibility"]>;
+}) {
+  const qc = useQueryClient();
+  const generateMut = usePostIdeationGenerateChart();
+  const [error, setError] = useState<string | null>(null);
+
+  const verdict = feasibility.verdict;
+  const generatedId = feasibility.generated_chart_id ?? null;
+  const tone =
+    verdict === "ready"
+      ? { bg: "#E8F8EE", fg: "#0A6B3A", border: "#9FE0BA", label: "Ready to generate" }
+      : verdict === "needs_more"
+      ? { bg: BRAND.holaSoft, fg: "#7A4400", border: "#FFC97A", label: "Needs more data" }
+      : {
+          bg: BRAND.slate100,
+          fg: BRAND.slate700,
+          border: BRAND.slate200,
+          label: "Out of scope",
+        };
+
+  const canGenerate =
+    verdict === "ready" &&
+    !generatedId &&
+    !!feasibility.archetype &&
+    !!feasibility.question;
+
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
+    setError(null);
+    try {
+      await generateMut.mutateAsync({
+        slug,
+        data: {
+          messageId: message.id,
+          topic: feasibility.topic,
+          question: feasibility.question ?? feasibility.topic,
+          archetype: feasibility.archetype!,
+        },
+      });
+      qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+      qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not generate the draft chart.",
+      );
+    }
+  };
+
+  return (
+    <div
+      style={{
+        background: "white",
+        border: `1px solid ${tone.border}`,
+        borderRadius: 12,
+        padding: 12,
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          style={{
+            background: tone.bg,
+            color: tone.fg,
+            border: `1px solid ${tone.border}`,
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {tone.label}
+        </span>
+        {feasibility.archetype && (
+          <span
+            style={{
+              color: BRAND.purps,
+              fontWeight: 800,
+              fontSize: 10,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {feasibility.archetype}
+          </span>
+        )}
+      </div>
+      <div>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 800,
+            color: BRAND.slate950,
+            marginBottom: 2,
+          }}
+        >
+          {feasibility.topic}
+        </div>
+        {feasibility.question && (
+          <div
+            style={{
+              fontSize: 12,
+              color: BRAND.slate700,
+              fontWeight: 600,
+            }}
+          >
+            {feasibility.question}
+          </div>
+        )}
+      </div>
+      {feasibility.rationale && (
+        <div
+          style={{
+            fontSize: 12,
+            color: BRAND.slate700,
+            lineHeight: 1.5,
+          }}
+        >
+          {feasibility.rationale}
+        </div>
+      )}
+      {feasibility.missing_data.length > 0 && (
+        <div
+          style={{
+            background: BRAND.slate50,
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 8,
+            padding: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: BRAND.slate700,
+              marginBottom: 6,
+            }}
+          >
+            Paste or upload these to retry
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              padding: 0,
+              listStyle: "none",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            {feasibility.missing_data.map((m, i) => (
+              <li key={i} style={{ fontSize: 12, color: BRAND.slate950 }}>
+                <span style={{ fontWeight: 700 }}>{m.label}</span>
+                {m.hint && (
+                  <span style={{ color: BRAND.slate700, fontWeight: 500 }}>
+                    {" "}
+                    — {m.hint}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {feasibility.web_sources.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: BRAND.slate700,
+            }}
+          >
+            Sources
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {feasibility.web_sources.slice(0, 6).map((s, i) => (
+              <a
+                key={i}
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: 11,
+                  color: BRAND.purps,
+                  textDecoration: "underline",
+                  fontWeight: 600,
+                  maxWidth: 240,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={s.url}
+              >
+                {s.title || s.url}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        {generatedId ? (
+          <span
+            style={{
+              background: BRAND.purpsSoft,
+              color: BRAND.purps,
+              border: `1px solid ${BRAND.purpsSoft}`,
+              padding: "6px 10px",
+              borderRadius: 8,
+              fontSize: 11,
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <CheckCircle2 size={12} />
+            Draft chart #{generatedId} added to deck
+          </span>
+        ) : canGenerate ? (
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generateMut.isPending}
+            style={{
+              background: BRAND.purps,
+              color: "white",
+              border: "none",
+              padding: "8px 12px",
+              borderRadius: 8,
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: generateMut.isPending ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              opacity: generateMut.isPending ? 0.7 : 1,
+            }}
+          >
+            {generateMut.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Sparkles size={12} />
+            )}
+            {generateMut.isPending ? "Generating…" : "Generate this chart"}
+          </button>
+        ) : null}
+        {error && (
+          <span style={{ fontSize: 11, color: BRAND.candy, fontWeight: 700 }}>
+            {error}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

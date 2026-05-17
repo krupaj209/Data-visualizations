@@ -26,8 +26,15 @@ import {
 import { openai } from "../lib/openai";
 import {
   runResearchPipeline,
+  generateOneChart,
   type ExistingChartSnapshot,
 } from "../lib/research-pipeline";
+import {
+  checkTopicFeasibility,
+  formatVerdictForTranscript,
+  type FeasibilityVerdict,
+} from "../lib/ideation-feasibility";
+import { isImplementedArchetype } from "@workspace/question-bank";
 import {
   loadRegenConstraints,
   parseFeedback,
@@ -166,8 +173,10 @@ function serializeIdeation(m: IdeationMessage) {
     id: m.id,
     ceId: m.ceId,
     role: m.role,
+    kind: m.kind ?? "chat",
     content: m.content,
     proposals: m.proposals ?? null,
+    feasibility: (m.feasibility ?? null) as Record<string, unknown> | null,
     createdAt: m.createdAt.toISOString(),
   };
 }
@@ -1013,6 +1022,364 @@ Sentence case for all visitor-facing copy. Keep replies under 200 words.`;
     return;
   }
   res.json(serializeIdeation(stored));
+  },
+);
+
+/* -------------------------------------------------------------------------- */
+/* Topic-to-chart flow: feasibility check + one-click chart generation         */
+/* -------------------------------------------------------------------------- */
+
+const feasibilityBody = z.object({
+  topic: z.string().trim().min(1).max(400),
+  contextText: z.string().max(200_000).optional(),
+});
+
+router.post(
+  "/ces/:slug/ideation/feasibility",
+  ideationUpload.single("contextPdf"),
+  async (req, res): Promise<void> => {
+    const params = GetCeParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const parsed = feasibilityBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, params.data.slug));
+    if (!ce) {
+      res.status(404).json({ error: "CE not found" });
+      return;
+    }
+
+    let pdfText = "";
+    if (req.file) {
+      try {
+        pdfText = await extractPdfToMarkdown(req.file.buffer);
+      } catch (err) {
+        res.status(400).json({
+          error: err instanceof Error ? err.message : "Could not read PDF",
+        });
+        return;
+      }
+    }
+    const contextParts: string[] = [];
+    if (parsed.data.contextText?.trim()) {
+      contextParts.push(
+        `[Pasted context]\n${parsed.data.contextText.trim().slice(0, 60_000)}`,
+      );
+    }
+    if (pdfText) {
+      contextParts.push(
+        `[PDF: ${req.file?.originalname ?? "context.pdf"}]\n${pdfText.slice(0, 60_000)}`,
+      );
+    }
+    const extraContext = contextParts.join("\n\n");
+
+    // Persist the writer's topic as a structured user turn so the
+    // transcript shows it as a verdict request rather than a chat line.
+    const userContent =
+      contextParts.length > 0
+        ? `Topic: ${parsed.data.topic}\n\n_(attached ${contextParts.length} context source${
+            contextParts.length === 1 ? "" : "s"
+          })_`
+        : `Topic: ${parsed.data.topic}`;
+    await db.insert(ideationMessagesTable).values({
+      ceId: ce.id,
+      role: "user",
+      kind: "topic",
+      content: userContent,
+    });
+
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    const existing = await db
+      .select({
+        question: chartsTable.question,
+        chartType: chartsTable.chartType,
+      })
+      .from(chartsTable)
+      .where(eq(chartsTable.ceId, ce.id));
+
+    const startedAt = Date.now();
+    req.log.info(
+      {
+        ceSlug: ce.slug,
+        topic: parsed.data.topic,
+        hasContextText: Boolean(parsed.data.contextText?.trim()),
+        hasPdf: Boolean(req.file),
+      },
+      "ideation feasibility check started",
+    );
+
+    let verdict: FeasibilityVerdict;
+    try {
+      verdict = await checkTopicFeasibility({
+        ce: { name: ce.name, city: ce.city, country: ce.country, slug: ce.slug },
+        topic: parsed.data.topic,
+        drdMarkdown: drd?.markdown ?? "",
+        ...(extraContext ? { extraContext } : {}),
+        existingCharts: existing,
+      });
+    } catch (err) {
+      req.log.error(
+        { err, ceSlug: ce.slug, durationMs: Date.now() - startedAt },
+        "feasibility check failed",
+      );
+      const reason = err instanceof Error ? err.message : "unknown error";
+      const fallback = `Sorry — couldn't check feasibility just now (${reason}). Try again in a moment.`;
+      const [stored] = await db
+        .insert(ideationMessagesTable)
+        .values({
+          ceId: ce.id,
+          role: "assistant",
+          kind: "topic",
+          content: fallback,
+        })
+        .returning();
+      if (!stored) {
+        res.status(502).json({ error: "Feasibility check failed" });
+        return;
+      }
+      res.status(200).json(serializeIdeation(stored));
+      return;
+    }
+
+    req.log.info(
+      {
+        ceSlug: ce.slug,
+        verdict: verdict.verdict,
+        archetype: verdict.archetype,
+        missingCount: verdict.missing_data.length,
+        durationMs: Date.now() - startedAt,
+      },
+      "ideation feasibility check finished",
+    );
+
+    const [stored] = await db
+      .insert(ideationMessagesTable)
+      .values({
+        ceId: ce.id,
+        role: "assistant",
+        kind: "topic",
+        content: formatVerdictForTranscript(verdict),
+        feasibility: verdict as unknown as Record<string, unknown>,
+      })
+      .returning();
+    if (!stored) {
+      res.status(500).json({ error: "Failed to store feasibility verdict" });
+      return;
+    }
+    res.json(serializeIdeation(stored));
+  },
+);
+
+const ideationGenerateBody = z.object({
+  topic: z.string().trim().min(1).max(400),
+  question: z.string().trim().min(1).max(280),
+  archetype: z.string().trim().min(1).max(60),
+  messageId: z.number().int().positive().optional(),
+});
+
+router.post(
+  "/ces/:slug/ideation/generate-chart",
+  async (req, res): Promise<void> => {
+    const params = GetCeParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const body = ideationGenerateBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: body.error.message });
+      return;
+    }
+    if (LOCKED_CE_SLUGS.has(params.data.slug)) {
+      res.status(409).json({
+        error:
+          "This CE has a hand-curated chart set and cannot accept generated drafts.",
+      });
+      return;
+    }
+    const archetypeId = body.data.archetype as ChartArchetypeId;
+    if (!(archetypeId in CHART_ARCHETYPES) || !isImplementedArchetype(archetypeId)) {
+      res.status(400).json({ error: `Unsupported archetype: ${body.data.archetype}` });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, params.data.slug));
+    if (!ce) {
+      res.status(404).json({ error: "CE not found" });
+      return;
+    }
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    if (!drd?.markdown?.trim()) {
+      res
+        .status(400)
+        .json({ error: "This CE has no Deep Research Doc — upload one first." });
+      return;
+    }
+
+    const startedAt = Date.now();
+    req.log.info(
+      {
+        ceSlug: ce.slug,
+        topic: body.data.topic,
+        archetype: archetypeId,
+        messageId: body.data.messageId,
+      },
+      "ideation chart generation started",
+    );
+
+    let generated;
+    try {
+      generated = await generateOneChart(
+        {
+          ce: { name: ce.name, city: ce.city, country: ce.country, slug: ce.slug },
+          subcategoryId: inferSubcategoryId(ce),
+          drdMarkdown: drd.markdown,
+        },
+        body.data.question,
+        archetypeId,
+      );
+    } catch (err) {
+      req.log.error(
+        { err, ceSlug: ce.slug, durationMs: Date.now() - startedAt },
+        "ideation chart generation failed",
+      );
+      res.status(502).json({
+        error:
+          err instanceof Error
+            ? `Chart generation failed: ${err.message}`
+            : "Chart generation failed",
+      });
+      return;
+    }
+
+    try {
+      const persisted = await db.transaction(async (tx) => {
+        const slugBase = (generated.spec.slug ?? "ideation-chart").slice(0, 60);
+        const dedupedSlug = `${slugBase}-${Date.now().toString(36)}`;
+
+        // Insert at the end of the draft stack (sortOrder >= 1000) so the
+        // ideation-generated chart sits alongside any pipeline drafts and
+        // doesn't disturb published rows.
+        const [maxRow] = await tx
+          .select({ max: sql<number | null>`MAX(${chartsTable.sortOrder})` })
+          .from(chartsTable)
+          .where(eq(chartsTable.ceId, ce.id));
+        const nextSort = Math.max(1000, (maxRow?.max ?? 0) + 1);
+
+        const [inserted] = await tx
+          .insert(chartsTable)
+          .values({
+            ceId: ce.id,
+            slug: dedupedSlug,
+            question: generated.spec.question,
+            title: generated.spec.title,
+            subtitle: generated.spec.subtitle,
+            insight: generated.spec.insight,
+            chartType: generated.spec.spec.type,
+            spec: generated.spec.spec as unknown as Record<string, unknown>,
+            status: "draft",
+            provenance: {
+              ...generated.provenance,
+              source_question: body.data.question,
+              recommended_archetype: archetypeId,
+              source: "ideation",
+              ideation_topic: body.data.topic,
+              ...(body.data.messageId
+                ? { ideation_message_id: body.data.messageId }
+                : {}),
+            } as Record<string, unknown>,
+            sortOrder: nextSort,
+          })
+          .returning();
+        if (!inserted) throw new Error("Failed to insert generated chart");
+
+        // Link the originating feasibility turn to the new chart.
+        if (body.data.messageId) {
+          const [prior] = await tx
+            .select()
+            .from(ideationMessagesTable)
+            .where(eq(ideationMessagesTable.id, body.data.messageId));
+          if (prior && prior.ceId === ce.id) {
+            const nextFeasibility = {
+              ...(prior.feasibility ?? {}),
+              generated_chart_id: inserted.id,
+            };
+            await tx
+              .update(ideationMessagesTable)
+              .set({ feasibility: nextFeasibility })
+              .where(eq(ideationMessagesTable.id, body.data.messageId));
+          }
+        }
+
+        const confirmation = `Generated draft chart **${inserted.title}** — visible in the deck below as a draft.`;
+        const [confirmRow] = await tx
+          .insert(ideationMessagesTable)
+          .values({
+            ceId: ce.id,
+            role: "assistant",
+            kind: "topic",
+            content: confirmation,
+            feasibility: {
+              verdict: "ready",
+              topic: body.data.topic,
+              question: body.data.question,
+              archetype: archetypeId,
+              rationale: "Draft generated and added to the deck.",
+              missing_data: [],
+              drd_snippets: [],
+              web_sources: [],
+              generated_chart_id: inserted.id,
+            },
+          })
+          .returning();
+        if (!confirmRow) throw new Error("Failed to store confirmation turn");
+
+        return { chart: inserted, message: confirmRow };
+      });
+
+      req.log.info(
+        {
+          ceSlug: ce.slug,
+          chartId: persisted.chart.id,
+          durationMs: Date.now() - startedAt,
+        },
+        "ideation chart generation finished",
+      );
+
+      res.json({
+        chart: serializeChart(persisted.chart),
+        message: serializeIdeation(persisted.message),
+      });
+    } catch (err) {
+      req.log.error(
+        { err, ceSlug: ce.slug },
+        "failed to persist ideation-generated chart",
+      );
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Failed to persist generated chart: ${err.message}`
+            : "Failed to persist generated chart",
+      });
+    }
   },
 );
 
