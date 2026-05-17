@@ -4344,6 +4344,10 @@ function VerifyResult({
 /* New-chart form                                                              */
 /* -------------------------------------------------------------------------- */
 
+// Task #163: `entrance_lanes` is the canonical line/lane chart now.
+// `queue_compare` is intentionally NOT in this picker — it's marked
+// implemented:false in the archetype registry so the server-side
+// ideation router would reject it anyway.
 const ARCHETYPE_OPTIONS = [
   "weekly_pattern",
   "hourly_heatmap",
@@ -4354,6 +4358,7 @@ const ARCHETYPE_OPTIONS = [
   "compare_zones",
   "donut_breakdown",
   "ticket_ladder",
+  "entrance_lanes",
   "route_profile",
   "history_timeline",
 ];

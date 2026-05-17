@@ -206,12 +206,36 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
   /* ---------------- reserved for sibling tasks ---------------- */
   queue_compare: {
     id: "queue_compare",
-    label: "Queue compare",
+    label: "Queue compare (legacy)",
     answers: "Which entry lane is fastest at the moment?",
     data_shape: [
       "2-5 named lanes with a wait label and a comparable wait dot count",
     ],
     typical_subcategories: ["landmarks", "museums", "religious_sites"],
+    interactive: false,
+    // Task #163: superseded by `entrance_lanes` (the Accademia "Choose the
+    // right entry lane" pattern — shared-doorway header, longer-wait arrow,
+    // lanes drawn as visual stacks with wait pills). Schema + renderer stay
+    // so already-published `queue_compare` charts keep rendering, but the
+    // assembler, ideation router, and Add-a-chart picker treat this as
+    // unavailable for new charts.
+    implemented: false,
+  },
+  entrance_lanes: {
+    id: "entrance_lanes",
+    label: "Entrance lanes",
+    answers:
+      "Which entrance / lane is fastest for me, and how do the others compare?",
+    data_shape: [
+      "Shared venue/doorway label + one-line shared caption",
+      "2-5 named lanes, each with wait label, tone, comparable wait dots, and optional who/wait_peak/wait_off_peak/how detail",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "religious_sites",
+      "theme_parks",
+    ],
     interactive: false,
     implemented: true,
   },

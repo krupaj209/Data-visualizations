@@ -410,6 +410,33 @@ test("assembleDeck: 'mute' override forces fallback to the next viable candidate
   );
 });
 
+test("Task #163: assembler never emits queue_compare for any page template", () => {
+  // Walk every page template against several representative DRDs. Whichever
+  // signals are present, `queue_compare` must never be selected because
+  // it's flagged implemented:false in the archetype registry. If a line/
+  // lane question is asked, `entrance_lanes` should win the slot.
+  const drds = [COLOSSEUM_DRD, VATICAN_DRD];
+  for (const pageType of Object.keys(PAGE_TEMPLATES) as Array<
+    keyof typeof PAGE_TEMPLATES
+  >) {
+    for (const drd of drds) {
+      const signals = extractSignals(drd);
+      const deck = assembleDeck({
+        ceName: "Test CE",
+        signals,
+        pageType,
+      });
+      for (const sel of deck.selected) {
+        assert.notEqual(
+          sel.archetype as ChartArchetypeId,
+          "queue_compare",
+          `pageType=${pageType}: assembler returned retired queue_compare archetype`,
+        );
+      }
+    }
+  }
+});
+
 test("assembleDeck: candidates left untouched by overrides keep override_source='code'", () => {
   const signals = extractSignals(COLOSSEUM_DRD);
   const categoryOverrides: OverrideAction[] = [

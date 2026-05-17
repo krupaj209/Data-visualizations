@@ -207,7 +207,10 @@ export const questionGraph: Record<string, QuestionGraphNode> = {
 
   queue_compare: {
     questionId: "queue_compare",
-    chartTypes: ["queue_compare", "time_value_matrix"],
+    // Task #163: `entrance_lanes` is the canonical line/lane chart now.
+    // `queue_compare` stays in the list so any already-published queue_compare
+    // chart can still satisfy this node when the deck builder reuses it.
+    chartTypes: ["entrance_lanes", "queue_compare", "time_value_matrix"],
     archetype: "value",
     headlineTemplate: "Standard Queue vs Skip-the-Line",
     subheadlineTemplate: "The time you'll save, hour by hour",

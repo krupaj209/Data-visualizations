@@ -26,7 +26,10 @@ export const skipTheLineTemplate: PageDeckTemplate = {
       description: "Queue time comparison: standard vs skip-the-line",
       questionPool: ["queue_compare", "weekly_pattern", "hourly_heatmap"],
       maxQuestions: 1,
-      preferredChartTypes: ["queue_compare"],
+      // Task #163: `entrance_lanes` is the canonical line/lane chart now.
+      // `queue_compare` is retained as a fallback so any already-published
+      // queue_compare chart can still satisfy this section.
+      preferredChartTypes: ["entrance_lanes", "queue_compare"],
       layout: "hero",
       supportsPersonalization: true,
     },

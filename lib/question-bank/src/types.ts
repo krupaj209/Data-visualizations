@@ -12,6 +12,7 @@ export type ChartArchetypeId =
   | "seasonal_curve"
   | "ticket_ladder"
   | "queue_compare"
+  | "entrance_lanes"
   | "duration_stat"
   | "ride_wait_curve"
   | "opening_hour_rank"

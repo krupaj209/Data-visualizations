@@ -67,11 +67,21 @@ SOURCING: The 12 monthly crowd scores MUST be grounded in a real seasonality sig
   //   no longer asks Gemini for new ticket_ladder specs.
 
   /* ---------------- implemented today ---------------- */
-  queue_compare: `{ "type": "queue_compare",
-  "venue_label": "<short venue name, ≤80 chars>",
-  "shared_caption": "<one-line context shared across lanes, ≤160 chars>",
-  "lanes": [ { "name": "<lane name>", "wait_label": "<e.g. ~10 min>", "tone": "<candy|purps|okay|slate>", "dots": <int 0-40, comparable across lanes>, "dashed"?: <bool, true for closed/skip-only lanes>, "who"?: "<who uses this lane, ≤160 chars>", "wait_peak"?: "...", "wait_off_peak"?: "...", "how"?: "..." }, ... 2-5 items ] }
-Use 'tone' to encode speed: candy = longest, slate/okay = fastest. 'dots' should scale linearly with wait time so lanes are visually comparable. Reserve 'dashed':true for lanes that are conditional (closed, members-only).`,
+  queue_compare: STUB("queue_compare"),
+  // ^ STUB (Task #163): superseded by `entrance_lanes`. Schema + renderer
+  //   retained so existing curated/published `queue_compare` charts keep
+  //   rendering, but the orchestrator no longer asks Gemini for new
+  //   `queue_compare` specs — any line/lane/entrance topic now routes to
+  //   `entrance_lanes` (the Accademia "Choose the right entry lane"
+  //   pattern: shared-doorway header, longer-wait arrow, lanes drawn as
+  //   visual stacks with wait pills).
+
+  entrance_lanes: `{ "type": "entrance_lanes",
+  "venue_label": "<short venue / doorway name, ≤80 chars — e.g. 'Galleria dell'Accademia · Via Ricasoli 58/60'>",
+  "shared_caption": "<one-line context shared across lanes, ≤160 chars — e.g. 'All lanes funnel through the same doorway. Pick the right line to the right of the door.'>",
+  "lanes": [ { "name": "<lane name, ≤60 chars>", "wait_label": "<e.g. ~10 min or 60-90 min>", "tone": "<candy|purps|okay|slate>", "dots": <int 0-40, comparable across lanes>, "dashed"?: <bool, true for closed / skip-only / conditional lanes>, "who"?: "<who uses this lane, ≤160 chars>", "wait_peak"?: "<peak-season wait, ≤40 chars>", "wait_off_peak"?: "<off-season wait, ≤40 chars>", "how"?: "<how to pick this lane / what to show, ≤200 chars>" }, ... 2-5 items ] }
+Canonical chart for ANY 'which lane / entrance / door is fastest' question — covers both single-doorway lane mixes (skip-the-line vs walk-up vs guided) AND cross-entrance comparisons (north gate vs south gate vs accessible entrance). Tone encodes speed: candy = longest wait, purps = long, okay = short, slate = fastest. Dots should scale linearly with wait so lanes stay visually comparable at a glance. Reserve 'dashed':true for conditional lanes (closed today, members-only, group-only). Include 'who' / 'wait_peak' / 'wait_off_peak' / 'how' whenever the source supports it — they fuel the rich lane stack the Accademia deck uses. If a real visitor has no meaningful choice (only one lane exists) drop the chart instead.
+SOURCING: lane names + wait_label MUST come from the operator's official site, an official venue map, or recent (≤24 month) visitor reports. Generic "use the side line" advice without a named lane is not enough. If you can't ground at least 2 named lanes with materially different waits, DROP the chart rather than fabricate one. Tag every wait_label / wait_peak / wait_off_peak you estimated in provenance.estimates.`,
 
   duration_stat: STUB("duration_stat"),
   // ^ STUB (Task #67): superseded by duration_budget. Schema + renderer

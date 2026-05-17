@@ -1484,7 +1484,12 @@ function inferArchetype(topic: string): ChartArchetypeId | null {
   if (/\bbook|in advance|days before|sell out|sold out\b/.test(t)) return "booking_window";
   if (/\broute|routes|stop|stops|pier|piers|landmark coverage|itinerary|covers|coverage\b/.test(t)) return "route_profile";
   if (/\bduration|how long|takes|spend|time budget|plan to spend\b/.test(t)) return "duration_stat";
-  if (/\bticket|tier|price|pass|skip the line\b/.test(t)) return "ticket_ladder";
+  // Task #163: any line / lane / queue / entrance / fastest-door topic
+  // routes to `entrance_lanes` (the canonical Accademia "Choose the right
+  // entry lane" pattern). MUST run before the ticket_ladder regex below
+  // so "skip the line" doesn't get caught as a ticket-tier question.
+  if (/\b(lane|lanes|queue|queues|line|lines|wait|waits|entrance|entrances|gate|gates|door|doors|fastest entry|skip the line|skip-the-line|walk[- ]up|which entry|which entrance)\b/.test(t)) return "entrance_lanes";
+  if (/\bticket|tier|price|pass\b/.test(t)) return "ticket_ladder";
   if (/\bzone|hall|wing|area|room|gallery|section\b/.test(t)) return "compare_zones";
   if (/\bshare|breakdown|split|percentage|percent of\b/.test(t)) return "donut_breakdown";
   if (/\bdate|calendar|next \d+ (weeks|months|days)\b/.test(t)) return "month_calendar";
