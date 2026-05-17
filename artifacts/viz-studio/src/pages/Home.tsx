@@ -30,6 +30,36 @@ const QUICK_PICKS = [
   { name: "Statue of Liberty", city: "New York", country: "USA" },
 ];
 
+/**
+ * Mirror of the api-server's LOCKED_CE_SLUGS (artifacts/api-server/src/lib/
+ * locked-ces.ts). Curated CEs have hand-built chart decks and are immune to
+ * regeneration; we show them as a separate breakdown pill in the library
+ * header. Keep this list in sync if the server-side list changes.
+ */
+const CURATED_CE_SLUGS = new Set([
+  "galleria-dellaccademia",
+  "galleria-degli-uffizi",
+  "duomo-di-firenze",
+  "colosseum",
+  "vatican-museums",
+]);
+
+function formatTimeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return "just now";
+  const m = Math.floor(diffSec / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.floor(mo / 12)}y ago`;
+}
+
 export default function Home() {
   const { data: ces, isLoading } = useListCes();
   const [, navigate] = useLocation();
@@ -85,6 +115,43 @@ export default function Home() {
   const publishedCesCount = sortedCes.filter(
     (c) => (c.publishedCount ?? c.chartCount ?? 0) > 0,
   ).length;
+  const curatedCesCount = sortedCes.filter((c) =>
+    CURATED_CE_SLUGS.has(c.slug),
+  ).length;
+
+  // City clusters — group every CE by city, then sort by member count
+  // descending so the most-populous city (Florence, etc.) leads the row.
+  // Each cluster carries its own draft/published roll-up.
+  const cityClusters = useMemo(() => {
+    const byCity = new Map<
+      string,
+      { city: string; ces: Ce[]; published: number; drafts: number }
+    >();
+    for (const c of sortedCes) {
+      const key = c.city || "Unknown";
+      let bucket = byCity.get(key);
+      if (!bucket) {
+        bucket = { city: key, ces: [], published: 0, drafts: 0 };
+        byCity.set(key, bucket);
+      }
+      bucket.ces.push(c);
+      if ((c.publishedCount ?? c.chartCount ?? 0) > 0) bucket.published += 1;
+      if ((c.draftCount ?? 0) > 0) bucket.drafts += 1;
+    }
+    return Array.from(byCity.values()).sort(
+      (a, b) => b.ces.length - a.ces.length || a.city.localeCompare(b.city),
+    );
+  }, [sortedCes]);
+
+  // "Recently opened" = the four most-recently-touched CEs by `updatedAt`,
+  // which the api-server bumps on every CE / chart edit. Falls back to
+  // `createdAt` if `updatedAt` is missing (defensive — the API always
+  // returns both today).
+  const recentCes = useMemo(() => {
+    const tsOf = (c: Ce) =>
+      new Date(c.updatedAt ?? c.createdAt ?? 0).getTime() || 0;
+    return [...sortedCes].sort((a, b) => tsOf(b) - tsOf(a)).slice(0, 4);
+  }, [sortedCes]);
 
   function applyQuickPick(p: (typeof QUICK_PICKS)[number]) {
     setName(p.name);
@@ -582,9 +649,97 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Right column of the 2-col main grid — wraps Recently opened +
+            library list so they share a single grid cell. Without this
+            wrapper they'd become separate grid children and break the
+            `[420px_1fr]` layout on large screens. */}
+        <div className="flex flex-col gap-8 min-w-0">
+        {/* RECENTLY OPENED — surfaces the 4 most-recently-touched CEs as a
+            quick re-entry strip above the full library grid. Hidden until
+            data loads and until there are at least 2 CEs, so it doesn't
+            show up empty on a fresh install. */}
+        {!isLoading && recentCes.length >= 2 && (
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2
+                style={{
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: BRAND.slate950,
+                  letterSpacing: "-0.01em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Recently opened
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {recentCes.map((ce) => (
+                <Link
+                  key={ce.id}
+                  href={`/ce/${ce.slug}`}
+                  className="block rounded-2xl p-3 transition hover:-translate-y-0.5"
+                  style={{
+                    background: "white",
+                    border: `1px solid ${BRAND.slate100}`,
+                    boxShadow: "var(--shadow-soft)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: BRAND.bgLilac,
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 18,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {ce.emoji}
+                    </div>
+                    <div className="min-w-0">
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: BRAND.slate950,
+                          letterSpacing: "-0.01em",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {ce.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: BRAND.slate700,
+                          fontWeight: 600,
+                          marginTop: 1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {ce.city} ·{" "}
+                        {formatTimeAgo(ce.updatedAt ?? ce.createdAt ?? "")}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* CE LIST */}
         <section>
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
             <h2
               style={{
                 fontSize: 20,
@@ -637,6 +792,112 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Breakdown pills — curated/published/drafts roll-up shown as a
+              read-only summary strip under the header. The filter buttons
+              above remain the interactive control. */}
+          {!isLoading && sortedCes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-4">
+              <BreakdownPill
+                label="Curated"
+                count={curatedCesCount}
+                bg={BRAND.purpsSoft}
+                color={BRAND.purps}
+              />
+              <span style={{ color: BRAND.slate500, fontWeight: 700 }}>·</span>
+              <BreakdownPill
+                label="Published"
+                count={publishedCesCount}
+                bg={BRAND.bgMint}
+                color="#0E8F4E"
+              />
+              <span style={{ color: BRAND.slate500, fontWeight: 700 }}>·</span>
+              <BreakdownPill
+                label="Drafts"
+                count={draftCesCount}
+                bg={BRAND.holaSoft}
+                color={BRAND.slate950}
+              />
+            </div>
+          )}
+
+          {/* City clusters — at-a-glance roll-up of every city represented
+              in the library, with per-cluster draft/published counts. */}
+          {!isLoading && cityClusters.length > 0 && (
+            <div
+              className="rounded-2xl p-3 mb-4 flex flex-wrap gap-2"
+              style={{
+                background: "white",
+                border: `1px solid ${BRAND.slate100}`,
+              }}
+            >
+              {cityClusters.map((cluster) => (
+                <div
+                  key={cluster.city}
+                  style={{
+                    background: BRAND.slate50,
+                    border: `1px solid ${BRAND.slate100}`,
+                    borderRadius: 12,
+                    padding: "6px 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: BRAND.slate950,
+                      letterSpacing: "-0.005em",
+                    }}
+                  >
+                    {cluster.city}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: BRAND.slate700,
+                    }}
+                  >
+                    {cluster.ces.length} CE
+                    {cluster.ces.length === 1 ? "" : "s"}
+                  </span>
+                  {cluster.published > 0 && (
+                    <span
+                      title="Published"
+                      style={{
+                        background: BRAND.bgMint,
+                        color: "#0E8F4E",
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {cluster.published}P
+                    </span>
+                  )}
+                  {cluster.drafts > 0 && (
+                    <span
+                      title="Drafts"
+                      style={{
+                        background: BRAND.holaSoft,
+                        color: BRAND.slate950,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {cluster.drafts}D
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {isLoading ? (
             <div
               className="rounded-2xl p-8 text-center"
@@ -666,6 +927,7 @@ export default function Home() {
             </div>
           )}
         </section>
+        </div>
       </main>
     </div>
   );
@@ -712,6 +974,38 @@ function Field({
         }}
       />
     </label>
+  );
+}
+
+function BreakdownPill({
+  label,
+  count,
+  bg,
+  color,
+}: {
+  label: string;
+  count: number;
+  bg: string;
+  color: string;
+}) {
+  return (
+    <span
+      style={{
+        background: bg,
+        color,
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.01em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <span style={{ fontSize: 12 }}>{count}</span>
+      {label}
+    </span>
   );
 }
 

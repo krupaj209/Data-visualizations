@@ -1,0 +1,319 @@
+Phase 1: Fix the Data Bug (Immediate)
+Tell Replit agent:
+"The /studio/ page shows 'Your library 0 CEs' but the database has 19. This is a critical bug.
+Check the API endpoint that feeds the library — likely returning empty array or 404
+Check if the frontend is parsing the response correctly
+The cards in the screenshots (Colosseum, Thames, Duomo, Uffizi, Accademia) should appear here
+Fix first. Don't touch design until data appears."
+Phase 2: Evolved Design (After Data Fix)
+Here's the complete evolved page — copy-paste ready for Replit agent.
+Layout Structure
+plain
+Copy
+┌─────────────────────────────────────────────────────────────┐
+│  [headout]  Viz Studio    Question bank · Style guide · INTERNAL │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  ATTENTION (2)                                      │   │
+│  │  ⚠️ 3 drafts need review · 1 DRD stale              │   │
+│  │  [Review drafts] [Refresh data] [Dismiss]           │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌──────────────────────────────┐  ┌────────────────────┐ │
+│  │  GENERATE NEW                  │  │  YOUR LIBRARY (19) │ │
+│  │                                │  │  [All] [Pub] [Dft] │ │
+│  │  Attraction / experience       │  │                    │ │
+│  │  [________________________]    │  │  [Search library...]│ │
+│  │                                │  │                    │ │
+│  │  City          Country         │  │  ┌──────────────┐  │ │
+│  │  [__________]  [__________]    │  │  │ Colosseum    │  │ │
+│  │                                │  │  │ Rome, Italy  │  │ │
+│  │  [Attach DRD (optional)]       │  │  │ ● 7 charts   │  │ │
+│  │                                │  │  │ ↑ 12% views  │  │ │
+│  │  [Generate visualization set]  │  │  │ ◐ DRD 2d old │  │ │
+│  │         ↑ purple button        │  │  │ [Preview] [Copy]│ │
+│  │                                │  │  └──────────────┘  │ │
+│  │  Quick picks:                  │  │                    │ │
+│  │  [Vatican] [Eiffel] [Accademia]│  │  ┌──────────────┐  │ │
+│  │  [Seine] [Sagrada] [Liberty]   │  │  │ Accademia    │  │ │
+│  │                                │  │  │ Florence     │  │ │
+│  │                                │  │  │ ● 8 charts   │  │ │
+│  │                                │  │  │ ● Fresh      │  │ │
+│  │                                │  │  │ [Preview] [Copy]│ │
+│  └──────────────────────────────┘  │  └──────────────┘  │ │
+│                                    │                    │ │
+│                                    │  [View all 19 →]   │ │
+│                                    │                    │ │
+│                                    │  CITY CLUSTERS      │ │
+│                                    │  [Florence 4] [Rome│ │
+│                                    │  3] [Paris 3] ...  │ │
+│                                    └────────────────────┘ │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+Phase 3: Component Specs
+Attention Banner Component
+tsx
+Copy
+// artifacts/viz-studio/src/components/AttentionBanner.tsx
+
+import React from "react";
+
+interface AttentionItem {
+  id: string;
+  type: "drafts" | "stale" | "error" | "alert";
+  message: string;
+  ceSlug?: string;
+  count?: number;
+  actionLabel: string;
+  actionUrl?: string;
+}
+
+interface Props {
+  items: AttentionItem[];
+  onDismiss: (id: string) => void;
+  onAction: (item: AttentionItem) => void;
+}
+
+export const AttentionBanner: React.FC<<Props> = ({ items, onDismiss, onAction }) => {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-amber-900">
+          ⚠️ Attention ({items.length})
+        </h3>
+        <button 
+          onClick={() => items.forEach(i => onDismiss(i.id))}
+          className="text-xs text-amber-600 hover:text-amber-800"
+        >
+          Dismiss all
+        </button>
+      </div>
+      
+      <div className="space-y-2">
+        {items.map(item => (
+          <div key={item.id} className="flex items-center justify-between bg-white rounded-lg p-3">
+            <div className="flex items-center gap-3">
+              <span className={
+                item.type === "drafts" ? "text-blue-500" :
+                item.type === "stale" ? "text-amber-500" :
+                "text-red-500"
+              }>
+                {item.type === "drafts" && "📝"}
+                {item.type === "stale" && "⏰"}
+                {item.type === "error" && "❌"}
+                {item.type === "alert" && "⚠️"}
+              </span>
+              <span className="text-sm text-gray-700">{item.message}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onAction(item)}
+                className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700"
+              >
+                {item.actionLabel}
+              </button>
+              <button
+                onClick={() => onDismiss(item.id)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+Enhanced CE Card Component
+tsx
+Copy
+// artifacts/viz-studio/src/components/CECard.tsx
+
+import React from "react";
+
+interface CE {
+  slug: string;
+  name: string;
+  city: string;
+  country: string;
+  chartCount: number;
+  draftCount: number;
+  status: "locked" | "published" | "stale" | "drafts_waiting";
+  drdAgeDays: number;
+  embedViewsChange?: number; // percentage, e.g. 12 for +12%
+  thumbnailUrl?: string;
+}
+
+interface Props {
+  ce: CE;
+  onPreview: (slug: string) => void;
+  onCopyEmbed: (slug: string) => void;
+  onEdit: (slug: string) => void;
+}
+
+export const CECard: React.FC<<Props> = ({ ce, onPreview, onCopyEmbed, onEdit }) => {
+  const statusConfig = {
+    locked: { bg: "bg-purple-100", text: "text-purple-700", label: "LOCKED" },
+    published: { bg: "bg-green-100", text: "text-green-700", label: "PUBLISHED" },
+    stale: { bg: "bg-amber-100", text: "text-amber-700", label: "STALE" },
+    drafts_waiting: { bg: "bg-blue-100", text: "text-blue-700", label: "DRAFTS" },
+  };
+
+  const status = statusConfig[ce.status];
+  
+  const drdColor = ce.drdAgeDays < 7 ? "text-green-600" : 
+                   ce.drdAgeDays < 30 ? "text-amber-600" : 
+                   "text-red-600";
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow group">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          {ce.thumbnailUrl ? (
+            <img src={ce.thumbnailUrl} alt={ce.name} className="w-10 h-10 rounded-lg object-cover" />
+          ) : (
+            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-lg">
+              🏛️
+            </div>
+          )}
+          <div>
+            <h3 className="font-semibold text-gray-900">{ce.name}</h3>
+            <p className="text-xs text-gray-500">{ce.city}, {ce.country}</p>
+          </div>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${status.bg} ${status.text}`}>
+          {status.label}
+        </span>
+      </div>
+
+      {/* Stats */}
+      <div className="flex items-center gap-4 mb-3 text-sm">
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-green-500" />
+          <span className="text-gray-700">{ce.chartCount} charts</span>
+          {ce.draftCount > 0 && (
+            <span className="text-blue-600">· {ce.draftCount} drafts</span>
+          )}
+        </div>
+        
+        {ce.embedViewsChange !== undefined && (
+          <div className={`flex items-center gap-1 ${
+            ce.embedViewsChange > 0 ? "text-green-600" : 
+            ce.embedViewsChange < 0 ? "text-red-600" : 
+            "text-gray-500"
+          }`}>
+            <span>{ce.embedViewsChange > 0 ? "↑" : ce.embedViewsChange < 0 ? "↓" : "→"}</span>
+            <span>{Math.abs(ce.embedViewsChange)}% views</span>
+          </div>
+        )}
+      </div>
+
+      {/* DRD freshness */}
+      <div className={`text-xs mb-3 ${drdColor}`}>
+        ◐ DRD {ce.drdAgeDays}d old
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={() => onPreview(ce.slug)}
+          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200"
+        >
+          Preview
+        </button>
+        <button
+          onClick={() => onCopyEmbed(ce.slug)}
+          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200"
+        >
+          Copy embed
+        </button>
+        <button
+          onClick={() => onEdit(ce.slug)}
+          className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-xs font-medium hover:bg-purple-100"
+        >
+          Edit charts
+        </button>
+      </div>
+    </div>
+  );
+};
+City Cluster Pills
+tsx
+Copy
+// artifacts/viz-studio/src/components/CityClusters.tsx
+
+import React from "react";
+
+interface CityCluster {
+  city: string;
+  country: string;
+  ceCount: number;
+  publishedCount: number;
+  draftCount: number;
+  color: string;
+}
+
+interface Props {
+  clusters: CityCluster[];
+  onSelect: (city: string) => void;
+}
+
+export const CityClusters: React.FC<<Props> = ({ clusters, onSelect }) => {
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">City clusters</h3>
+      <div className="flex flex-wrap gap-2">
+        {clusters.map(cluster => (
+          <button
+            key={cluster.city}
+            onClick={() => onSelect(cluster.city)}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl hover:border-purple-300 hover:shadow-sm transition-all"
+          >
+            <span 
+              className="w-2 h-2 rounded-full" 
+              style={{ backgroundColor: cluster.color }}
+            />
+            <div className="text-left">
+              <div className="text-sm font-medium text-gray-900">{cluster.city}</div>
+              <div className="text-xs text-gray-500">
+                {cluster.ceCount} CEs · {cluster.publishedCount} published
+                {cluster.draftCount > 0 && ` · ${cluster.draftCount} drafts`}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+Phase 4: Wire Into Existing Page
+Tell Replit agent:
+"Evolve the /studio/ page with these changes:
+Fix the '0 CEs' bug — data must load. Check API, check parsing.
+Add AttentionBanner above the two-column layout. Fetch from:
+Drafts count > 0 → 'N drafts need review'
+DRD age > 30 days → 'CE_NAME DRD stale'
+Show max 2 items, 'Dismiss all' clears them for this session
+Replace existing library cards with CECard component. Add:
+Status badge (LOCKED/PUBLISHED/STALE/DRAFTS)
+Chart count + draft count
+DRD age with color coding
+Embed views change (if available)
+Hover actions: Preview, Copy embed, Edit charts
+Add CityClusters below the library grid. Use actual city data from CEs.
+Make quick picks auto-fill the form fields on click.
+Keep the left column exactly as is — hero, form, generate button, quick picks. Don't change.
+Typecheck everything. No regressions."
+What This Achieves
+Table
+Before	After
+"0 CEs" — broken	"19 CEs" — accurate
+No status visibility	Status badges, DRD freshness, view trends
+No actions on cards	Preview, Copy embed, Edit charts
+No prioritization	Attention banner for drafts/stale data
+No geographic view	City clusters with counts
+Creation only	Creation + light management
