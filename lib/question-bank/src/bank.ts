@@ -115,3 +115,108 @@ export function resolveSubcategoryMeta(
     description: description ?? "Long-tail subcategory (unratified)",
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Headout taxonomy bridge                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Maps Headout's canonical numeric subcategory ids → our internal curated
+ * SubcategoryId. Only subcategories that currently have a curated bundle
+ * mapping appear here; any Headout subcategory that's missing from this
+ * table falls through to the default-bundle deck and is flagged
+ * `unratified: true` by the taxonomy lib.
+ *
+ * String keys are used for synthetic ids (Headout entries with no numeric
+ * id in the source TSV — e.g. "Whale watching" under Cruises).
+ */
+const HEADOUT_TO_INTERNAL: Record<string | number, SubcategoryId> = {
+  // Tickets
+  1007: "landmarks",
+  1002: "museums",
+  1001: "theme_parks",
+  1005: "water_parks",
+  1003: "zoos",
+  1140: "aquariums",
+  1098: "observation_decks",
+  1008: "city_cards",
+  1006: "religious_sites",
+  1149: "immersive_experiences",
+  // Tours
+  1010: "guided_tours",
+  1143: "day_trips",
+  1009: "walking_tours",
+  1011: "hop_on_hop_off",
+  1017: "photography_tours",
+  1016: "multi_day_tours",
+  1018: "port_of_call_tours",
+  // Cruises
+  1061: "sightseeing_cruises",
+  1060: "dinner_cruises",
+  "synthetic:cruises:whale-watching": "whale_watching",
+  // Entertainment
+  1037: "plays",
+  1120: "rock_concerts",
+  1148: "nightlife",
+  1042: "live_sports",
+  // Adventure
+  1073: "desert_safari",
+  1049: "skydiving",
+  1050: "skiing",
+  1134: "go_karting",
+  1056: "outdoor_activities",
+  // Aerial
+  1057: "helicopter_tours",
+  1112: "cable_car_tours",
+  1058: "hot_air_balloon",
+  // Water Sports
+  1062: "scuba_diving",
+  1063: "surfing",
+  1066: "rafting",
+  // Nature & Wildlife
+  1070: "safari",
+  1071: "hiking_trails",
+  // Food & Drink
+  1026: "food_tours",
+  1028: "wineries",
+  1027: "cooking_classes",
+  1030: "pub_crawls",
+  // Wellness
+  1074: "spa",
+  1117: "baths",
+  // Specials
+  1080: "combos",
+  // Sports
+  1109: "formula_1",
+  // Transportation
+  1019: "airport_transfers",
+  1133: "train_tickets",
+};
+
+/**
+ * Resolve a Headout subcategory id to a curated internal bundle key. If no
+ * mapping exists, returns `null` so the caller can fall through to the
+ * default-bundle deck.
+ */
+export function resolveBundleSubcategory(
+  headoutSubcategoryId: string | number,
+): SubcategoryId | null {
+  const norm =
+    typeof headoutSubcategoryId === "string" &&
+    /^\d+$/.test(headoutSubcategoryId)
+      ? Number(headoutSubcategoryId)
+      : headoutSubcategoryId;
+  return HEADOUT_TO_INTERNAL[norm] ?? null;
+}
+
+/**
+ * Set of Headout subcategory ids that currently have a curated bundle
+ * mapping. Pass this to taxonomy helpers so they can flag the rest as
+ * `unratified: true`.
+ */
+export const RATIFIED_HEADOUT_SUBCATEGORY_IDS: ReadonlySet<string | number> =
+  new Set(
+    Object.keys(HEADOUT_TO_INTERNAL).map((k) =>
+      /^\d+$/.test(k) ? Number(k) : k,
+    ),
+  );

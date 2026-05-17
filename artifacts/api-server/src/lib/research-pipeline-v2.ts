@@ -37,6 +37,7 @@ import {
 } from "@workspace/prompts";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "./logger";
+import { loadOverridesFor } from "./question-overrides";
 
 const MODEL = "gemini-2.5-pro";
 
@@ -214,6 +215,37 @@ export async function runPipelineV2(
   const projectedExisting = projectChartsForDeck(existingCharts);
   const intelligence = buildIntelligence(ce);
 
+  // v2 uses the page-decks lib (a separate question system from the
+  // bundle assembler), so writer-defined overrides on the question-bank
+  // tables don't gate or rewrite the v2 deck directly. We still load
+  // them here so each generated chart's provenance carries the override
+  // ids that were active for this CE at generation time — this keeps a
+  // consistent audit trail across both pipelines and gives the UI a
+  // single source of truth for "what overrides shaped this deck?".
+  let activeOverrideIds: { category: number[]; ce: number[] } = {
+    category: [],
+    ce: [],
+  };
+  try {
+    const overrides = await loadOverridesFor({
+      ceSlug: ce.slug,
+      subcategoryId: ce.category,
+    });
+    activeOverrideIds = {
+      category: overrides.categoryActions
+        .map((a) => a.id)
+        .filter((id): id is number => typeof id === "number"),
+      ce: overrides.ceActions
+        .map((a) => a.id)
+        .filter((id): id is number => typeof id === "number"),
+    };
+  } catch (err) {
+    logger.warn(
+      { err, ceSlug: ce.slug },
+      "v2: failed to load question overrides for audit stamping",
+    );
+  }
+
   const results: PipelineV2SectionResult[] = [];
   const draftSortBase = 2000;
   let insertIndex = 0;
@@ -335,6 +367,9 @@ export async function runPipelineV2(
             archetype: section.archetype,
             question_id: section.question.questionId,
             ai_rationale: section.generationMetadata.aiRationale,
+            override_source: "code" as const,
+            active_category_override_ids: activeOverrideIds.category,
+            active_ce_override_ids: activeOverrideIds.ce,
           },
           sortOrder: draftSortBase + insertIndex,
         })

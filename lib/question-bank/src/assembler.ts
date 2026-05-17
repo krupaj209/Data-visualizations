@@ -16,6 +16,144 @@ import type { VisitorIntentId } from "./intents";
 import type { BankQuestionKind, ChartArchetypeId } from "./types";
 import { isImplementedArchetype } from "./archetypes";
 
+/* -------------------------------------------------------------------------- */
+/* Overrides                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A single override action. Shape mirrors `QuestionOverrideAction` in
+ * `@workspace/db/schema/question-overrides` — duplicated here as a plain
+ * interface so the question-bank lib stays db-free.
+ */
+export type OverrideAction =
+  | {
+      /** DB primary key of the override row. Optional for tests/in-memory use. */
+      id?: number;
+      action: "edit";
+      bundleId: string;
+      archetype: string;
+      questionTemplate: string;
+    }
+  | {
+      id?: number;
+      action: "add";
+      bundleId: string;
+      archetype: string;
+      questionTemplate: string;
+      kind?: BankQuestionKind;
+    }
+  | {
+      id?: number;
+      action: "mute";
+      bundleId: string;
+      archetype: string;
+    };
+
+/** Origin layer for a candidate after override merging. */
+export type OverrideSource = "code" | "category" | "ce";
+
+/**
+ * Internal: a bundle candidate carrying provenance about which override
+ * layer (if any) last touched it.
+ */
+interface AnnotatedCandidate extends BundleCandidate {
+  __source: OverrideSource;
+  __muted: boolean;
+  /** DB id of the override row that last shaped this candidate, if any. */
+  __overrideId?: number;
+}
+
+function annotateBundle(bundle: QuestionBundle): {
+  bundle: QuestionBundle;
+  candidates: AnnotatedCandidate[];
+} {
+  return {
+    bundle,
+    candidates: bundle.candidates.map((c) => ({
+      ...c,
+      __source: "code",
+      __muted: false,
+    })),
+  };
+}
+
+function applyOverrideLayer(
+  candidates: AnnotatedCandidate[],
+  actions: OverrideAction[],
+  bundleId: string,
+  layer: Exclude<OverrideSource, "code">,
+): AnnotatedCandidate[] {
+  let next = candidates.slice();
+  for (const a of actions) {
+    if (a.bundleId !== bundleId) continue;
+    if (a.action === "mute") {
+      next = next.map((c) =>
+        c.archetype === a.archetype
+          ? { ...c, __muted: true, __source: layer, __overrideId: a.id }
+          : c,
+      );
+    } else if (a.action === "edit") {
+      next = next.map((c) =>
+        c.archetype === a.archetype
+          ? {
+              ...c,
+              question_template: a.questionTemplate,
+              __muted: false,
+              __source: layer,
+              __overrideId: a.id,
+            }
+          : c,
+      );
+    } else if (a.action === "add") {
+      // "add" appends at the end so code defaults still win when both viable.
+      // If a candidate with the same archetype already exists, treat it as an
+      // edit-unmute (writer intends to re-introduce a previously-muted slot).
+      const existingIdx = next.findIndex((c) => c.archetype === a.archetype);
+      if (existingIdx >= 0) {
+        const existing = next[existingIdx]!;
+        next[existingIdx] = {
+          ...existing,
+          question_template: a.questionTemplate,
+          kind: a.kind ?? existing.kind,
+          __muted: false,
+          __source: layer,
+          __overrideId: a.id,
+        };
+      } else {
+        next.push({
+          archetype: a.archetype as ChartArchetypeId,
+          question_template: a.questionTemplate,
+          kind: a.kind ?? "signature",
+          __source: layer,
+          __muted: false,
+          __overrideId: a.id,
+        });
+      }
+    }
+  }
+  return next;
+}
+
+/**
+ * Merge code defaults → category overrides → CE overrides for a single
+ * bundle. Exported for unit tests; the assembler calls it internally.
+ */
+export function mergeBundleOverrides(
+  bundle: QuestionBundle,
+  categoryActions: OverrideAction[],
+  ceActions: OverrideAction[],
+): { bundle: QuestionBundle; candidates: AnnotatedCandidate[] } {
+  const base = annotateBundle(bundle);
+  const afterCategory = applyOverrideLayer(
+    base.candidates,
+    categoryActions,
+    bundle.id,
+    "category",
+  );
+  const afterCe = applyOverrideLayer(afterCategory, ceActions, bundle.id, "ce");
+  return { bundle, candidates: afterCe };
+}
+
 export interface AssembledQuestion {
   question: string;
   archetype: ChartArchetypeId;
@@ -31,6 +169,10 @@ export interface AssembledQuestion {
   triggering_signals: string[];
   /** Shared id for backwards-compatible topic grouping in provenance. */
   topic_id: string;
+  /** Which override layer this candidate came from. */
+  override_source: OverrideSource;
+  /** DB id of the override row that shaped this candidate, when applicable. */
+  override_id?: number;
 }
 
 export interface DroppedQuestion {
@@ -54,6 +196,13 @@ export interface AssembleInput {
    * the same bundle when possible).
    */
   existingArchetypes?: ChartArchetypeId[];
+  /**
+   * Category-scope override actions, looked up by the caller against the
+   * Headout subcategory id. Merged before CE overrides.
+   */
+  categoryOverrides?: OverrideAction[];
+  /** CE-scope override actions, looked up by ce slug. Wins over category. */
+  ceOverrides?: OverrideAction[];
 }
 
 export interface AssembledDeck {
@@ -96,20 +245,22 @@ function scoreBundle(
 
 function pickCandidate(
   bundle: QuestionBundle,
+  candidates: AnnotatedCandidate[],
   signals: ContextSignals,
   usedArchetypes: Set<ChartArchetypeId>,
   retired: Set<ChartArchetypeId>,
   preferUnused: Set<ChartArchetypeId>,
   dropped: DroppedQuestion[],
   ceName: string,
-): { candidate: BundleCandidate; reason: string } | null {
+): { candidate: AnnotatedCandidate; reason: string } | null {
+  const viable = candidates.filter((c) => !c.__muted);
   // First pass: prefer candidates whose archetype isn't already in the deck
   // AND isn't in the "existingArchetypes" set from a prior draft.
-  const passes: BundleCandidate[][] = [
-    bundle.candidates.filter(
+  const passes: AnnotatedCandidate[][] = [
+    viable.filter(
       (c) => !usedArchetypes.has(c.archetype) && !preferUnused.has(c.archetype),
     ),
-    bundle.candidates.filter((c) => !usedArchetypes.has(c.archetype)),
+    viable.filter((c) => !usedArchetypes.has(c.archetype)),
   ];
   // Walk each pass; only short-circuit when we actually return a candidate.
   // Previously this broke out of the loop whenever the first pass was
@@ -160,6 +311,8 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
   const template = getPageTemplate(pageType);
   const retired = new Set<ChartArchetypeId>(input.retireArchetypes ?? []);
   const existing = new Set<ChartArchetypeId>(input.existingArchetypes ?? []);
+  const categoryActions = input.categoryOverrides ?? [];
+  const ceActions = input.ceOverrides ?? [];
   const usedArchetypes = new Set<ChartArchetypeId>();
   const usedBundles = new Set<BundleId>();
   const selected: AssembledQuestion[] = [];
@@ -196,6 +349,8 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
         bundle_score: 10,
         triggering_signals: ["page_template_forced"],
         topic_id: `${pageType}:narrative`,
+        override_source: "code",
+        override_id: undefined,
       });
       usedArchetypes.add(arch);
       audit.push({
@@ -225,6 +380,7 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
     }
 
     const bundle = QUESTION_BUNDLES[slot.bundleId];
+    const merged = mergeBundleOverrides(bundle, categoryActions, ceActions);
     const scored = scoreBundle(bundle, input.signals);
     if (!scored.gates_pass) {
       audit.push({
@@ -247,6 +403,7 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
 
     const picked = pickCandidate(
       bundle,
+      merged.candidates,
       input.signals,
       usedArchetypes,
       retired,
@@ -281,6 +438,8 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
       bundle_score: scored.score,
       triggering_signals: scored.triggered,
       topic_id: bundle.id,
+      override_source: picked.candidate.__source,
+      override_id: picked.candidate.__overrideId,
     });
     usedArchetypes.add(picked.candidate.archetype);
     usedBundles.add(bundle.id);

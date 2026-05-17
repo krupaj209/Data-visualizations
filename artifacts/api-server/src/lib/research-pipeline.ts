@@ -12,9 +12,12 @@ import {
   type BankQuestionKind,
   type ChartArchetypeId,
   type ContextSignals,
+  type OverrideAction,
+  type OverrideSource,
   type PageType,
 } from "@workspace/question-bank";
 import { aiChartSchema, type AiChart } from "./chart-spec";
+import { loadOverridesFor } from "./question-overrides";
 import { ARCHETYPE_PROMPT } from "./chart-archetype-prompts";
 import { openai } from "./openai";
 import { logger } from "./logger";
@@ -78,6 +81,13 @@ export interface ResearchPipelineInput {
    * page template the bundle assembler walks. Defaults to plan-your-visit.
    */
   pageType?: PageType;
+  /**
+   * Pre-loaded override actions. If omitted, the pipeline loads both
+   * layers from the DB itself using `subcategoryId` + `ce.slug`. Callers
+   * that already have them in hand (tests, scripts) can short-circuit.
+   */
+  categoryOverrides?: OverrideAction[];
+  ceOverrides?: OverrideAction[];
 }
 
 /**
@@ -124,6 +134,19 @@ export interface ChartProvenance {
   triggering_signals?: string[];
   /** Page template the deck was built for. */
   page_type?: PageType;
+  /**
+   * Origin layer for the chart's question template — "code" (untouched
+   * default), "category" (subcategory override), or "ce" (per-CE override).
+   * Surfaced in the IntelPanel chart card so writers can tell at a glance
+   * which charts they're editing through the override system.
+   */
+  override_source?: OverrideSource;
+  /**
+   * DB id of the override row that shaped this chart's question template.
+   * Only set when `override_source` is "category" or "ce". Lets the
+   * IntelPanel deep-link directly into the override editor.
+   */
+  override_id?: number;
 }
 
 export interface GeneratedChart {
@@ -310,6 +333,8 @@ async function selectQuestions(
     pageType,
     retireArchetypes: input.retireArchetypes,
     existingArchetypes,
+    categoryOverrides: input.categoryOverrides,
+    ceOverrides: input.ceOverrides,
   });
 
   // Regeneration: drop exact-question repeats vs the prior deck so
@@ -1099,6 +1124,26 @@ export async function runResearchPipeline(
     throw new Error("DRD is empty — upload one before running the pipeline.");
   }
 
+  // Load DB-backed overrides once if not pre-supplied. Soft-fails: a
+  // miss just means the pipeline runs with code defaults only.
+  if (input.categoryOverrides === undefined && input.ceOverrides === undefined) {
+    try {
+      const loaded = await loadOverridesFor({
+        ceSlug: input.ce.slug,
+        subcategoryId: input.subcategoryId,
+      });
+      input.categoryOverrides = loaded.categoryActions;
+      input.ceOverrides = loaded.ceActions;
+    } catch (err) {
+      logger.warn(
+        { err, slug: input.ce.slug },
+        "Could not load question overrides — pipeline will run with code defaults",
+      );
+      input.categoryOverrides = [];
+      input.ceOverrides = [];
+    }
+  }
+
   // Read intelligence layer once if not pre-supplied. Soft-fails: missing
   // intel just means the pipeline runs without it (DRD-only).
   if (input.intel === undefined) {
@@ -1136,6 +1181,8 @@ export async function runResearchPipeline(
     bundle_score: sel.bundle_score,
     triggering_signals: sel.triggering_signals,
     page_type: selection.page_type,
+    override_source: sel.override_source,
+    ...(sel.override_id !== undefined ? { override_id: sel.override_id } : {}),
   });
 
   /* ------- Grouped generation for the timing pair (weekly + hourly) ------- */

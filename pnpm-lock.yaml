@@ -193,6 +193,9 @@ importers:
       '@workspace/question-bank':
         specifier: workspace:*
         version: link:../../lib/question-bank
+      '@workspace/taxonomy':
+        specifier: workspace:*
+        version: link:../../lib/taxonomy
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -662,6 +665,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.3.5
+
+  lib/taxonomy:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

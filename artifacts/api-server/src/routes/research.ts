@@ -9,7 +9,11 @@ import {
   type Ce,
   type Chart,
 } from "@workspace/db";
-import { listSubcategories } from "@workspace/question-bank";
+import { RATIFIED_HEADOUT_SUBCATEGORY_IDS } from "@workspace/question-bank";
+import {
+  listCategories as listHeadoutCategories,
+  listSubcategories as listHeadoutSubcategories,
+} from "@workspace/taxonomy";
 import { runResearchPipeline } from "../lib/research-pipeline";
 import { runPipelineV2 } from "../lib/research-pipeline-v2";
 import { slugify } from "../lib/generate-ce";
@@ -71,7 +75,16 @@ function serializeChart(chart: Chart) {
 }
 
 router.get("/research/subcategories", (_req, res): void => {
-  res.json(listSubcategories());
+  // Full Headout taxonomy — 16 categories / ~150 subcategories. The
+  // `unratified` flag on each row is derived against the curated bundle
+  // set in @workspace/question-bank so editors can see at a glance
+  // which subcategories the assembler has hand-tuned coverage for vs
+  // which fall back to the default bundle deck.
+  const subcategories = listHeadoutSubcategories(
+    RATIFIED_HEADOUT_SUBCATEGORY_IDS,
+  );
+  const categories = listHeadoutCategories(RATIFIED_HEADOUT_SUBCATEGORY_IDS);
+  res.json({ categories, subcategories });
 });
 
 router.post("/research/generate", async (req, res): Promise<void> => {

@@ -29,6 +29,9 @@
     },
     {
       "path": "./lib/prompts"
+    },
+    {
+      "path": "./lib/taxonomy"
     }
   ]
 }
