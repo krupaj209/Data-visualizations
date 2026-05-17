@@ -23,6 +23,9 @@
     },
     {
       "path": "./lib/page-decks"
+    },
+    {
+      "path": "./lib/editorial"
     }
   ]
 }
