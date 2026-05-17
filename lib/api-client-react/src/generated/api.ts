@@ -33,6 +33,7 @@ import type {
   ChartWithCe,
   Drd,
   DrdMarkdownUpload,
+  DuplicateChartPayload,
   FeedbackUpdate,
   GetQuestionBankParams,
   HealthStatus,
@@ -42,6 +43,7 @@ import type {
   IdeationInput,
   IdeationMessage,
   ListAllFeedbackParams,
+  MergeSuggestionInput,
   PublishAllDraftsInput,
   PublishAllDraftsResult,
   QuestionBankView,
@@ -3051,7 +3053,7 @@ export const createChartFromTopic = async (
 };
 
 export const getCreateChartFromTopicMutationOptions = <
-  TError = ErrorType<ApiError>,
+  TError = ErrorType<ApiError | DuplicateChartPayload>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3092,13 +3094,15 @@ export type CreateChartFromTopicMutationResult = NonNullable<
   Awaited<ReturnType<typeof createChartFromTopic>>
 >;
 export type CreateChartFromTopicMutationBody = BodyType<TopicChartInput>;
-export type CreateChartFromTopicMutationError = ErrorType<ApiError>;
+export type CreateChartFromTopicMutationError = ErrorType<
+  ApiError | DuplicateChartPayload
+>;
 
 /**
  * @summary Generate a new draft chart for a CE from a writer's topic
  */
 export const useCreateChartFromTopic = <
-  TError = ErrorType<ApiError>,
+  TError = ErrorType<ApiError | DuplicateChartPayload>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3115,6 +3119,93 @@ export const useCreateChartFromTopic = <
   TContext
 > => {
   return useMutation(getCreateChartFromTopicMutationOptions(options));
+};
+
+/**
+ * @summary Fold writer-provided inputs into an existing chart
+ */
+export const getMergeChartSuggestionUrl = (id: number) => {
+  return `/api/charts/${id}/merge-suggestion`;
+};
+
+export const mergeChartSuggestion = async (
+  id: number,
+  mergeSuggestionInput: MergeSuggestionInput,
+  options?: RequestInit,
+): Promise<Chart> => {
+  return customFetch<Chart>(getMergeChartSuggestionUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(mergeSuggestionInput),
+  });
+};
+
+export const getMergeChartSuggestionMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mergeChartSuggestion>>,
+    TError,
+    { id: number; data: BodyType<MergeSuggestionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mergeChartSuggestion>>,
+  TError,
+  { id: number; data: BodyType<MergeSuggestionInput> },
+  TContext
+> => {
+  const mutationKey = ["mergeChartSuggestion"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mergeChartSuggestion>>,
+    { id: number; data: BodyType<MergeSuggestionInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return mergeChartSuggestion(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MergeChartSuggestionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mergeChartSuggestion>>
+>;
+export type MergeChartSuggestionMutationBody = BodyType<MergeSuggestionInput>;
+export type MergeChartSuggestionMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Fold writer-provided inputs into an existing chart
+ */
+export const useMergeChartSuggestion = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mergeChartSuggestion>>,
+    TError,
+    { id: number; data: BodyType<MergeSuggestionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mergeChartSuggestion>>,
+  TError,
+  { id: number; data: BodyType<MergeSuggestionInput> },
+  TContext
+> => {
+  return useMutation(getMergeChartSuggestionMutationOptions(options));
 };
 
 /**

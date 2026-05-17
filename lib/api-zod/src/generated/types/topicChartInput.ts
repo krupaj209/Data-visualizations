@@ -12,4 +12,10 @@ export interface TopicChartInput {
   pastedData?: string;
   sourceUrl?: string;
   writerId?: string;
+  /** Skip the duplicate-detection short-circuit. When `true`, the
+server creates the chart even if it matches an existing chart
+on the same CE, and stamps `provenance.kept_as_duplicate_of`
+with the matched chart id so it won't be re-flagged.
+ */
+  force?: boolean;
 }

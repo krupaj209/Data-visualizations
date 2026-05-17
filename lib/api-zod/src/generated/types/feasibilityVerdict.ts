@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FeasibilityVerdictDuplicateOf } from "./feasibilityVerdictDuplicateOf";
 import type { FeasibilityVerdictMissingDataItem } from "./feasibilityVerdictMissingDataItem";
 import type { FeasibilityVerdictVerdict } from "./feasibilityVerdictVerdict";
 import type { FeasibilityVerdictWebSourcesItem } from "./feasibilityVerdictWebSourcesItem";
@@ -36,4 +37,9 @@ export interface FeasibilityVerdict {
 is created. Lets the transcript deep-link to the draft card.
  */
   generated_chart_id?: number | null;
+  /** Populated when the verdict's archetype + question matches an
+existing chart on this CE. The UI surfaces a "Looks like a
+duplicate" banner with Open / Merge / Create-anyway actions.
+ */
+  duplicate_of?: FeasibilityVerdictDuplicateOf;
 }

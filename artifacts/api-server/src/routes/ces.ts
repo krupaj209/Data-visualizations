@@ -17,7 +17,8 @@ import {
 } from "@workspace/db";
 import { CreateCeBody, GetCeParams } from "@workspace/api-zod";
 import { generateCePayload, slugify } from "../lib/generate-ce";
-import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
+import { LOCKED_CE_SLUGS, isLockedCe } from "../lib/locked-ces";
+import { findDuplicateChart } from "../lib/chart-dedupe";
 import {
   CHART_ARCHETYPES,
   PageType as QbPageType,
@@ -1103,8 +1104,12 @@ router.post(
       .where(eq(drdsTable.ceSlug, ce.slug));
     const existing = await db
       .select({
+        id: chartsTable.id,
+        slug: chartsTable.slug,
+        title: chartsTable.title,
         question: chartsTable.question,
         chartType: chartsTable.chartType,
+        provenance: chartsTable.provenance,
       })
       .from(chartsTable)
       .where(eq(chartsTable.ceId, ce.id));
@@ -1127,7 +1132,10 @@ router.post(
         topic: parsed.data.topic,
         drdMarkdown: drd?.markdown ?? "",
         ...(extraContext ? { extraContext } : {}),
-        existingCharts: existing,
+        existingCharts: existing.map((e) => ({
+          question: e.question,
+          chartType: e.chartType,
+        })),
       });
     } catch (err) {
       req.log.error(
@@ -1153,12 +1161,52 @@ router.post(
       return;
     }
 
+    // Run duplicate detection against the verdict's archetype + question so
+    // the UI can surface a "Looks like a duplicate" banner alongside the
+    // verdict card (Open / Merge / Create-anyway).
+    if (verdict.verdict !== "out_of_scope") {
+      const dup = findDuplicateChart(
+        {
+          question: verdict.question ?? verdict.topic,
+          archetype: verdict.archetype ?? null,
+        },
+        existing.map((e) => {
+          const prov = (e.provenance ?? {}) as {
+            intent_id?: string | null;
+            bundle_id?: string | null;
+          };
+          return {
+            id: e.id,
+            slug: e.slug,
+            title: e.title,
+            question: e.question,
+            chartType: e.chartType,
+            intentId: prov.intent_id ?? null,
+            bundleId: prov.bundle_id ?? null,
+          };
+        }),
+      );
+      if (dup) {
+        verdict.duplicate_of = {
+          chartId: dup.chart.id,
+          chartSlug: dup.chart.slug,
+          chartTitle: dup.chart.title,
+          chartType: dup.chart.chartType,
+          matchType: dup.matchType,
+          similarity: dup.similarity,
+          reason: dup.reason,
+          mergeAllowed: !isLockedCe(ce.slug),
+        };
+      }
+    }
+
     req.log.info(
       {
         ceSlug: ce.slug,
         verdict: verdict.verdict,
         archetype: verdict.archetype,
         missingCount: verdict.missing_data.length,
+        duplicateOf: verdict.duplicate_of?.chartId,
         durationMs: Date.now() - startedAt,
       },
       "ideation feasibility check finished",

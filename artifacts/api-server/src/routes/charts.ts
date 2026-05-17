@@ -30,7 +30,11 @@ import {
 } from "@workspace/question-bank";
 import { slugify } from "../lib/generate-ce";
 import { openai } from "../lib/openai";
-import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
+import { LOCKED_CE_SLUGS, isLockedCe } from "../lib/locked-ces";
+import {
+  findDuplicateChart,
+  type DedupeExistingChart,
+} from "../lib/chart-dedupe";
 
 const router: IRouter = Router();
 
@@ -698,7 +702,6 @@ router.post("/charts/:id/verify", async (req, res): Promise<void> => {
   }
 });
 
-/* -------------------------------------------------------------------------- */
 /* POST /charts/:id/regenerate-suggested-content                              */
 /* Fresh hourly_heatmap.highlight_cards via Gemini grounded in the CE's DRD. */
 /* -------------------------------------------------------------------------- */
@@ -958,6 +961,210 @@ ${drdBlock}
 );
 
 /* -------------------------------------------------------------------------- */
+/* POST /charts/:id/merge-suggestion — fold a writer's new inputs into an     */
+/* existing chart (companion to the duplicate-detection short-circuit on the  */
+/* topic-to-chart create flow).                                                */
+/* -------------------------------------------------------------------------- */
+
+const mergeSuggestionBody = z.object({
+  question: z.string().min(2).max(280).optional(),
+  pastedData: z.string().max(20_000).optional(),
+  sourceUrl: z.string().url().max(800).optional(),
+  insight: z.string().max(400).optional(),
+  subtitle: z.string().max(200).optional(),
+  writerId: z.string().max(120).optional(),
+});
+
+router.post(
+  "/charts/:id/merge-suggestion",
+  async (req, res): Promise<void> => {
+    const params = GetChartParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const parsed = mergeSuggestionBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.id, params.data.id));
+    if (!existing) {
+      res.status(404).json({ error: "Chart not found" });
+      return;
+    }
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.id, existing.ceId));
+    if (!ce) {
+      res.status(404).json({ error: "CE not found for chart" });
+      return;
+    }
+    if (isLockedCe(ce.slug)) {
+      res.status(409).json({
+        error:
+          "This CE has a hand-curated chart set — its charts cannot be merged into. Use the existing chart as-is or create a separate one.",
+      });
+      return;
+    }
+
+    const hasAny =
+      Boolean(parsed.data.question?.trim()) ||
+      Boolean(parsed.data.subtitle?.trim()) ||
+      Boolean(parsed.data.insight?.trim()) ||
+      Boolean(parsed.data.sourceUrl?.trim()) ||
+      Boolean(parsed.data.pastedData?.trim());
+    if (!hasAny) {
+      res.status(400).json({
+        error:
+          "No new content supplied — provide a refined question, source URL, pasted data, subtitle or insight.",
+      });
+      return;
+    }
+
+    const update: Partial<typeof chartsTable.$inferInsert> = {};
+    if (parsed.data.question?.trim()) {
+      update.question = parsed.data.question.trim();
+    }
+    if (parsed.data.subtitle?.trim()) {
+      update.subtitle = parsed.data.subtitle.trim();
+    }
+    if (parsed.data.insight?.trim()) {
+      update.insight = parsed.data.insight.trim();
+    }
+
+    const priorProvenance =
+      (existing.provenance as ChartProvenance | null) ?? {
+        status: "estimated",
+        drd_snippets: [],
+        web_sources: [],
+        estimates: [],
+        verifier_notes: "",
+      };
+    const mergedProvenance: ChartProvenance = { ...priorProvenance };
+
+    // Dedupe-append the new source URL into provenance.web_sources.
+    if (parsed.data.sourceUrl?.trim()) {
+      const url = parsed.data.sourceUrl.trim();
+      const sources = Array.isArray(mergedProvenance.web_sources)
+        ? [...mergedProvenance.web_sources]
+        : [];
+      if (!sources.some((s) => s?.url === url)) {
+        sources.push({ title: url, url });
+      }
+      mergedProvenance.web_sources = sources;
+    }
+
+    // When pasted data is supplied, re-run the per-archetype generator
+    // against the merged inputs so the spec actually reflects the new
+    // numbers. Fail loudly if regeneration throws — a silent copy/source-
+    // only merge would lie to the writer about whether their numbers
+    // were applied.
+    if (parsed.data.pastedData?.trim()) {
+      const [drd] = await db
+        .select()
+        .from(drdsTable)
+        .where(eq(drdsTable.ceSlug, ce.slug));
+      const drdParts: string[] = [];
+      if (drd?.markdown) drdParts.push(drd.markdown);
+      drdParts.push(
+        `--- WRITER-PROVIDED DATA (treat as authoritative; merging into existing chart "${existing.title}") ---\n${parsed.data.pastedData.trim()}`,
+      );
+      if (parsed.data.sourceUrl?.trim()) {
+        drdParts.push(`--- SOURCE LINK ---\n${parsed.data.sourceUrl.trim()}`);
+      }
+      // When pasted data is supplied, regeneration is the whole point of
+      // the merge — fail loudly so the writer knows the new numbers
+      // weren't applied. A partial copy/source merge would silently lie
+      // to the writer about whether the spec reflects their data.
+      let generated;
+      try {
+        generated = await generateOneChart(
+          {
+            ce: {
+              name: ce.name,
+              city: ce.city,
+              country: ce.country,
+              slug: ce.slug,
+            },
+            subcategoryId: ce.category,
+            drdMarkdown: drdParts.join("\n\n"),
+          },
+          update.question ?? existing.question,
+          existing.chartType as ChartArchetypeId,
+        );
+      } catch (err) {
+        req.log.error(
+          { err, chartId: existing.id },
+          "merge-suggestion regeneration failed; rejecting merge",
+        );
+        res.status(502).json({
+          error:
+            err instanceof Error
+              ? `Could not regenerate the chart with the pasted data: ${err.message}. Nothing was saved — try again, or drop the pasted data to merge just the copy/source.`
+              : "Could not regenerate the chart with the pasted data. Nothing was saved — try again, or drop the pasted data to merge just the copy/source.",
+        });
+        return;
+      }
+      update.spec = generated.spec.spec;
+      // Carry forward merge-relevant provenance from the regen.
+      mergedProvenance.drd_snippets = [
+        ...(mergedProvenance.drd_snippets ?? []),
+        ...(generated.provenance.drd_snippets ?? []),
+      ].slice(0, 12);
+      mergedProvenance.estimates = generated.provenance.estimates ?? mergedProvenance.estimates;
+      for (const s of generated.provenance.web_sources ?? []) {
+        if (
+          s?.url &&
+          !mergedProvenance.web_sources?.some((w) => w.url === s.url)
+        ) {
+          mergedProvenance.web_sources = [
+            ...(mergedProvenance.web_sources ?? []),
+            s,
+          ];
+        }
+      }
+    }
+
+    update.provenance = mergedProvenance as unknown as Record<string, unknown>;
+    update.lastEditedByWriterAt = new Date();
+
+    try {
+      const [updated] = await db
+        .update(chartsTable)
+        .set(update)
+        .where(eq(chartsTable.id, existing.id))
+        .returning();
+      if (!updated) throw new Error("update returned no row");
+
+      await db.insert(chartEditsTable).values({
+        chartId: updated.id,
+        writerId: parsed.data.writerId ?? "anonymous",
+        action: "edit",
+        before: serializeChart(existing),
+        after: serializeChart(updated),
+        note: `merge-suggestion: ${parsed.data.question ?? "(no question)"}`,
+      });
+
+      res.json(serializeChart(updated));
+    } catch (err) {
+      req.log.error({ err }, "Failed to merge suggestion into chart");
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Failed to merge: ${err.message}`
+            : "Failed to merge",
+      });
+    }
+  },
+);
+
+/* -------------------------------------------------------------------------- */
 /* POST /ces/:slug/charts — topic-to-chart                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -969,7 +1176,41 @@ const topicBody = z.object({
   origin: z.enum(["topic_to_chart", "planner_recommendation"]).optional(),
   sourceUrl: z.string().url().max(800).optional(),
   writerId: z.string().max(120).optional(),
+  /**
+   * Escape hatch — when true, skip the duplicate-detection short-circuit
+   * and create the chart anyway. The new chart is stamped with
+   * `provenance.kept_as_duplicate_of` so it doesn't get re-flagged.
+   */
+  force: z.boolean().optional(),
 });
+
+/**
+ * Project a Drizzle chart row into the {@link DedupeExistingChart} shape
+ * the dedupe helper consumes, pulling intent_id/bundle_id off the
+ * provenance jsonb when present.
+ */
+function toDedupeChart(c: {
+  id: number;
+  slug: string;
+  question: string;
+  title: string;
+  chartType: string;
+  provenance: unknown;
+}): DedupeExistingChart {
+  const prov = (c.provenance ?? {}) as {
+    intent_id?: string | null;
+    bundle_id?: string | null;
+  };
+  return {
+    id: c.id,
+    slug: c.slug,
+    question: c.question,
+    title: c.title,
+    chartType: c.chartType,
+    intentId: prov.intent_id ?? null,
+    bundleId: prov.bundle_id ?? null,
+  };
+}
 
 const archetypeIds = Object.keys(CHART_ARCHETYPES) as ChartArchetypeId[];
 
@@ -1044,6 +1285,42 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
     return;
   }
 
+  // Duplicate detection: always run. Without `force`, short-circuit with
+  // a 409 `duplicate_of` payload so the UI can offer Open / Merge /
+  // Create-anyway. With `force`, fall through but stamp
+  // `kept_as_duplicate_of` on provenance so the chart isn't re-flagged.
+  const ceCharts = await db
+    .select({
+      id: chartsTable.id,
+      slug: chartsTable.slug,
+      question: chartsTable.question,
+      title: chartsTable.title,
+      chartType: chartsTable.chartType,
+      provenance: chartsTable.provenance,
+    })
+    .from(chartsTable)
+    .where(eq(chartsTable.ceId, ce.id));
+  const dupMatch = findDuplicateChart(
+    { question: parsed.data.topic, archetype },
+    ceCharts.map(toDedupeChart),
+  );
+  if (dupMatch && !parsed.data.force) {
+    res.status(409).json({
+      error: "duplicate_chart",
+      duplicate_of: {
+        chartId: dupMatch.chart.id,
+        chartSlug: dupMatch.chart.slug,
+        chartTitle: dupMatch.chart.title,
+        chartType: dupMatch.chart.chartType,
+        matchType: dupMatch.matchType,
+        similarity: dupMatch.similarity,
+        reason: dupMatch.reason,
+        mergeAllowed: !isLockedCe(ce.slug),
+      },
+    });
+    return;
+  }
+
   let generated;
   try {
     generated = await generateOneChart(
@@ -1108,6 +1385,9 @@ router.post("/ces/:slug/charts", async (req, res): Promise<void> => {
         source_question: parsed.data.topic,
         recommended_archetype: archetype,
         origin: parsed.data.origin ?? "topic_to_chart",
+        ...(dupMatch
+          ? { kept_as_duplicate_of: dupMatch.chart.id }
+          : {}),
       },
       sortOrder: Number(maxOrder ?? 0) + 1,
     })

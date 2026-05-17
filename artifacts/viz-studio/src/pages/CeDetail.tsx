@@ -36,6 +36,7 @@ import {
   usePublishAllDrafts,
   useVerifyChart,
   useCreateChartFromTopic,
+  useMergeChartSuggestion,
   useGetIdeation,
   useClearIdeation,
   usePostIdeationGenerateChart,
@@ -3774,6 +3775,258 @@ const ARCHETYPE_OPTIONS = [
   "history_timeline",
 ];
 
+type DuplicateInfo = {
+  chartId: number;
+  chartTitle: string;
+  chartType: string;
+  reason: string;
+  mergeAllowed: boolean;
+};
+
+function scrollToChart(chartId: number) {
+  const el = document.getElementById(`chart-${chartId}`);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Brief flash so the writer's eye lands on the target.
+    el.animate(
+      [
+        { boxShadow: `0 0 0 4px ${BRAND.purps}55` },
+        { boxShadow: "0 0 0 0 transparent" },
+      ],
+      { duration: 1400, easing: "ease-out" },
+    );
+  }
+}
+
+/** Extract `duplicate_of` payload from a 409 error thrown by the generated client. */
+function extractDuplicate(err: unknown): DuplicateInfo | null {
+  if (!err || typeof err !== "object") return null;
+  const data = (err as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return null;
+  const dup = (data as { duplicate_of?: unknown }).duplicate_of;
+  if (!dup || typeof dup !== "object") return null;
+  const d = dup as Record<string, unknown>;
+  if (typeof d.chartId !== "number") return null;
+  return {
+    chartId: d.chartId,
+    chartTitle: String(d.chartTitle ?? "(untitled)"),
+    chartType: String(d.chartType ?? ""),
+    reason: String(d.reason ?? "Matches an existing chart on this CE."),
+    mergeAllowed: Boolean(d.mergeAllowed),
+  };
+}
+
+function DuplicateChartModal({
+  dup,
+  pendingMerge,
+  pendingForce,
+  mergeError,
+  onClose,
+  onOpenExisting,
+  onMerge,
+  onCreateAnyway,
+}: {
+  dup: DuplicateInfo;
+  pendingMerge: boolean;
+  pendingForce: boolean;
+  mergeError: string | null;
+  onClose: () => void;
+  onOpenExisting: () => void;
+  onMerge: () => void;
+  onCreateAnyway: () => void;
+}) {
+  return (
+    <DialogPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 16, 35, 0.45)",
+            zIndex: 60,
+          }}
+        />
+        <DialogPrimitive.Content
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "white",
+            borderRadius: 16,
+            border: `1px solid ${BRAND.slate200}`,
+            padding: 24,
+            width: "min(520px, calc(100vw - 32px))",
+            zIndex: 61,
+            boxShadow: "0 24px 56px rgba(15,16,35,0.18)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: BRAND.purps,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Looks like a duplicate
+          </div>
+          <DialogPrimitive.Title
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: BRAND.slate950,
+              margin: 0,
+              marginBottom: 6,
+              lineHeight: 1.3,
+            }}
+          >
+            “{dup.chartTitle}” already covers this on the CE
+          </DialogPrimitive.Title>
+          <DialogPrimitive.Description
+            style={{
+              fontSize: 13,
+              color: BRAND.slate700,
+              lineHeight: 1.55,
+              margin: 0,
+            }}
+          >
+            {dup.reason}
+          </DialogPrimitive.Description>
+          {dup.chartType && (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 11,
+                fontWeight: 700,
+                color: BRAND.slate700,
+              }}
+            >
+              Archetype: <span style={{ color: BRAND.purps }}>{dup.chartType}</span>
+            </div>
+          )}
+          {mergeError && (
+            <div
+              style={{
+                marginTop: 12,
+                background: BRAND.candySoft,
+                color: BRAND.candy,
+                padding: "8px 10px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              {mergeError}
+            </div>
+          )}
+          {!dup.mergeAllowed && (
+            <div
+              style={{
+                marginTop: 12,
+                background: BRAND.slate100,
+                color: BRAND.slate700,
+                padding: "8px 10px",
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 12,
+              }}
+            >
+              This CE has a hand-curated chart set, so merging into it is disabled. Open the existing chart or create a separate one.
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              type="button"
+              onClick={onOpenExisting}
+              style={{
+                background: "white",
+                color: BRAND.slate950,
+                border: `1px solid ${BRAND.slate200}`,
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Eye size={13} /> Open existing
+            </button>
+            <button
+              type="button"
+              onClick={onMerge}
+              disabled={!dup.mergeAllowed || pendingMerge}
+              style={{
+                background: dup.mergeAllowed ? BRAND.candy : BRAND.slate200,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor:
+                  !dup.mergeAllowed
+                    ? "not-allowed"
+                    : pendingMerge
+                    ? "wait"
+                    : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {pendingMerge ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <RotateCcw size={13} />
+              )}
+              Merge into existing
+            </button>
+            <button
+              type="button"
+              onClick={onCreateAnyway}
+              disabled={pendingForce}
+              style={{
+                background: BRAND.purps,
+                color: "white",
+                border: "none",
+                padding: "9px 14px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: pendingForce ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {pendingForce ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Plus size={13} />
+              )}
+              Create anyway
+            </button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
 function NewChartForm({
   ceSlug,
   onClose,
@@ -3790,7 +4043,11 @@ function NewChartForm({
   const [pastedData, setPastedData] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const createMut = useCreateChartFromTopic();
+  const mergeMut = useMergeChartSuggestion();
+  const qc = useQueryClient();
 
   // If a fresh seed arrives (writer clicked another idea while the form was
   // already open), refresh the inputs without clobbering manual edits to
@@ -3802,13 +4059,8 @@ function NewChartForm({
     }
   }, [seed]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitCreate(force: boolean) {
     setError(null);
-    if (topic.trim().length < 4) {
-      setError("Tell us a bit more about what this chart should answer.");
-      return;
-    }
     try {
       await createMut.mutateAsync({
         slug: ceSlug,
@@ -3817,14 +4069,21 @@ function NewChartForm({
           archetype: archetype || undefined,
           pastedData: pastedData.trim() || undefined,
           sourceUrl: sourceUrl.trim() || undefined,
+          ...(force ? { force: true } : {}),
         },
       });
       setTopic("");
       setArchetype("");
       setPastedData("");
       setSourceUrl("");
+      setDuplicate(null);
       onCreated();
     } catch (e) {
+      const dup = extractDuplicate(e);
+      if (dup && !force) {
+        setDuplicate(dup);
+        return;
+      }
       const msg =
         e && typeof e === "object" && "data" in e
           ? (e as { data?: { error?: string } }).data?.error ??
@@ -3833,6 +4092,47 @@ function NewChartForm({
           ? e.message
           : "Generation failed";
       setError(msg);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (topic.trim().length < 4) {
+      setError("Tell us a bit more about what this chart should answer.");
+      return;
+    }
+    await submitCreate(false);
+  }
+
+  async function handleMerge() {
+    if (!duplicate) return;
+    setMergeError(null);
+    try {
+      await mergeMut.mutateAsync({
+        id: duplicate.chartId,
+        data: {
+          question: topic.trim() || undefined,
+          pastedData: pastedData.trim() || undefined,
+          sourceUrl: sourceUrl.trim() || undefined,
+        },
+      });
+      qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+      setDuplicate(null);
+      setTopic("");
+      setArchetype("");
+      setPastedData("");
+      setSourceUrl("");
+      onCreated();
+      // Defer scroll so the just-invalidated chart card has re-rendered.
+      setTimeout(() => scrollToChart(duplicate.chartId), 150);
+    } catch (e) {
+      const msg =
+        e && typeof e === "object" && "data" in e
+          ? (e as { data?: { error?: string } }).data?.error ?? "Merge failed"
+          : e instanceof Error
+          ? e.message
+          : "Merge failed";
+      setMergeError(msg);
     }
   }
 
@@ -3957,6 +4257,29 @@ function NewChartForm({
           Generate draft
         </button>
       </div>
+      {duplicate && (
+        <DuplicateChartModal
+          dup={duplicate}
+          pendingMerge={mergeMut.isPending}
+          pendingForce={createMut.isPending}
+          mergeError={mergeError}
+          onClose={() => {
+            setDuplicate(null);
+            setMergeError(null);
+          }}
+          onOpenExisting={() => {
+            const id = duplicate.chartId;
+            setDuplicate(null);
+            // Close the form so the chart card is visible.
+            onClose();
+            setTimeout(() => scrollToChart(id), 150);
+          }}
+          onMerge={handleMerge}
+          onCreateAnyway={() => {
+            void submitCreate(true);
+          }}
+        />
+      )}
     </form>
   );
 }
@@ -4691,7 +5014,54 @@ function FeasibilityCard({
 }) {
   const qc = useQueryClient();
   const generateMut = usePostIdeationGenerateChart();
+  const mergeMut = useMergeChartSuggestion();
   const [error, setError] = useState<string | null>(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const dupRaw = (feasibility as { duplicate_of?: unknown }).duplicate_of;
+  const duplicate: DuplicateInfo | null =
+    dupRaw && typeof dupRaw === "object" &&
+    typeof (dupRaw as { chartId?: unknown }).chartId === "number"
+      ? {
+          chartId: (dupRaw as { chartId: number }).chartId,
+          chartTitle: String(
+            (dupRaw as { chartTitle?: unknown }).chartTitle ?? "(untitled)",
+          ),
+          chartType: String(
+            (dupRaw as { chartType?: unknown }).chartType ?? "",
+          ),
+          reason: String(
+            (dupRaw as { reason?: unknown }).reason ??
+              "Matches an existing chart on this CE.",
+          ),
+          mergeAllowed: Boolean(
+            (dupRaw as { mergeAllowed?: unknown }).mergeAllowed,
+          ),
+        }
+      : null;
+
+  async function handleMergeDuplicate() {
+    if (!duplicate) return;
+    setMergeError(null);
+    try {
+      await mergeMut.mutateAsync({
+        id: duplicate.chartId,
+        data: {
+          question: feasibility.question ?? feasibility.topic,
+        },
+      });
+      qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      qc.invalidateQueries({ queryKey: getGetIdeationQueryKey(slug) });
+      setTimeout(() => scrollToChart(duplicate.chartId), 150);
+    } catch (e) {
+      const msg =
+        e && typeof e === "object" && "data" in e
+          ? (e as { data?: { error?: string } }).data?.error ?? "Merge failed"
+          : e instanceof Error
+          ? e.message
+          : "Merge failed";
+      setMergeError(msg);
+    }
+  }
 
   const verdict = feasibility.verdict;
   const generatedId = feasibility.generated_chart_id ?? null;
@@ -4811,6 +5181,121 @@ function FeasibilityCard({
           }}
         >
           {feasibility.rationale}
+        </div>
+      )}
+      {duplicate && (
+        <div
+          style={{
+            background: BRAND.holaSoft,
+            border: "1px solid #FFC97A",
+            borderRadius: 10,
+            padding: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#7A4400",
+            }}
+          >
+            Looks like a duplicate
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: BRAND.slate950,
+              fontWeight: 700,
+            }}
+          >
+            “{duplicate.chartTitle}” already covers this on the CE.
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: BRAND.slate700,
+              lineHeight: 1.5,
+            }}
+          >
+            {duplicate.reason}
+          </div>
+          {mergeError && (
+            <div
+              style={{
+                background: BRAND.candySoft,
+                color: BRAND.candy,
+                padding: "6px 8px",
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 11,
+              }}
+            >
+              {mergeError}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => scrollToChart(duplicate.chartId)}
+              style={{
+                background: "white",
+                color: BRAND.slate950,
+                border: `1px solid ${BRAND.slate200}`,
+                padding: "5px 9px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 11,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Eye size={11} /> Open existing
+            </button>
+            <button
+              type="button"
+              onClick={handleMergeDuplicate}
+              disabled={!duplicate.mergeAllowed || mergeMut.isPending}
+              style={{
+                background: duplicate.mergeAllowed
+                  ? BRAND.candy
+                  : BRAND.slate200,
+                color: "white",
+                border: "none",
+                padding: "5px 9px",
+                borderRadius: 8,
+                fontWeight: 800,
+                fontSize: 11,
+                cursor:
+                  !duplicate.mergeAllowed
+                    ? "not-allowed"
+                    : mergeMut.isPending
+                    ? "wait"
+                    : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+              title={
+                duplicate.mergeAllowed
+                  ? undefined
+                  : "Curated CEs cannot be merged into"
+              }
+            >
+              {mergeMut.isPending ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <RotateCcw size={11} />
+              )}
+              Merge into existing
+            </button>
+          </div>
         </div>
       )}
       {feasibility.missing_data.length > 0 && (

@@ -20,6 +20,17 @@ export interface FeasibilityWebSource {
   url: string;
 }
 
+export interface FeasibilityDuplicate {
+  chartId: number;
+  chartSlug: string;
+  chartTitle: string;
+  chartType: string;
+  matchType: "archetype_intent" | "archetype_fuzzy" | "question_only";
+  similarity: number;
+  reason: string;
+  mergeAllowed: boolean;
+}
+
 export interface FeasibilityVerdict {
   verdict: FeasibilityVerdictKind;
   topic: string;
@@ -30,6 +41,13 @@ export interface FeasibilityVerdict {
   drd_snippets: string[];
   web_sources: FeasibilityWebSource[];
   generated_chart_id?: number;
+  /**
+   * Populated server-side by the ideation/feasibility route when the
+   * proposed topic + recommended archetype matches an existing chart on
+   * the same CE. The UI uses this to render a "Looks like a duplicate"
+   * banner with Open / Merge / Create-anyway actions.
+   */
+  duplicate_of?: FeasibilityDuplicate;
 }
 
 export interface FeasibilityInput {

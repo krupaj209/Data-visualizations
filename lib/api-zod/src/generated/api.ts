@@ -2063,6 +2063,103 @@ export const CreateChartFromTopicBody = zod.object({
   pastedData: zod.string().optional(),
   sourceUrl: zod.string().optional(),
   writerId: zod.string().optional(),
+  force: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Skip the duplicate-detection short-circuit. When `true`, the\nserver creates the chart even if it matches an existing chart\non the same CE, and stamps `provenance.kept_as_duplicate_of`\nwith the matched chart id so it won't be re-flagged.\n",
+    ),
+});
+
+/**
+ * @summary Fold writer-provided inputs into an existing chart
+ */
+export const MergeChartSuggestionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const mergeChartSuggestionBodyQuestionMin = 2;
+export const mergeChartSuggestionBodyQuestionMax = 280;
+
+export const mergeChartSuggestionBodyPastedDataMax = 20000;
+
+export const mergeChartSuggestionBodySourceUrlMax = 800;
+
+export const mergeChartSuggestionBodyInsightMax = 400;
+
+export const mergeChartSuggestionBodySubtitleMax = 200;
+
+export const mergeChartSuggestionBodyWriterIdMax = 120;
+
+export const MergeChartSuggestionBody = zod
+  .object({
+    question: zod
+      .string()
+      .min(mergeChartSuggestionBodyQuestionMin)
+      .max(mergeChartSuggestionBodyQuestionMax)
+      .optional(),
+    pastedData: zod
+      .string()
+      .max(mergeChartSuggestionBodyPastedDataMax)
+      .optional()
+      .describe(
+        "When supplied, the server re-runs the per-archetype generator\nagainst the merged inputs so the chart spec reflects the new\nnumbers.\n",
+      ),
+    sourceUrl: zod
+      .string()
+      .max(mergeChartSuggestionBodySourceUrlMax)
+      .optional()
+      .describe("Dedupe-appended into `provenance.web_sources`.\n"),
+    insight: zod.string().max(mergeChartSuggestionBodyInsightMax).optional(),
+    subtitle: zod.string().max(mergeChartSuggestionBodySubtitleMax).optional(),
+    writerId: zod.string().max(mergeChartSuggestionBodyWriterIdMax).optional(),
+  })
+  .describe(
+    "Body for `POST \/charts\/{id}\/merge-suggestion` — fold a writer's\nnew inputs into an existing chart instead of creating a duplicate.\nAll fields optional; the server requires at least one non-empty\nvalue. Locked CEs reject with 409.\n",
+  );
+
+export const MergeChartSuggestionResponse = zod.object({
+  id: zod.number(),
+  ceId: zod.number(),
+  slug: zod.string(),
+  question: zod.string(),
+  title: zod.string(),
+  subtitle: zod.string(),
+  insight: zod.string(),
+  chartType: zod.string(),
+  spec: zod.record(zod.string(), zod.unknown()),
+  status: zod.string(),
+  provenance: zod.record(zod.string(), zod.unknown()).nullish(),
+  lastEditedByWriterAt: zod.string().nullish(),
+  interactive: zod
+    .boolean()
+    .describe(
+      "Whether interactive affordances render in embeds. Default true.",
+    ),
+  overlayHeadline: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+    ),
+  overlaySubhead: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+    ),
+  overlayInsight: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+    ),
+  sortOrder: zod.number(),
+  openFeedbackCount: zod.number().optional(),
+  topFeedbackSeverity: zod.string().nullish(),
+  editCount: zod.number().optional(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
 });
 
 /**
@@ -2254,6 +2351,25 @@ export const GetIdeationResponseItem = zod.object({
         .describe(
           'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
         ),
+      duplicate_of: zod
+        .object({
+          chartId: zod.number(),
+          chartSlug: zod.string(),
+          chartTitle: zod.string(),
+          chartType: zod.string(),
+          matchType: zod.enum([
+            "archetype_intent",
+            "archetype_fuzzy",
+            "question_only",
+          ]),
+          similarity: zod.number(),
+          reason: zod.string(),
+          mergeAllowed: zod.boolean(),
+        })
+        .nullish()
+        .describe(
+          'Populated when the verdict\'s archetype + question matches an\nexisting chart on this CE. The UI surfaces a \"Looks like a\nduplicate\" banner with Open \/ Merge \/ Create-anyway actions.\n',
+        ),
     })
     .describe(
       "Structured feasibility check for a proposed chart topic. Returned\nby `POST \/ces\/{slug}\/ideation\/feasibility` and persisted on the\nassistant turn so the panel can re-render verdict cards from\nhistory.\n",
@@ -2326,6 +2442,25 @@ export const PostIdeationResponse = zod.object({
         .nullish()
         .describe(
           'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+        ),
+      duplicate_of: zod
+        .object({
+          chartId: zod.number(),
+          chartSlug: zod.string(),
+          chartTitle: zod.string(),
+          chartType: zod.string(),
+          matchType: zod.enum([
+            "archetype_intent",
+            "archetype_fuzzy",
+            "question_only",
+          ]),
+          similarity: zod.number(),
+          reason: zod.string(),
+          mergeAllowed: zod.boolean(),
+        })
+        .nullish()
+        .describe(
+          'Populated when the verdict\'s archetype + question matches an\nexisting chart on this CE. The UI surfaces a \"Looks like a\nduplicate\" banner with Open \/ Merge \/ Create-anyway actions.\n',
         ),
     })
     .describe(
@@ -2411,6 +2546,25 @@ export const PostIdeationFeasibilityResponse = zod.object({
         .nullish()
         .describe(
           'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+        ),
+      duplicate_of: zod
+        .object({
+          chartId: zod.number(),
+          chartSlug: zod.string(),
+          chartTitle: zod.string(),
+          chartType: zod.string(),
+          matchType: zod.enum([
+            "archetype_intent",
+            "archetype_fuzzy",
+            "question_only",
+          ]),
+          similarity: zod.number(),
+          reason: zod.string(),
+          mergeAllowed: zod.boolean(),
+        })
+        .nullish()
+        .describe(
+          'Populated when the verdict\'s archetype + question matches an\nexisting chart on this CE. The UI surfaces a \"Looks like a\nduplicate\" banner with Open \/ Merge \/ Create-anyway actions.\n',
         ),
     })
     .describe(
@@ -2540,6 +2694,25 @@ export const PostIdeationGenerateChartResponse = zod.object({
           .nullish()
           .describe(
             'Set once the writer clicks \"Generate this chart\" and the draft\nis created. Lets the transcript deep-link to the draft card.\n',
+          ),
+        duplicate_of: zod
+          .object({
+            chartId: zod.number(),
+            chartSlug: zod.string(),
+            chartTitle: zod.string(),
+            chartType: zod.string(),
+            matchType: zod.enum([
+              "archetype_intent",
+              "archetype_fuzzy",
+              "question_only",
+            ]),
+            similarity: zod.number(),
+            reason: zod.string(),
+            mergeAllowed: zod.boolean(),
+          })
+          .nullish()
+          .describe(
+            'Populated when the verdict\'s archetype + question matches an\nexisting chart on this CE. The UI surfaces a \"Looks like a\nduplicate\" banner with Open \/ Merge \/ Create-anyway actions.\n',
           ),
       })
       .describe(

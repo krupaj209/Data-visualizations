@@ -161,6 +161,83 @@ export interface TopicChartInput {
   pastedData?: string;
   sourceUrl?: string;
   writerId?: string;
+  /** Skip the duplicate-detection short-circuit. When `true`, the
+server creates the chart even if it matches an existing chart
+on the same CE, and stamps `provenance.kept_as_duplicate_of`
+with the matched chart id so it won't be re-flagged.
+ */
+  force?: boolean;
+}
+
+export type DuplicateChartPayloadDuplicateOfMatchType =
+  (typeof DuplicateChartPayloadDuplicateOfMatchType)[keyof typeof DuplicateChartPayloadDuplicateOfMatchType];
+
+export const DuplicateChartPayloadDuplicateOfMatchType = {
+  archetype_intent: "archetype_intent",
+  archetype_fuzzy: "archetype_fuzzy",
+  question_only: "question_only",
+} as const;
+
+export type DuplicateChartPayloadDuplicateOf = {
+  chartId: number;
+  chartSlug: string;
+  chartTitle: string;
+  chartType: string;
+  matchType: DuplicateChartPayloadDuplicateOfMatchType;
+  similarity: number;
+  reason: string;
+  /** False for curated/locked CEs — the merge action must be
+disabled in the UI so hand-curated chart specs stay
+canonical.
+ */
+  mergeAllowed: boolean;
+};
+
+/**
+ * Body returned with HTTP 409 from `createChartFromTopic` when the
+writer's topic + recommended archetype matches an existing chart
+on the same CE. Also embedded in `FeasibilityVerdict.duplicate_of`.
+
+ */
+export interface DuplicateChartPayload {
+  /** Always `"duplicate_chart"`. */
+  error: string;
+  duplicate_of: DuplicateChartPayloadDuplicateOf;
+}
+
+/**
+ * Body for `POST /charts/{id}/merge-suggestion` — fold a writer's
+new inputs into an existing chart instead of creating a duplicate.
+All fields optional; the server requires at least one non-empty
+value. Locked CEs reject with 409.
+
+ */
+export interface MergeSuggestionInput {
+  /**
+   * @minLength 2
+   * @maxLength 280
+   */
+  question?: string;
+  /**
+   * When supplied, the server re-runs the per-archetype generator
+against the merged inputs so the chart spec reflects the new
+numbers.
+
+   * @maxLength 20000
+   */
+  pastedData?: string;
+  /**
+   * Dedupe-appended into `provenance.web_sources`.
+
+   * @maxLength 800
+   */
+  sourceUrl?: string;
+  /** @maxLength 400 */
+  insight?: string;
+  /** @maxLength 200 */
+  subtitle?: string;
+  /** @maxLength 120 */
+  writerId?: string;
 }
 
 export interface PublishAllDraftsInput {
@@ -201,6 +278,15 @@ export const FeasibilityVerdictVerdict = {
   out_of_scope: "out_of_scope",
 } as const;
 
+export type FeasibilityVerdictDuplicateOfMatchType =
+  (typeof FeasibilityVerdictDuplicateOfMatchType)[keyof typeof FeasibilityVerdictDuplicateOfMatchType];
+
+export const FeasibilityVerdictDuplicateOfMatchType = {
+  archetype_intent: "archetype_intent",
+  archetype_fuzzy: "archetype_fuzzy",
+  question_only: "question_only",
+} as const;
+
 export type FeasibilityVerdictMissingDataItem = {
   label: string;
   hint?: string;
@@ -210,6 +296,23 @@ export type FeasibilityVerdictWebSourcesItem = {
   title: string;
   url: string;
 };
+
+/**
+ * Populated when the verdict's archetype + question matches an
+existing chart on this CE. The UI surfaces a "Looks like a
+duplicate" banner with Open / Merge / Create-anyway actions.
+
+ */
+export type FeasibilityVerdictDuplicateOf = {
+  chartId: number;
+  chartSlug: string;
+  chartTitle: string;
+  chartType: string;
+  matchType: FeasibilityVerdictDuplicateOfMatchType;
+  similarity: number;
+  reason: string;
+  mergeAllowed: boolean;
+} | null;
 
 /**
  * Structured feasibility check for a proposed chart topic. Returned
@@ -238,6 +341,11 @@ export interface FeasibilityVerdict {
 is created. Lets the transcript deep-link to the draft card.
  */
   generated_chart_id?: number | null;
+  /** Populated when the verdict's archetype + question matches an
+existing chart on this CE. The UI surfaces a "Looks like a
+duplicate" banner with Open / Merge / Create-anyway actions.
+ */
+  duplicate_of?: FeasibilityVerdictDuplicateOf;
 }
 
 export interface IdeationMessage {

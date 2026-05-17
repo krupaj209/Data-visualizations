@@ -1097,8 +1097,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: |
+            Topic matches an existing chart on the same CE. Body carries
+            the matched chart so the UI can offer Open / Merge / Create-
+            anyway. Resubmit with `force: true` to bypass.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateChartPayload"
         "502":
           description: Generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /charts/{id}/merge-suggestion:
+    post:
+      operationId: mergeChartSuggestion
+      tags: [charts]
+      summary: Fold writer-provided inputs into an existing chart
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeSuggestionInput"
+      responses:
+        "200":
+          description: Updated chart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chart"
+        "400":
+          description: Invalid input or nothing to merge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Chart not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is locked from automated edits
           content:
             application/json:
               schema:
@@ -1612,8 +1663,94 @@ components:
           type: string
         writerId:
           type: string
+        force:
+          type: boolean
+          description: |
+            Skip the duplicate-detection short-circuit. When `true`, the
+            server creates the chart even if it matches an existing chart
+            on the same CE, and stamps `provenance.kept_as_duplicate_of`
+            with the matched chart id so it won't be re-flagged.
       required:
         - topic
+    DuplicateChartPayload:
+      type: object
+      description: |
+        Body returned with HTTP 409 from `createChartFromTopic` when the
+        writer's topic + recommended archetype matches an existing chart
+        on the same CE. Also embedded in `FeasibilityVerdict.duplicate_of`.
+      properties:
+        error:
+          type: string
+          description: Always `"duplicate_chart"`.
+        duplicate_of:
+          type: object
+          properties:
+            chartId:
+              type: integer
+            chartSlug:
+              type: string
+            chartTitle:
+              type: string
+            chartType:
+              type: string
+            matchType:
+              type: string
+              enum: [archetype_intent, archetype_fuzzy, question_only]
+            similarity:
+              type: number
+            reason:
+              type: string
+            mergeAllowed:
+              type: boolean
+              description: |
+                False for curated/locked CEs — the merge action must be
+                disabled in the UI so hand-curated chart specs stay
+                canonical.
+          required:
+            - chartId
+            - chartSlug
+            - chartTitle
+            - chartType
+            - matchType
+            - similarity
+            - reason
+            - mergeAllowed
+      required:
+        - error
+        - duplicate_of
+    MergeSuggestionInput:
+      type: object
+      description: |
+        Body for `POST /charts/{id}/merge-suggestion` — fold a writer's
+        new inputs into an existing chart instead of creating a duplicate.
+        All fields optional; the server requires at least one non-empty
+        value. Locked CEs reject with 409.
+      properties:
+        question:
+          type: string
+          minLength: 2
+          maxLength: 280
+        pastedData:
+          type: string
+          maxLength: 20000
+          description: |
+            When supplied, the server re-runs the per-archetype generator
+            against the merged inputs so the chart spec reflects the new
+            numbers.
+        sourceUrl:
+          type: string
+          maxLength: 800
+          description: |
+            Dedupe-appended into `provenance.web_sources`.
+        insight:
+          type: string
+          maxLength: 400
+        subtitle:
+          type: string
+          maxLength: 200
+        writerId:
+          type: string
+          maxLength: 120
     PublishAllDraftsInput:
       type: object
       properties:
@@ -1753,6 +1890,40 @@ components:
           description: |
             Set once the writer clicks "Generate this chart" and the draft
             is created. Lets the transcript deep-link to the draft card.
+        duplicate_of:
+          nullable: true
+          description: |
+            Populated when the verdict's archetype + question matches an
+            existing chart on this CE. The UI surfaces a "Looks like a
+            duplicate" banner with Open / Merge / Create-anyway actions.
+          type: object
+          properties:
+            chartId:
+              type: integer
+            chartSlug:
+              type: string
+            chartTitle:
+              type: string
+            chartType:
+              type: string
+            matchType:
+              type: string
+              enum: [archetype_intent, archetype_fuzzy, question_only]
+            similarity:
+              type: number
+            reason:
+              type: string
+            mergeAllowed:
+              type: boolean
+          required:
+            - chartId
+            - chartSlug
+            - chartTitle
+            - chartType
+            - matchType
+            - similarity
+            - reason
+            - mergeAllowed
       required:
         - verdict
         - topic
