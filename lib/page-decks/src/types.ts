@@ -8,7 +8,6 @@
  */
 
 import { z } from "zod";
-import type { ChartSpec } from "@headout/api-spec";
 
 // ─────────────────────────────────────────────────────────────
 // Page Types
@@ -59,25 +58,25 @@ export const QuestionGraphNode = z.object({
   subheadlineTemplate: z.string(),   // "Based on {months} of crowd data"
 
   // Dependencies & conflicts
-  requires: z.array(z.string()).default([]),
-  conflictsWith: z.array(z.string()).default([]),
-  enhances: z.array(z.string()).default([]),
+  requires: z.array(z.string()).optional(),
+  conflictsWith: z.array(z.string()).optional(),
+  enhances: z.array(z.string()).optional(),
 
   // CE signals (when is this question relevant?)
   ceSignals: z.object({
     minVisitorVolume: z.number().optional(),      // Only for high-traffic CEs
-    hasSeasonalVariation: z.boolean().default(true),
-    hasMultipleEntrances: z.boolean().default(false),
-    hasSkipTheLine: z.boolean().default(false),
-    hasAudioGuide: z.boolean().default(false),
-    hasGuidedTours: z.boolean().default(false),
-    hasRestrictedItems: z.boolean().default(false),
-    hasAccessibilityNeeds: z.boolean().default(false),
+    hasSeasonalVariation: z.boolean().optional(),
+    hasMultipleEntrances: z.boolean().optional(),
+    hasSkipTheLine: z.boolean().optional(),
+    hasAudioGuide: z.boolean().optional(),
+    hasGuidedTours: z.boolean().optional(),
+    hasRestrictedItems: z.boolean().optional(),
+    hasAccessibilityNeeds: z.boolean().optional(),
     typicalVisitDuration: z.object({
       min: z.number(),
       max: z.number(),
     }).optional(),
-  }).default({}),
+  }).optional(),
 
   // Page-type variants (contextualized for each page type)
   pageVariants: z.record(
@@ -86,16 +85,16 @@ export const QuestionGraphNode = z.object({
       headline: z.string(),
       subheadline: z.string(),
       priority: z.number().min(1).max(10), // 1 = must-have, 10 = nice-to-have
-      maxCharts: z.number().default(1),
+      maxCharts: z.number().optional(),
     })
   ).optional(),
 
   // Editorial defaults
   editorialDefaults: z.object({
     ctaTemplate: z.string().optional(),
-    confidenceBadge: z.enum(["high", "medium", "low"]).default("medium"),
+    confidenceBadge: z.enum(["high", "medium", "low"]).optional(),
     fallbackMessage: z.string().optional(),
-  }).default({}),
+  }).optional(),
 });
 
 export type QuestionGraphNode = z.infer<typeof QuestionGraphNode>;
@@ -112,16 +111,16 @@ export const SectionDefinition = z.object({
 
   // Question selection
   questionPool: z.array(z.string()), // Question IDs eligible for this section
-  maxQuestions: z.number().default(1),
-  minQuestions: z.number().default(1),
+  maxQuestions: z.number().optional(),
+  minQuestions: z.number().optional(),
 
   // Visual constraints
   preferredChartTypes: z.array(z.string()).optional(),
   forbiddenChartTypes: z.array(z.string()).optional(),
 
   // Layout
-  layout: z.enum(["full", "half", "third", "hero"]).default("full"),
-  supportsPersonalization: z.boolean().default(false),
+  layout: z.enum(["full", "half", "third", "hero"]).optional(),
+  supportsPersonalization: z.boolean().optional(),
 });
 
 export type SectionDefinition = z.infer<typeof SectionDefinition>;
@@ -147,13 +146,13 @@ export const PageDeckTemplate = z.object({
   sections: z.array(SectionDefinition),
 
   // Deck constraints
-  maxTotalSections: z.number().default(6),
-  maxTotalCharts: z.number().default(6),
-  minTotalSections: z.number().default(3),
+  maxTotalSections: z.number().optional(),
+  maxTotalCharts: z.number().optional(),
+  minTotalSections: z.number().optional(),
 
   // Global rules
-  requiredArchetypes: z.array(SectionArchetype).default([]),
-  forbiddenArchetypes: z.array(SectionArchetype).default([]),
+  requiredArchetypes: z.array(SectionArchetype).optional(),
+  forbiddenArchetypes: z.array(SectionArchetype).optional(),
 });
 
 export type PageDeckTemplate = z.infer<typeof PageDeckTemplate>;
@@ -219,7 +218,7 @@ export const ResolvedDeck = z.object({
     archetype: SectionArchetype,
     reason: z.string(),
     fallbackMessage: z.string(),
-  })).default([]),
+  })).optional(),
 });
 
 export type ResolvedDeck = z.infer<typeof ResolvedDeck>;

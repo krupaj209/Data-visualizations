@@ -7,6 +7,7 @@ import researchRouter from "./research";
 import feedbackRouter from "./feedback";
 import questionBankRouter from "./question-bank";
 import ceIntelligenceRouter from "./ce-intelligence";
+import pageDecksRouter from "./page-decks";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(researchRouter);
 router.use(feedbackRouter);
 router.use(questionBankRouter);
 router.use(ceIntelligenceRouter);
+router.use(pageDecksRouter);
 
 export default router;

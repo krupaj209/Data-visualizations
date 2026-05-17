@@ -1,0 +1,2598 @@
+The New Chart Types
+Table
+Chart	Page Type	What It Answers	Why It's Game-Changing
+entrance_map	Entrances, PYV	"Where exactly do I go?"	Interactive map with landmarks, not just a list
+floor_plan_flow	PYV, Map	"What do I see inside?"	Room-by-room route with crowd levels
+rules_checklist	PYV, Entrances	"What can I bring?"	Visual checklist, not a wall of text
+transit_options	PYV, Entrances	"How do I get there?"	Ranked by time, cost, and effort
+time_value_matrix	Skip-the-Line	"Is it worth the extra €?"	ROI grid: visitor type × time saved
+accessibility_guide	Entrances	"Can I get in with a wheelchair?"	Entrance-by-entrance accessibility
+best_for_matrix	Entrances, Tickets	"Which ticket/entrance for me?"	Decision matrix: visitor type × best option
+File 1: lib/api-spec/src/chart-specs/entrance-map.ts
+TypeScript
+Copy
+/**
+ * Entrance Map — Chart Spec
+ * 
+ * An interactive map showing all entrances with:
+ * - Location coordinates (relative or absolute)
+ * - Wait time indicators
+ * - Accessibility markers
+ * - Landmark references
+ * - "Best for" tags
+ */
+
+import { z } from "zod";
+
+export const EntranceMapSpec = z.object({
+  type: z.literal("entrance_map"),
+  
+  // Map configuration
+  map: z.object({
+    // If you have an actual map image/SVG
+    baseMapUrl: z.string().optional(),
+    // Or relative coordinate system (0-100)
+    coordinateSystem: z.enum(["relative", "absolute"]).default("relative"),
+    bounds: z.object({
+      north: z.number(),
+      south: z.number(),
+      east: z.number(),
+      west: z.number(),
+    }).optional(), // For absolute (lat/lng)
+  }),
+  
+  // Entrances
+  entrances: z.array(z.object({
+    id: z.string(),
+    name: z.string(),              // "Main Entrance - Via Ricasoli"
+    shortName: z.string(),         // "Main" — for map labels
+    coordinates: z.object({
+      x: z.number().min(0).max(100), // For relative
+      y: z.number().min(0).max(100),
+    }),
+    
+    // Current status
+    status: z.enum(["open", "closed", "limited_access", "members_only"]),
+    currentWaitMinutes: z.number().min(0).optional(),
+    typicalWaitMinutes: z.number().min(0),
+    
+    // Accessibility
+    accessibility: z.object({
+      wheelchairAccessible: z.boolean(),
+      hasRamp: z.boolean(),
+      hasElevator: z.boolean(),
+      stepFree: z.boolean(),
+      accessibleBathroomNearby: z.boolean().optional(),
+    }),
+    
+    // Best for whom
+    bestFor: z.array(z.enum([
+      "first_timers",
+      "return_visitors",
+      "families",
+      "seniors",
+      "mobility_limited",
+      "large_groups",
+      "solo_travelers",
+      "rush_visitors",
+    ])),
+    
+    // How to reach
+    transit: z.array(z.object({
+      mode: z.enum(["walk", "bus", "tram", "metro", "taxi", "bike"]),
+      from: z.string(),            // "Santa Maria Novella Station"
+      durationMinutes: z.number(),
+      cost: z.object({
+        amount: z.number(),
+        currency: z.string().default("EUR"),
+      }).optional(),
+      instructions: z.string(),    // "Walk north on Via dei Fossi"
+    })),
+    
+    // Security/bag check at this entrance
+    securityLevel: z.enum(["none", "light", "standard", "strict"]),
+    prohibitedItemsNote: z.string().optional(),
+    
+    // Visual styling
+    color: z.string().optional(),   // Override default color
+    icon: z.enum(["star", "clock", "wheelchair", "family", "group", "bolt"]).optional(),
+    
+    // Editorial
+    tip: z.string().optional(),    // "Arrive 15 min early — security is strict here"
+  })).min(1).max(6),
+  
+  // Landmarks for orientation
+  landmarks: z.array(z.object({
+    name: z.string(),
+    coordinates: z.object({ x: z.number(), y: z.number() }),
+    icon: z.enum(["landmark", "transit", "food", "restroom", "info"]),
+  })).optional(),
+  
+  // Recommended entrance (highlighted)
+  recommendedEntranceId: z.string().optional(),
+  
+  // Legend / key
+  showLegend: z.boolean().default(true),
+  
+  // Interactivity
+  interactive: z.object({
+    clickable: z.boolean().default(true),
+    showTooltips: z.boolean().default(true),
+    zoomable: z.boolean().default(false),
+  }).default({}),
+  
+  // Editorial overlay
+  headline: z.string().default("Entrance Locations"),
+  subheadline: z.string().default("Where to go and what to expect at each door"),
+});
+
+export type EntranceMapSpec = z.infer<<typeof EntranceMapSpec>;
+File 2: lib/api-spec/src/chart-specs/floor-plan-flow.ts
+TypeScript
+Copy
+/**
+ * Floor Plan Flow — Chart Spec
+ * 
+ * Room-by-room navigation with crowd levels, must-see ratings,
+ * and suggested route. Think: Google Maps indoors for museums.
+ */
+
+import { z } from "zod";
+
+export const FloorPlanFlowSpec = z.object({
+  type: z.literal("floor_plan_flow"),
+  
+  // Floor plan base
+  floorPlan: z.object({
+    // SVG path data or image URL
+    svgUrl: z.string().optional(),
+    imageUrl: z.string().optional(),
+    // Or simple relative coordinate rooms
+    useCoordinateRooms: z.boolean().default(true),
+  }),
+  
+  // Rooms / zones
+  rooms: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    shortName: z.string().optional(), // For small labels
+    
+    // Position (for coordinate-based rendering)
+    coordinates: z.object({
+      x: z.number().min(0).max(100),
+      y: z.number().min(0).max(100),
+      width: z.number().min(0).max(100),
+      height: z.number().min(0).max(100),
+    }).optional(),
+    
+    // Or SVG path
+    svgPath: z.string().optional(),
+    
+    // Crowd level (real-time or typical)
+    crowdLevel: z.enum(["empty", "light", "moderate", "busy", "packed"]),
+    crowdLevelTypical: z.enum(["empty", "light", "moderate", "busy", "packed"]),
+    
+    // Must-see rating
+    mustSeeRating: z.number().min(1).max(5),
+    
+    // What's here
+    highlights: z.array(z.object({
+      name: z.string(),
+      type: z.enum(["artwork", "sculpture", "architecture", "view", "experience"]),
+      description: z.string().optional(),
+      imageUrl: z.string().optional(),
+    })).max(3),
+    
+    // Time to spend here
+    recommendedDurationMinutes: z.number().min(1),
+    
+    // Accessibility
+    stepFree: z.boolean().default(true),
+    hasSeating: z.boolean().default(false),
+    hasAudioGuidePoint: z.boolean().default(false),
+    
+    // Connections to other rooms
+    connections: z.array(z.object({
+      toRoomId: z.string(),
+      direction: z.enum(["north", "south", "east", "west", "up", "down"]),
+      distance: z.enum(["adjacent", "near", "far"]),
+      isPrimaryRoute: z.boolean().default(false),
+    })),
+    
+    // Visual
+    color: z.string().optional(),
+  })).min(2),
+  
+  // Suggested routes
+  routes: z.array(z.object({
+    name: z.string(),              // "The Essentials (45 min)"
+    durationMinutes: z.number(),
+    difficulty: z.enum(["easy", "moderate", "challenging"]),
+    forWhom: z.array(z.enum([
+      "first_timers",
+      "art_lovers",
+      "families",
+      "seniors",
+      "quick_visit",
+    ])),
+    roomSequence: z.array(z.string()), // Room IDs in order
+    color: z.string(),
+  })).min(1).max(4),
+  
+  // Default route to highlight
+  defaultRouteIndex: z.number().default(0),
+  
+  // Visitor position (for real-time, optional)
+  youAreHere: z.object({
+    roomId: z.string(),
+    timestamp: z.string().optional(),
+  }).optional(),
+  
+  // Interactivity
+  interactive: z.object({
+    selectableRooms: z.boolean().default(true),
+    selectableRoutes: z.boolean().default(true),
+    showCrowdRealtime: z.boolean().default(false),
+  }).default({}),
+  
+  // Editorial
+  headline: z.string().default("Inside the Venue"),
+  subheadline: z.string().default("Room-by-room: what to see, what to skip, and the optimal route"),
+});
+
+export type FloorPlanFlowSpec = z.infer<<typeof FloorPlanFlowSpec>;
+File 3: lib/api-spec/src/chart-specs/rules-checklist.ts
+TypeScript
+Copy
+/**
+ * Rules Checklist — Chart Spec
+ * 
+ * Visual checklist of security rules, dress code, and prohibited items.
+ * Replaces walls of text with scannable visual cards.
+ */
+
+import { z } from "zod";
+
+export const RulesChecklistSpec = z.object({
+  type: z.literal("rules_checklist"),
+  
+  // Venue context
+  venueName: z.string(),
+  venueType: z.enum(["museum", "church", "monument", "gallery", "theater", "outdoor"]),
+  
+  // Rules organized by category
+  categories: z.array(z.object({
+    id: z.string(),
+    name: z.string(),              // "Security & Bags"
+    icon: z.enum([
+      "bag", "camera", "shirt", "shoe", "food", "phone", 
+      "baby", "wheelchair", "ticket", "clock", "warning"
+    ]),
+    color: z.enum(["green", "yellow", "red", "blue", "purple"]).default("blue"),
+    
+    rules: z.array(z.object({
+      id: z.string(),
+      rule: z.string(),            // "Large backpacks must be checked"
+      severity: z.enum(["must", "should", "tip", "prohibited"]),
+      
+      // Visual indicator
+      status: z.enum(["allowed", "restricted", "prohibited", "required"]),
+      
+      // Details
+      details: z.string().optional(), // "Lockers available at main entrance, €2"
+      
+      // Visual icon for the item
+      itemIcon: z.enum([
+        "backpack", "camera", "tripod", "selfie_stick", "water", "food", 
+        "phone", "laptop", "scissors", "spray", "drone", "pet", "stroller",
+        "wheelchair", "cane", "umbrella", "coat", "hat", "shorts", "tank_top",
+        "flip_flops", "heels", "barefoot",
+      ]).optional(),
+      
+      // If prohibited/restricted, what's the alternative?
+      alternative: z.string().optional(), // "Use the free cloakroom"
+      
+      // Common mistake visitors make
+      commonMistake: z.string().optional(), // "People often try to bring 1L water bottles"
+    })).min(1),
+  })).min(1).max(5),
+  
+  // Special notes (time-dependent, entrance-specific)
+  timeSensitiveNotes: z.array(z.object({
+    condition: z.string(),         // "During high season (Jun-Aug)"
+    note: z.string(),
+    severity: z.enum(["info", "warning", "alert"]),
+  })).optional(),
+  
+  // Entrance-specific rules
+  entranceSpecific: z.record(
+    z.string(), // entrance ID
+    z.array(z.object({
+      rule: z.string(),
+      severity: z.enum(["must", "should", "tip"]),
+    }))
+  ).optional(),
+  
+  // Pre-visit checklist (interactive)
+  checklistItems: z.array(z.object({
+    id: z.string(),
+    text: z.string(),              // "Valid ID matches ticket name"
+    isCheckedByDefault: z.boolean().default(false),
+    isRequired: z.boolean().default(true),
+  })).optional(),
+  
+  // Visual config
+  layout: z.enum(["grid", "list", "accordion"]).default("grid"),
+  showSeverityColors: z.boolean().default(true),
+  showIcons: z.boolean().default(true),
+  
+  // Editorial
+  headline: z.string().default("What to Know Before You Arrive"),
+  subheadline: z.string().default("Security, dress code, and prohibited items that catch visitors off guard"),
+  cta: z.object({
+    text: z.string().default("Download checklist"),
+    url: z.string().optional(),
+  }).optional(),
+});
+
+export type RulesChecklistSpec = z.infer<<typeof RulesChecklistSpec>;
+File 4: lib/api-spec/src/chart-specs/transit-options.ts
+TypeScript
+Copy
+/**
+ * Transit Options — Chart Spec
+ * 
+ * Ranked transport options with time, cost, effort, and walking
+ * directions. Like Google Maps transit, but curated for this venue.
+ */
+
+import { z } from "zod";
+
+export const TransitOptionsSpec = z.object({
+  type: z.literal("transit_options"),
+  
+  // Origin context
+  fromLocation: z.object({
+    name: z.string(),              // "Florence City Center"
+    coordinates: z.object({
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+    }).optional(),
+  }),
+  
+  // Destination
+  toVenue: z.object({
+    name: z.string(),
+    mainEntrance: z.string(),      // "Via Ricasoli Main Entrance"
+    coordinates: z.object({
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+    }).optional(),
+  }),
+  
+  // Transport options (ranked by our recommendation)
+  options: z.array(z.object({
+    id: z.string(),
+    rank: z.number().min(1).max(10),
+    
+    // Mode
+    mode: z.enum([
+      "walk", "bus", "tram", "metro", "taxi", "rideshare", 
+      "bike", "scooter", "car", "tour_bus"
+    ]),
+    
+    // Route details
+    route: z.array(z.object({
+      segmentType: z.enum([
+        "walk", "vehicle", "transfer", "wait"
+      ]),
+      from: z.string(),
+      to: z.string(),
+      durationMinutes: z.number(),
+      distanceKm: z.number().optional(),
+      instruction: z.string(),     // "Walk north on Via dei Fossi for 400m"
+      
+      // For vehicle segments
+      lineNumber: z.string().optional(), // "Bus C1"
+      direction: z.string().optional(),
+      stops: z.number().optional(),
+      
+      // Visual
+      color: z.string().optional(), // Line color
+    })),
+    
+    // Totals
+    totalDurationMinutes: z.number(),
+    totalCost: z.object({
+      amount: z.number(),
+      currency: z.string().default("EUR"),
+      perPerson: z.boolean().default(true),
+    }),
+    walkingDistanceKm: z.number().default(0),
+    transfers: z.number().default(0),
+    
+    // Effort score (for ranking)
+    effortScore: z.number().min(1).max(10), // 1 = effortless, 10 = exhausting
+    crowdComfort: z.enum(["empty", "light", "moderate", "busy", "packed"]),
+    
+    // Best for whom
+    bestFor: z.array(z.enum([
+      "budget_conscious",
+      "time_conscious",
+      "comfort_conscious",
+      "families",
+      "seniors",
+      "mobility_limited",
+      "first_timers",
+      "locals",
+    ])),
+    
+    // Booking / ticketing
+    requiresBooking: z.boolean().default(false),
+    bookingUrl: z.string().optional(),
+    ticketInfo: z.string().optional(), // "Buy tickets on board, cash only"
+    
+    // Real-time status
+    status: z.enum(["normal", "delayed", "crowded", "disrupted", "not_running"]).default("normal"),
+    statusNote: z.string().optional(),
+    
+    // Visual
+    icon: z.string().optional(),
+    isRecommended: z.boolean().default(false),
+  })).min(1).max(6),
+  
+  // Default recommendation
+  recommendedOptionId: z.string(),
+  
+  // Walking route detail (for the walk option)
+  walkingRoute: z.object({
+    overview: z.string(),
+    turnByTurn: z.array(z.object({
+      instruction: z.string(),
+      distanceMeters: z.number(),
+      landmark: z.string().optional(), // "You'll pass the Duomo on your left"
+    })).optional(),
+    estimatedCalories: z.number().optional(),
+  }).optional(),
+  
+  // Time-dependent notes
+  timeSensitive: z.array(z.object({
+    timeRange: z.string(),         // "8:00 - 10:00 AM"
+    note: z.string(),
+    affectedOptionIds: z.array(z.string()),
+  })).optional(),
+  
+  // Map data (for rendering)
+  mapData: z.object({
+    showRoute: z.boolean().default(true),
+    routeColor: z.string().default("#8000FF"),
+  }).optional(),
+  
+  // Editorial
+  headline: z.string().default("Getting There"),
+  subheadline: z.string().default("The fastest ways from Florence city center"),
+});
+
+export type TransitOptionsSpec = z.infer<<typeof TransitOptionsSpec>;
+File 5: lib/api-spec/src/chart-specs/time-value-matrix.ts
+TypeScript
+Copy
+/**
+ * Time Value Matrix — Chart Spec
+ * 
+ * ROI grid: visitor type × time saved vs. extra cost.
+ * Answers "Is skip-the-line worth it for ME?"
+ */
+
+import { z } from "zod";
+
+export const TimeValueMatrixSpec = z.object({
+  type: z.literal("time_value_matrix"),
+  
+  // What we're comparing
+  comparison: z.object({
+    standardTicket: z.object({
+      name: z.string(),
+      price: z.number(),
+      currency: z.string().default("EUR"),
+      typicalWaitMinutes: z.number(),
+    }),
+    premiumTicket: z.object({
+      name: z.string(),            // "Skip-the-Line"
+      price: z.number(),
+      currency: z.string().default("EUR"),
+      typicalWaitMinutes: z.number(),
+    }),
+  }),
+  
+  // The matrix: visitor types × scenarios
+  scenarios: z.array(z.object({
+    id: z.string(),
+    visitorType: z.enum([
+      "solo_traveler",
+      "couple",
+      "family_with_kids",
+      "family_with_teens",
+      "senior_traveler",
+      "group_of_friends",
+      "large_group",
+      "business_traveler",
+      "art_enthusiast",
+      "casual_visitor",
+    ]),
+    
+    // Time value (how much is their time worth?)
+    timeValuePerHour: z.number(),  // €/hour — implicit or explicit
+    
+    // Visit context
+    visitContext: z.object({
+      dayOfWeek: z.enum(["weekday", "weekend"]),
+      timeOfDay: z.enum(["morning", "midday", "afternoon"]),
+      season: z.enum(["low", "shoulder", "peak"]),
+    }),
+    
+    // The numbers
+    standardWaitMinutes: z.number(),
+    premiumWaitMinutes: z.number(),
+    timeSavedMinutes: z.number(),
+    
+    // Cost analysis
+    extraCost: z.number(),         // Premium - Standard
+    costPerMinuteSaved: z.number(),
+    
+    // Value verdict
+    verdict: z.enum([
+      "essential",      // Must buy — wait is brutal
+      "strong_value",   // Definitely worth it
+      "moderate_value", // Worth it if you value time
+      "marginal",       // Only if you're in a rush
+      "not_worth_it",   // Skip it
+    ]),
+    
+    // Why this verdict
+    rationale: z.string(),         // "Peak season Saturday — standard queue hits 2+ hours"
+    
+    // Alternative suggestion
+    alternative: z.string().optional(), // "Book the first slot at 8:15 AM instead"
+    
+    // Visual
+    color: z.enum(["green", "light_green", "yellow", "orange", "red"]),
+    emoji: z.string().optional(),  // "🚨", "👍", "🤔"
+  })).min(4).max(12),
+  
+  // Summary stats
+  summary: z.object({
+    averageTimeSaved: z.number(),
+    medianExtraCost: z.number(),
+    bestValueScenario: z.string(), // ID of best value
+    worstValueScenario: z.string(), // ID of worst value
+  }),
+  
+  // Interactive features
+  interactive: z.object({
+    selectableVisitorType: z.boolean().default(true),
+    selectableDate: z.boolean().default(true),
+    showBreakdown: z.boolean().default(true),
+  }).default({}),
+  
+  // Editorial
+  headline: z.string().default("Is Skip-the-Line Worth It for You?"),
+  subheadline: z.string().default("The ROI breakdown: time, money, and stress saved"),
+});
+
+export type TimeValueMatrixSpec = z.infer<<typeof TimeValueMatrixSpec>;
+File 6: lib/api-spec/src/chart-specs/accessibility-guide.ts
+TypeScript
+Copy
+/**
+ * Accessibility Guide — Chart Spec
+ * 
+ * Entrance-by-entrance accessibility with step-free routes,
+ * elevator locations, and bathroom info.
+ */
+
+import { z } from "zod";
+
+export const AccessibilityGuideSpec = z.object({
+  type: z.literal("accessibility_guide"),
+  
+  // Overall venue accessibility
+  venueOverview: z.object({
+    wheelchairAccessible: z.boolean(),
+    overallRating: z.number().min(1).max(5),
+    ratingDescription: z.string(),
+    
+    // General facilities
+    hasAccessibleParking: z.boolean(),
+    hasAccessibleRestrooms: z.boolean(),
+    hasHearingLoops: z.boolean().optional(),
+    hasBrailleSignage: z.boolean().optional(),
+    hasServiceAnimalPolicy: z.boolean().default(true),
+    
+    // Policy notes
+    policyNotes: z.array(z.string()).optional(),
+  }),
+  
+  // Entrance-by-entrance breakdown
+  entrances: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    
+    // Accessibility score
+    accessibilityScore: z.number().min(1).max(5),
+    
+    // Step-free access
+    stepFree: z.object({
+      fromStreet: z.boolean(),
+      toTicketOffice: z.boolean(),
+      toEntry: z.boolean(),
+      toMainAreas: z.boolean(),
+      totalSteps: z.number().default(0),
+      hasRamp: z.boolean(),
+      rampSteepness: z.enum(["gentle", "moderate", "steep"]).optional(),
+    }),
+    
+    // Elevators / lifts
+    elevators: z.array(z.object({
+      from: z.string(),
+      to: z.string(),
+      capacity: z.string().optional(), // "1 wheelchair + 2 people"
+      requiresAssistance: z.boolean().default(false),
+      note: z.string().optional(),
+    })).optional(),
+    
+    // Door widths (important for wheelchairs)
+    doorWidths: z.object({
+      entranceCm: z.number().optional(),
+      interiorCm: z.number().optional(),
+    }).optional(),
+    
+    // Surface types
+    surfaces: z.array(z.enum([
+      "smooth", "cobblestone", "gravel", "stairs", "ramp", "elevator"
+    ])),
+    
+    // Restrooms
+    accessibleRestroom: z.object({
+      available: z.boolean(),
+      location: z.string().optional(),
+      hasGrabBars: z.boolean().optional(),
+      doorWidthCm: z.number().optional(),
+    }).optional(),
+    
+    // Seating
+    seatingAvailable: z.boolean(),
+    seatingLocations: z.array(z.string()).optional(),
+    
+    // Staff assistance
+    staffAssistance: z.object({
+      available: z.boolean(),
+      howToRequest: z.string().optional(),
+      languages: z.array(z.string()).optional(),
+    }).optional(),
+    
+    // Best for which mobility needs
+    suitableFor: z.array(z.enum([
+      "wheelchair_manual",
+      "wheelchair_power",
+      "walker",
+      "cane",
+      "mobility_scooter",
+      "stroller",
+      "visual_impairment",
+      "hearing_impairment",
+    ])),
+    
+    // Visual
+    color: z.string().optional(),
+    isRecommended: z.boolean().default(false),
+  })).min(1),
+  
+  // Recommended route for wheelchair users
+  recommendedRoute: z.object({
+    entranceId: z.string(),
+    routeDescription: z.string(),
+    estimatedTimeMinutes: z.number(),
+    highlights: z.array(z.string()), // Which rooms/areas are accessible
+    avoid: z.array(z.string()).optional(), // Which areas to skip
+  }).optional(),
+  
+  // Contact / pre-visit
+  preVisitInfo: z.object({
+    shouldCallAhead: z.boolean().default(false),
+    phoneNumber: z.string().optional(),
+    email: z.string().optional(),
+    recommendedNoticeDays: z.number().optional(),
+    whatToMention: z.string().optional(), // "Mention wheelchair size"
+  }).optional(),
+  
+  // Editorial
+  headline: z.string().default("Accessibility by Entrance"),
+  subheadline: z.string().default("Wheelchair access, elevators, and step-free routes"),
+});
+
+export type AccessibilityGuideSpec = z.infer<<typeof AccessibilityGuideSpec>;
+File 7: lib/api-spec/src/chart-specs/best-for-matrix.ts
+TypeScript
+Copy
+/**
+ * Best For Matrix — Chart Spec
+ * 
+ * Decision matrix: visitor type × best option (entrance, ticket, time).
+ * Helps visitors self-identify and get a personalized recommendation.
+ */
+
+import { z } from "zod";
+
+export const BestForMatrixSpec = z.object({
+  type: z.literal("best_for_matrix"),
+  
+  // What are we deciding?
+  decisionType: z.enum(["entrance", "ticket", "time", "route"]),
+  
+  // The options being compared
+  options: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    shortDescription: z.string(),
+    imageUrl: z.string().optional(),
+    color: z.string(),
+    
+    // Scores by visitor type (1-5)
+    scores: z.record(
+      z.enum([
+        "first_timers",
+        "families_with_kids",
+        "families_with_teens",
+        "seniors",
+        "solo_travelers",
+        "couples",
+        "groups",
+        "art_lovers",
+        "history_buffs",
+        "budget_conscious",
+        "time_constrained",
+        "mobility_limited",
+        "photography_enthusiasts",
+        "locals",
+      ]),
+      z.number().min(1).max(5)
+    ),
+    
+    // Key facts
+    price: z.object({
+      amount: z.number(),
+      currency: z.string().default("EUR"),
+    }).optional(),
+    durationMinutes: z.number().optional(),
+    waitTimeMinutes: z.number().optional(),
+    
+    // Dealbreakers (who should NOT choose this)
+    notRecommendedFor: z.array(z.enum([
+      "first_timers",
+      "families_with_kids",
+      "seniors",
+      "mobility_limited",
+      "budget_conscious",
+      "time_constrained",
+    ])).optional(),
+    
+    // Why choose this
+    topReason: z.string(),
+  })).min(2).max(6),
+  
+  // Visitor type selector
+  visitorTypes: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    icon: z.string(),
+    description: z.string(),
+    typicalConcerns: z.array(z.string()),
+  })),
+  
+  // Recommendation engine
+  recommendations: z.record(
+    z.string(), // visitor type id
+    z.object({
+      primaryOptionId: z.string(),
+      secondaryOptionId: z.string().optional(),
+      why: z.string(),
+      tip: z.string().optional(),
+    })
+  ),
+  
+  // Interactive
+  interactive: z.object({
+    selectableVisitorType: z.boolean().default(true),
+    showComparison: z.boolean().default(true),
+    highlightBestMatch: z.boolean().default(true),
+  }).default({}),
+  
+  // Editorial
+  headline: z.string().default("Which Option Fits You?"),
+  subheadline: z.string().default("Find your perfect match based on who you're traveling with"),
+});
+
+export type BestForMatrixSpec = z.infer<<typeof BestForMatrixSpec>;
+File 8: lib/api-spec/src/chart-specs/index.ts (Updated)
+TypeScript
+Copy
+// Original 9
+export * from "./weekly-pattern";
+export * from "./hourly-heatmap";
+export * from "./month-calendar";
+export * from "./booking-window";
+export * from "./stat-grid";
+export * from "./compare-zones";
+export * from "./donut-breakdown";
+export * from "./seasonal-curve";
+export * from "./ticket-ladder";
+
+// Florence cluster
+export * from "./tribune-density";
+export * from "./daily-pattern";
+export * from "./duration-profiles";
+export * from "./entrance-lanes";
+export * from "./co-bookings";
+
+// v3 Calendar/Seasonal
+export * from "./conditions-calendar";
+export * from "./sighting-probability";
+export * from "./departure-reliability";
+export * from "./price-curve";
+
+// v3 Heatmap/Matrix
+export * from "./zone-crowd-heatmap";
+export * from "./zone-wait-heatmap";
+export * from "./golden-hour-match";
+
+// v3 Specialty
+export * from "./savings-breakdown";
+export * from "./return-buffer-rank";
+export * from "./seat-value-map";
+export * from "./optimal-departure";
+export * from "./stop-frequency";
+export * from "./route-profile";
+
+// v3 Curve/Promotion
+export * from "./ride-wait-curve";
+export * from "./activity-window";
+export * from "./opening-hour-rank";
+
+// v3 Timeline/Narrative
+export * from "./daily-programme";
+export * from "./time-split";
+export * from "./slot-compare";
+export * from "./history-timeline";
+
+// Task #67 Promoted
+export * from "./ticket-access-matrix";
+export * from "./duration-budget";
+export * from "./landmark-coverage";
+export * from "./itinerary-flow";
+export * from "./best-for-matrix";
+export * from "./season-weather-fit";
+
+// ─── NEW CHUNK B CHARTS ───
+export * from "./entrance-map";
+export * from "./floor-plan-flow";
+export * from "./rules-checklist";
+export * from "./transit-options";
+export * from "./time-value-matrix";
+export * from "./accessibility-guide";
+
+// Re-export all for the union
+import { WeeklyPatternSpec } from "./weekly-pattern";
+import { HourlyHeatmapSpec } from "./hourly-heatmap";
+// ... (all existing imports)
+import { EntranceMapSpec } from "./entrance-map";
+import { FloorPlanFlowSpec } from "./floor-plan-flow";
+import { RulesChecklistSpec } from "./rules-checklist";
+import { TransitOptionsSpec } from "./transit-options";
+import { TimeValueMatrixSpec } from "./time-value-matrix";
+import { AccessibilityGuideSpec } from "./accessibility-guide";
+
+// Update the ChartSpec union in your main chart-spec.ts to include:
+// | EntranceMapSpec
+// | FloorPlanFlowSpec  
+// | RulesChecklistSpec
+// | TransitOptionsSpec
+// | TimeValueMatrixSpec
+// | AccessibilityGuideSpec
+// | BestForMatrixSpec
+File 9: artifacts/viz-studio/src/components/charts/EntranceMap.tsx
+tsx
+Copy
+/**
+ * Entrance Map — React Renderer
+ * 
+ * Interactive SVG-based map with clickable entrances,
+ * wait time indicators, and transit info.
+ */
+
+import React, { useState } from "react";
+import type { EntranceMapSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: EntranceMapSpec;
+  compact?: boolean;
+}
+
+export const EntranceMap: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedEntrance, setSelectedEntrance] = useState<string | null>(
+    spec.recommendedEntranceId || spec.entrances[0]?.id
+  );
+
+  const selected = spec.entrances.find(e => e.id === selectedEntrance);
+
+  // Status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "open": return "#22c55e";
+      case "limited_access": return "#f59e0b";
+      case "members_only": return "#8b5cf6";
+      case "closed": return "#ef4444";
+      default: return "#6b7280";
+    }
+  };
+
+  // Wait time color
+  const getWaitColor = (minutes: number) => {
+    if (minutes <= 10) return "#22c55e";
+    if (minutes <= 30) return "#f59e0b";
+    return "#ef4444";
+  };
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="space-y-2">
+          {spec.entrances.slice(0, 3).map(e => (
+            <div key={e.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2 h-2 rounded-full" 
+                  style={{ backgroundColor: getStatusColor(e.status) }}
+                />
+                <span className="text-sm font-medium">{e.shortName}</span>
+              </div>
+              <span className="text-xs text-gray-500">
+                {e.currentWaitMinutes !== undefined 
+                  ? `${e.currentWaitMinutes} min` 
+                  : `${e.typicalWaitMinutes} min typical`}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Map + Detail split */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Map */}
+        <div className="lg:col-span-2 relative bg-gray-100 rounded-xl overflow-hidden" style={{ minHeight: 400 }}>
+          <svg viewBox="0 0 100 100" className="w-full h-full">
+            {/* Background landmark dots */}
+            {spec.landmarks?.map(lm => (
+              <g key={lm.name}>
+                <circle cx={lm.coordinates.x} cy={lm.coordinates.y} r={1.5} fill="#9ca3af" opacity={0.5} />
+                <text 
+                  x={lm.coordinates.x} 
+                  y={lm.coordinates.y - 2} 
+                  fontSize={2.5} 
+                  fill="#6b7280" 
+                  textAnchor="middle"
+                >
+                  {lm.name}
+                </text>
+              </g>
+            ))}
+
+            {/* Venue boundary (simplified circle) */}
+            <circle cx={50} cy={50} r={35} fill="white" stroke="#e5e7eb" strokeWidth={0.5} />
+
+            {/* Entrances */}
+            {spec.entrances.map(e => {
+              const isSelected = e.id === selectedEntrance;
+              const isRecommended = e.id === spec.recommendedEntranceId;
+              
+              return (
+                <g 
+                  key={e.id}
+                  className="cursor-pointer transition-all"
+                  onClick={() => setSelectedEntrance(e.id)}
+                >
+                  {/* Pulse ring for recommended */}
+                  {isRecommended && (
+                    <circle cx={e.coordinates.x} cy={e.coordinates.y} r={6} fill="none" stroke="#8000FF" strokeWidth={0.5} opacity={0.3}>
+                      <animate attributeName="r" values="4;7;4" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+
+                  {/* Entrance dot */}
+                  <circle 
+                    cx={e.coordinates.x} 
+                    cy={e.coordinates.y} 
+                    r={isSelected ? 4 : 3} 
+                    fill={isSelected ? "#8000FF" : getStatusColor(e.status)}
+                    stroke="white"
+                    strokeWidth={0.8}
+                  />
+
+                  {/* Label */}
+                  <text 
+                    x={e.coordinates.x} 
+                    y={e.coordinates.y - 5} 
+                    fontSize={isSelected ? 3 : 2.5} 
+                    fontWeight={isSelected ? "bold" : "normal"}
+                    fill={isSelected ? "#8000FF" : "#374151"}
+                    textAnchor="middle"
+                  >
+                    {e.shortName}
+                    {isRecommended && " ★"}
+                  </text>
+
+                  {/* Wait time badge */}
+                  {(e.currentWaitMinutes !== undefined || e.typicalWaitMinutes) && (
+                    <g transform={`translate(${e.coordinates.x + 4}, ${e.coordinates.y - 4})`}>
+                      <rect x={-6} y={-3} width={12} height={6} rx={1.5} fill={getWaitColor(e.currentWaitMinutes || e.typicalWaitMinutes)} opacity={0.9} />
+                      <text x={0} y={1} fontSize={2} fill="white" textAnchor="middle" fontWeight="bold">
+                        {e.currentWaitMinutes !== undefined ? e.currentWaitMinutes : e.typicalWaitMinutes}m
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Legend */}
+          {spec.showLegend && (
+            <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 text-xs space-y-1 shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span>Open</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                <span>Limited</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span>Closed</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-purple-500" />
+                <span>Members</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Detail Panel */}
+        <div className="space-y-3">
+          {selected && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">{selected.name}</h3>
+                <span 
+                  className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                  style={{ backgroundColor: getStatusColor(selected.status) }}
+                >
+                  {selected.status.replace("_", " ")}
+                </span>
+              </div>
+
+              {/* Wait times */}
+              <div className="flex gap-3">
+                {selected.currentWaitMinutes !== undefined && (
+                  <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="text-2xl font-bold" style={{ color: getWaitColor(selected.currentWaitMinutes) }}>
+                      {selected.currentWaitMinutes}m
+                    </div>
+                    <div className="text-xs text-gray-500">Current wait</div>
+                  </div>
+                )}
+                <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
+                  <div className="text-2xl font-bold text-gray-700">{selected.typicalWaitMinutes}m</div>
+                  <div className="text-xs text-gray-500">Typical</div>
+                </div>
+              </div>
+
+              {/* Best for */}
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Best for</div>
+                <div className="flex flex-wrap gap-1">
+                  {selected.bestFor.map(bf => (
+                    <span key={bf} className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs">
+                      {bf.replace("_", " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Accessibility */}
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Accessibility</div>
+                <div className="flex gap-2 text-xs">
+                  {selected.accessibility.wheelchairAccessible && (
+                    <span className="text-green-600">♿ Wheelchair</span>
+                  )}
+                  {selected.accessibility.stepFree && (
+                    <span className="text-green-600">✓ Step-free</span>
+                  )}
+                  {selected.accessibility.hasElevator && (
+                    <span className="text-blue-600">⇅ Elevator</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Transit */}
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Getting here</div>
+                <div className="space-y-1">
+                  {selected.transit.slice(0, 2).map((t, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span>{t.mode} from {t.from}</span>
+                      <span className="text-gray-500">{t.durationMinutes}m</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tip */}
+              {selected.tip && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-sm text-amber-800">
+                  💡 {selected.tip}
+                </div>
+              )}
+
+              {/* Security */}
+              <div className="text-xs text-gray-500">
+                Security: {selected.securityLevel} 
+                {selected.prohibitedItemsNote && ` · ${selected.prohibitedItemsNote}`}
+              </div>
+            </div>
+          )}
+
+          {/* Entrance list (mobile-friendly) */}
+          <div className="space-y-1">
+            {spec.entrances.map(e => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEntrance(e.id)}
+                className={`w-full text-left p-2 rounded-lg text-sm transition-colors ${
+                  e.id === selectedEntrance 
+                    ? "bg-purple-50 text-purple-900 border border-purple-200" 
+                    : "hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{e.shortName}</span>
+                  <div className="flex items-center gap-1">
+                    {e.id === spec.recommendedEntranceId && (
+                      <span className="text-xs text-purple-600 font-medium">★ Recommended</span>
+                    )}
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: getStatusColor(e.status) }}
+                    />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+File 10: artifacts/viz-studio/src/components/charts/RulesChecklist.tsx
+tsx
+Copy
+/**
+ * Rules Checklist — React Renderer
+ * 
+ * Visual scannable cards replacing walls of text.
+ * Color-coded by severity with icons.
+ */
+
+import React, { useState } from "react";
+import type { RulesChecklistSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: RulesChecklistSpec;
+  compact?: boolean;
+}
+
+const SEVERITY_CONFIG = {
+  must: { color: "bg-blue-50 text-blue-800 border-blue-200", icon: "ℹ️", label: "Must know" },
+  should: { color: "bg-yellow-50 text-yellow-800 border-yellow-200", icon: "⚠️", label: "Should know" },
+  tip: { color: "bg-green-50 text-green-800 border-green-200", icon: "💡", label: "Pro tip" },
+  prohibited: { color: "bg-red-50 text-red-800 border-red-200", icon: "🚫", label: "Prohibited" },
+};
+
+const STATUS_CONFIG = {
+  allowed: { bg: "bg-green-500", text: "Allowed" },
+  restricted: { bg: "bg-yellow-500", text: "Restricted" },
+  prohibited: { bg: "bg-red-500", text: "Prohibited" },
+  required: { bg: "bg-blue-500", text: "Required" },
+};
+
+const ITEM_ICONS: Record<string, string> = {
+  backpack: "🎒", camera: "📷", tripod: "📐", selfie_stick: "🤳",
+  water: "💧", food: "🍕", phone: "📱", laptop: "💻",
+  scissors: "✂️", spray: "🧴", drone: "🚁", pet: "🐕",
+  stroller: "👶", wheelchair: "♿", cane: "🦯", umbrella: "☂️",
+  coat: "🧥", hat: "🎩", shorts: "🩳", tank_top: "👕",
+  flip_flops: "🩴", heels: "👠", barefoot: "🦶",
+};
+
+export const RulesChecklist: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [checkedItems, setCheckedItems] = useState<<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<<Set<string>>(
+    new Set(spec.categories.map(c => c.id))
+  );
+
+  const toggleCheck = (id: string) => {
+    const next = new Set(checkedItems);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCheckedItems(next);
+  };
+
+  const toggleCategory = (id: string) => {
+    const next = new Set(expandedCategories);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setExpandedCategories(next);
+  };
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        {spec.categories.slice(0, 2).map(cat => (
+          <div key={cat.id} className="space-y-1">
+            <div className="text-xs font-medium text-gray-500">{cat.name}</div>
+            {cat.rules.slice(0, 2).map(rule => (
+              <div key={rule.id} className="flex items-start gap-2 p-1.5 rounded bg-gray-50">
+                <span className="text-sm">{ITEM_ICONS[rule.itemIcon || ""] || "•"}</span>
+                <span className="text-xs text-gray-700">{rule.rule}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Venue type badge */}
+      <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full text-sm text-gray-600">
+        <span>🏛️</span>
+        <span className="capitalize">{spec.venueType}</span>
+      </div>
+
+      {/* Categories */}
+      <div className="space-y-3">
+        {spec.categories.map(cat => {
+          const isExpanded = expandedCategories.has(cat.id);
+          const severity = SEVERITY_CONFIG[cat.rules[0]?.severity || "tip"];
+          
+          return (
+            <div key={cat.id} className="border border-gray-200 rounded-xl overflow-hidden">
+              {/* Category header */}
+              <button
+                onClick={() => toggleCategory(cat.id)}
+                className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{severity.icon}</span>
+                  <span className="font-semibold text-gray-900">{cat.name}</span>
+                  <span className="text-xs text-gray-500">({cat.rules.length})</span>
+                </div>
+                <span className="text-gray-400">{isExpanded ? "−" : "+"}</span>
+              </button>
+
+              {/* Rules */}
+              {isExpanded && (
+                <div className="p-3 space-y-2">
+                  {cat.rules.map(rule => {
+                    const status = STATUS_CONFIG[rule.status];
+                    const isChecked = checkedItems.has(rule.id);
+                    
+                    return (
+                      <div 
+                        key={rule.id}
+                        className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                          isChecked ? "opacity-50" : ""
+                        } ${
+                          rule.status === "prohibited" ? "bg-red-50 border-red-100" :
+                          rule.status === "required" ? "bg-blue-50 border-blue-100" :
+                          "bg-white border-gray-100"
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <button
+                          onClick={() => toggleCheck(rule.id)}
+                          className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            isChecked 
+                              ? "bg-purple-500 border-purple-500 text-white" 
+                              : "border-gray-300 hover:border-purple-400"
+                          }`}
+                        >
+                          {isChecked && "✓"}
+                        </button>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2">
+                            <span className="text-xl">{ITEM_ICONS[rule.itemIcon || ""] || "•"}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium text-white ${status.bg}`}>
+                                  {status.text}
+                                </span>
+                                {rule.severity === "prohibited" && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                                    Prohibited
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm font-medium text-gray-900 mt-1">{rule.rule}</p>
+                              
+                              {rule.details && (
+                                <p className="text-xs text-gray-500 mt-1">{rule.details}</p>
+                              )}
+                              
+                              {rule.alternative && (
+                                <p className="text-xs text-green-600 mt-1">
+                                  ✅ Alternative: {rule.alternative}
+                                </p>
+                              )}
+                              
+                              {rule.commonMistake && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  ⚠️ Common mistake: {rule.commonMistake}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Time-sensitive notes */}
+      {spec.timeSensitiveNotes && spec.timeSensitiveNotes.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+          <h3 className="font-semibold text-amber-900">⏰ Time-Sensitive Notes</h3>
+          {spec.timeSensitiveNotes.map((note, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className={
+                note.severity === "alert" ? "text-red-500" :
+                note.severity === "warning" ? "text-amber-500" :
+                "text-blue-500"
+              }>•</span>
+              <div>
+                <span className="text-sm font-medium text-amber-800">{note.condition}:</span>
+                <span className="text-sm text-amber-700"> {note.note}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Progress */}
+      {spec.checklistItems && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-purple-900">Pre-Visit Checklist</span>
+            <span className="text-sm text-purple-700">
+              {checkedItems.size} / {spec.checklistItems.length} checked
+            </span>
+          </div>
+          <div className="w-full bg-purple-200 rounded-full h-2">
+            <div 
+              className="bg-purple-500 rounded-full h-2 transition-all"
+              style={{ width: `${(checkedItems.size / spec.checklistItems.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* CTA */}
+      {spec.cta && (
+        <button className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium transition-colors">
+          {spec.cta.text}
+        </button>
+      )}
+    </div>
+  );
+};
+File 11: artifacts/viz-studio/src/components/charts/TimeValueMatrix.tsx
+tsx
+Copy
+/**
+ * Time Value Matrix — React Renderer
+ * 
+ * ROI grid showing "Is skip-the-line worth it for ME?"
+ * Interactive visitor type selector with personalized verdict.
+ */
+
+import React, { useState } from "react";
+import type { TimeValueMatrixSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: TimeValueMatrixSpec;
+  compact?: boolean;
+}
+
+const VERDICT_CONFIG = {
+  essential: { color: "bg-red-500", text: "Essential", emoji: "🚨", desc: "Don't risk it — buy now" },
+  strong_value: { color: "bg-green-500", text: "Strong Value", emoji: "👍", desc: "Definitely worth it" },
+  moderate_value: { color: "bg-green-400", text: "Worth It", emoji: "✅", desc: "Good if you value time" },
+  marginal: { color: "bg-yellow-400", text: "Marginal", emoji: "🤔", desc: "Only if in a rush" },
+  not_worth_it: { color: "bg-gray-400", text: "Skip It", emoji: "❌", desc: "Standard queue is fine" },
+};
+
+const VISITOR_ICONS: Record<string, string> = {
+  solo_traveler: "🧍",
+  couple: "💑",
+  family_with_kids: "👨‍👩‍👧",
+  family_with_teens: "👨‍👩‍👧‍👦",
+  senior_traveler: "🧓",
+  group_of_friends: "👯",
+  large_group: "👥",
+  business_traveler: "💼",
+  art_enthusiast: "🎨",
+  casual_visitor: "😊",
+};
+
+export const TimeValueMatrix: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  const standard = spec.comparison.standardTicket;
+  const premium = spec.comparison.premiumTicket;
+  const savings = premium.price - standard.price;
+
+  if (compact) {
+    const bestScenario = spec.scenarios.reduce((best, s) => 
+      ["essential", "strong_value"].includes(s.verdict) && s.timeSavedMinutes > best.timeSavedMinutes ? s : best
+    , spec.scenarios[0]);
+
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-50 rounded-lg p-2 text-center">
+            <div className="text-lg font-bold text-gray-700">{standard.typicalWaitMinutes}m</div>
+            <div className="text-xs text-gray-500">Standard wait</div>
+          </div>
+          <div className="bg-purple-50 rounded-lg p-2 text-center">
+            <div className="text-lg font-bold text-purple-700">{premium.typicalWaitMinutes}m</div>
+            <div className="text-xs text-purple-500">Skip-the-line</div>
+          </div>
+        </div>
+        {bestScenario && (
+          <div className="text-xs text-gray-600">
+            💡 {bestScenario.visitorType.replace(/_/g, " ")}: save {bestScenario.timeSavedMinutes}m
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Price comparison bar */}
+      <div className="bg-gray-50 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <div className="text-sm text-gray-500">{standard.name}</div>
+            <div className="text-2xl font-bold text-gray-700">€{standard.price}</div>
+          </div>
+          <div className="text-2xl text-gray-400">→</div>
+          <div>
+            <div className="text-sm text-gray-500">{premium.name}</div>
+            <div className="text-2xl font-bold text-purple-700">€{premium.price}</div>
+          </div>
+        </div>
+        <div className="text-sm text-center">
+          <span className="text-gray-600">Extra cost: </span>
+          <span className="font-bold text-purple-700">€{savings}</span>
+          <span className="text-gray-500"> · Average time saved: </span>
+          <span className="font-bold text-green-600">{spec.summary.averageTimeSaved}m</span>
+        </div>
+      </div>
+
+      {/* Visitor type selector */}
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-gray-700">Who are you traveling with?</div>
+        <div className="flex flex-wrap gap-2">
+          {Array.from(new Set(spec.scenarios.map(s => s.visitorType))).map(type => (
+            <button
+              key={type}
+              onClick={() => setSelectedType(selectedType === type ? null : type)}
+              className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                selectedType === type
+                  ? "bg-purple-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              <span className="mr-1">{VISITOR_ICONS[type] || "👤"}</span>
+              {type.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Matrix grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {spec.scenarios
+          .filter(s => !selectedType || s.visitorType === selectedType)
+          .map(scenario => {
+            const verdict = VERDICT_CONFIG[scenario.verdict];
+            const isHighlighted = selectedType === scenario.visitorType;
+            
+            return (
+              <div 
+                key={scenario.id}
+                className={`rounded-xl border-2 p-4 transition-all ${
+                  isHighlighted ? "border-purple-500 shadow-lg" : "border-gray-200"
+                }`}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-2xl">{VISITOR_ICONS[scenario.visitorType]}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold text-white ${verdict.color}`}>
+                    {verdict.emoji} {verdict.text}
+                  </span>
+                </div>
+
+                {/* Visitor context */}
+                <div className="text-xs text-gray-500 mb-2">
+                  {scenario.visitContext.dayOfWeek} · {scenario.visitContext.timeOfDay} · {scenario.visitContext.season} season
+                </div>
+
+                {/* Time comparison */}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex-1 text-center">
+                    <div className="text-lg font-bold text-red-500">{scenario.standardWaitMinutes}m</div>
+                    <div className="text-xs text-gray-500">Standard</div>
+                  </div>
+                  <div className="text-gray-400">→</div>
+                  <div className="flex-1 text-center">
+                    <div className="text-lg font-bold text-green-500">{scenario.premiumWaitMinutes}m</div>
+                    <div className="text-xs text-gray-500">Skip-line</div>
+                  </div>
+                </div>
+
+                {/* Savings highlight */}
+                <div className="bg-green-50 rounded-lg p-2 text-center mb-2">
+                  <div className="text-xl font-bold text-green-700">{scenario.timeSavedMinutes} min saved</div>
+                </div>
+
+                {/* Cost per minute */}
+                <div className="text-xs text-gray-500 text-center mb-2">
+                  €{scenario.costPerMinuteSaved.toFixed(2)} per minute saved
+                </div>
+
+                {/* Verdict description */}
+                <p className="text-sm text-gray-700 mb-2">{verdict.desc}</p>
+
+                {/* Rationale */}
+                <p className="text-xs text-gray-500 italic mb-2">{scenario.rationale}</p>
+
+                {/* Alternative */}
+                {scenario.alternative && (
+                  <div className="bg-blue-50 rounded-lg p-2 text-xs text-blue-700">
+                    💡 Tip: {scenario.alternative}
+                  </div>
+                )}
+
+                {/* Not recommended warning */}
+                {scenario.verdict === "not_worth_it" && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    Standard queue is manageable for this visitor type at this time.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Summary footer */}
+      <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
+        <div className="flex items-center justify-between">
+          <span>Best value: <span className="font-medium text-gray-900">{spec.scenarios.find(s => s.id === spec.summary.bestValueScenario)?.visitorType.replace(/_/g, " ")}</span></span>
+          <span>Worst value: <span className="font-medium text-gray-900">{spec.scenarios.find(s => s.id === spec.summary.worstValueScenario)?.visitorType.replace(/_/g, " ")}</span></span>
+        </div>
+      </div>
+    </div>
+  );
+};
+File 12: artifacts/viz-studio/src/components/charts/TransitOptions.tsx
+tsx
+Copy
+/**
+ * Transit Options — React Renderer
+ * 
+ * Ranked transport cards with route visualization.
+ * Like Google Maps transit, but curated.
+ */
+
+import React, { useState } from "react";
+import type { TransitOptionsSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: TransitOptionsSpec;
+  compact?: boolean;
+}
+
+const MODE_ICONS: Record<string, string> = {
+  walk: "🚶", bus: "🚌", tram: "🚊", metro: "🚇",
+  taxi: "🚕", rideshare: "🚗", bike: "🚲", scooter: "🛴",
+  car: "🚙", tour_bus: "🚌",
+};
+
+const MODE_COLORS: Record<string, string> = {
+  walk: "#22c55e", bus: "#3b82f6", tram: "#8b5cf6", metro: "#ef4444",
+  taxi: "#f59e0b", rideshare: "#10b981", bike: "#06b6d4", scooter: "#84cc16",
+  car: "#6b7280", tour_bus: "#f97316",
+};
+
+export const TransitOptions: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedOption, setSelectedOption] = useState<string>(
+    spec.recommendedOptionId
+  );
+
+  const selected = spec.options.find(o => o.id === selectedOption);
+
+  if (compact) {
+    const top3 = spec.options.slice(0, 3);
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="space-y-2">
+          {top3.map(opt => (
+            <div key={opt.id} className={`flex items-center justify-between p-2 rounded-lg ${
+              opt.id === spec.recommendedOptionId ? "bg-purple-50 border border-purple-200" : "bg-gray-50"
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{MODE_ICONS[opt.mode]}</span>
+                <div>
+                  <div className="text-sm font-medium">{opt.mode}</div>
+                  <div className="text-xs text-gray-500">{opt.totalDurationMinutes}m · €{opt.totalCost.amount}</div>
+                </div>
+              </div>
+              {opt.id === spec.recommendedOptionId && (
+                <span className="text-xs text-purple-600 font-medium">★ Best</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Route summary */}
+      <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3 text-sm">
+        <span className="font-medium text-gray-700">{spec.fromLocation.name}</span>
+        <span className="text-gray-400">→</span>
+        <span className="font-medium text-purple-700">{spec.toVenue.name}</span>
+        <span className="text-xs text-gray-500">({spec.toVenue.mainEntrance})</span>
+      </div>
+
+      {/* Option cards */}
+      <div className="space-y-3">
+        {spec.options
+          .sort((a, b) => a.rank - b.rank)
+          .map(opt => {
+            const isSelected = opt.id === selectedOption;
+            const isRecommended = opt.id === spec.recommendedOptionId;
+            
+            return (
+              <div
+                key={opt.id}
+                onClick={() => setSelectedOption(opt.id)}
+                className={`rounded-xl border-2 cursor-pointer transition-all ${
+                  isSelected ? "border-purple-500 shadow-md" : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                {/* Card header */}
+                <div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
+                        style={{ backgroundColor: MODE_COLORS[opt.mode] + "20" }}
+                      >
+                        {MODE_ICONS[opt.mode]}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900 capitalize">{opt.mode}</span>
+                          {isRecommended && (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                              ★ Recommended
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {opt.bestFor.map(bf => bf.replace(/_/g, " ")).join(" · ")}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-gray-900">{opt.totalDurationMinutes}m</div>
+                      <div className="text-sm text-gray-500">€{opt.totalCost.amount}</div>
+                    </div>
+                  </div>
+
+                  {/* Status badge */}
+                  {opt.status !== "normal" && (
+                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
+                      opt.status === "disrupted" ? "bg-red-100 text-red-700" :
+                      opt.status === "delayed" ? "bg-yellow-100 text-yellow-700" :
+                      "bg-blue-100 text-blue-700"
+                    }`}>
+                      ⚠️ {opt.statusNote || opt.status}
+                    </div>
+                  )}
+
+                  {/* Effort & comfort */}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                    <span>Effort: {"★".repeat(opt.effortScore)}{"☆".repeat(10 - opt.effortScore)}</span>
+                    <span>Comfort: {opt.crowdComfort}</span>
+                    {opt.walkingDistanceKm > 0 && (
+                      <span>Walk: {opt.walkingDistanceKm}km</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded route detail */}
+                {isSelected && (
+                  <div className="border-t border-gray-100 p-4 bg-gray-50/50">
+                    <div className="space-y-3">
+                      {opt.route.map((segment, i) => (
+                        <div key={i} className="flex items-start gap-3">
+                          <div className="flex flex-col items-center">
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: segment.color || MODE_COLORS[opt.mode] }}
+                            />
+                            {i < opt.route.length - 1 && (
+                              <div className="w-0.5 h-8 bg-gray-300" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{segment.instruction}</div>
+                            <div className="text-xs text-gray-500">
+                              {segment.durationMinutes}m
+                              {segment.distanceKm && ` · ${segment.distanceKm}km`}
+                              {segment.lineNumber && ` · ${segment.lineNumber}`}
+                              {segment.stops && ` · ${segment.stops} stops`}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Booking info */}
+                    {opt.requiresBooking && (
+                      <div className="mt-3 p-2 bg-blue-50 rounded-lg text-xs text-blue-700">
+                        📱 {opt.ticketInfo || "Advance booking required"}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Walking route detail */}
+      {spec.walkingRoute && selected?.mode === "walk" && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <h3 className="font-semibold text-green-900 mb-2">Walking Route</h3>
+          <p className="text-sm text-green-700 mb-2">{spec.walkingRoute.overview}</p>
+          {spec.walkingRoute.turnByTurn && (
+            <div className="space-y-1">
+              {spec.walkingRoute.turnByTurn.map((turn, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-green-800">
+                  <span className="font-bold">{i + 1}.</span>
+                  <span>{turn.instruction}</span>
+                  {turn.landmark && (
+                    <span className="text-green-600 italic">({turn.landmark})</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+File 13: artifacts/viz-studio/src/components/charts/FloorPlanFlow.tsx
+tsx
+Copy
+/**
+ * Floor Plan Flow — React Renderer
+ * 
+ * Room-by-room navigation with crowd levels and must-see ratings.
+ * Simplified coordinate-based floor plan.
+ */
+
+import React, { useState } from "react";
+import type { FloorPlanFlowSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: FloorPlanFlowSpec;
+  compact?: boolean;
+}
+
+const CROWD_COLORS = {
+  empty: "#22c55e",
+  light: "#84cc16",
+  moderate: "#eab308",
+  busy: "#f97316",
+  packed: "#ef4444",
+};
+
+const CROWD_LABELS = {
+  empty: "Empty",
+  light: "Light",
+  moderate: "Moderate",
+  busy: "Busy",
+  packed: "Packed",
+};
+
+export const FloorPlanFlow: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedRoute, setSelectedRoute] = useState<number>(spec.defaultRouteIndex);
+  const [hoveredRoom, setHoveredRoom] = useState<string | null>(null);
+
+  const route = spec.routes[selectedRoute];
+  const routeRoomIds = new Set(route.roomSequence);
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="space-y-2">
+          {spec.rooms.slice(0, 4).map(room => (
+            <div key={room.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: CROWD_COLORS[room.crowdLevel] }}
+                />
+                <span className="text-sm">{room.name}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {"★".repeat(room.mustSeeRating)}{"☆".repeat(5 - room.mustSeeRating)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="text-xs text-gray-500">
+          {route.name} · {route.durationMinutes}m
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Route selector */}
+      <div className="flex flex-wrap gap-2">
+        {spec.routes.map((r, i) => (
+          <button
+            key={i}
+            onClick={() => setSelectedRoute(i)}
+            className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+              selectedRoute === i
+                ? "bg-purple-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span className="mr-1" style={{ color: r.color }}>●</span>
+            {r.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Floor plan visualization */}
+      <div className="relative bg-gray-100 rounded-xl overflow-hidden" style={{ minHeight: 400 }}>
+        <svg viewBox="0 0 100 100" className="w-full h-full">
+          {/* Room rectangles */}
+          {spec.rooms.map(room => {
+            if (!room.coordinates) return null;
+            
+            const isInRoute = routeRoomIds.has(room.id);
+            const isHovered = hoveredRoom === room.id;
+            const cx = room.coordinates.x;
+            const cy = room.coordinates.y;
+            const w = room.coordinates.width;
+            const h = room.coordinates.height;
+
+            return (
+              <g
+                key={room.id}
+                className="cursor-pointer transition-all"
+                onMouseEnter={() => setHoveredRoom(room.id)}
+                onMouseLeave={() => setHoveredRoom(null)}
+              >
+                {/* Room fill */}
+                <rect
+                  x={cx} y={cy} width={w} height={h}
+                  fill={isInRoute ? CROWD_COLORS[room.crowdLevel] + "40" : "#f3f4f6"}
+                  stroke={isHovered ? "#8000FF" : isInRoute ? CROWD_COLORS[room.crowdLevel] : "#d1d5db"}
+                  strokeWidth={isHovered ? 0.8 : 0.4}
+                  rx={1}
+                />
+
+                {/* Room label */}
+                <text
+                  x={cx + w / 2}
+                  y={cy + h / 2 - 2}
+                  fontSize={Math.min(w, h) * 0.15}
+                  fill={isInRoute ? "#1f2937" : "#9ca3af"}
+                  textAnchor="middle"
+                  fontWeight={isInRoute ? "bold" : "normal"}
+                >
+                  {room.shortName || room.name}
+                </text>
+
+                {/* Must-see stars */}
+                {room.mustSeeRating >= 4 && (
+                  <text
+                    x={cx + w / 2}
+                    y={cy + h / 2 + 3}
+                    fontSize={Math.min(w, h) * 0.12}
+                    fill="#f59e0b"
+                    textAnchor="middle"
+                  >
+                    {"★".repeat(room.mustSeeRating)}
+                  </text>
+                )}
+
+                {/* Crowd indicator dot */}
+                <circle
+                  cx={cx + w - 3}
+                  cy={cy + 3}
+                  r={1.5}
+                  fill={CROWD_COLORS[room.crowdLevel]}
+                />
+
+                {/* Route arrow */}
+                {isInRoute && (
+                  <text
+                    x={cx + w / 2}
+                    y={cy + h - 2}
+                    fontSize={3}
+                    fill="#8000FF"
+                    textAnchor="middle"
+                  >
+                    {route.roomSequence.indexOf(room.id) + 1}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Route connections */}
+          {route.roomSequence.map((roomId, i) => {
+            if (i >= route.roomSequence.length - 1) return null;
+            const from = spec.rooms.find(r => r.id === roomId);
+            const to = spec.rooms.find(r => r.id === route.roomSequence[i + 1]);
+            if (!from?.coordinates || !to?.coordinates) return null;
+
+            const x1 = from.coordinates.x + from.coordinates.width / 2;
+            const y1 = from.coordinates.y + from.coordinates.height / 2;
+            const x2 = to.coordinates.x + to.coordinates.width / 2;
+            const y2 = to.coordinates.y + to.coordinates.height / 2;
+
+            return (
+              <line
+                key={`${roomId}-${route.roomSequence[i + 1]}`}
+                x1={x1} y1={y1} x2={x2} y2={y2}
+                stroke={route.color}
+                strokeWidth={0.8}
+                strokeDasharray="2,1"
+                markerEnd="url(#arrowhead)"
+              />
+            );
+          })}
+
+          {/* Arrow marker */}
+          <defs>
+            <marker id="arrowhead" markerWidth="4" markerHeight="3" refX="3" refY="1.5" orient="auto">
+              <polygon points="0 0, 4 1.5, 0 3" fill="#8000FF" />
+            </marker>
+          </defs>
+        </svg>
+
+        {/* Legend */}
+        <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 text-xs shadow-sm space-y-1">
+          <div className="font-medium text-gray-700 mb-1">Crowd Level</div>
+          {Object.entries(CROWD_COLORS).map(([level, color]) => (
+            <div key={level} className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+              <span>{CROWD_LABELS[level as keyof typeof CROWD_LABELS]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Room detail cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {spec.rooms
+          .filter(r => routeRoomIds.has(r.id))
+          .sort((a, b) => route.roomSequence.indexOf(a.id) - route.roomSequence.indexOf(b.id))
+          .map((room, i) => (
+            <div key={room.id} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold"
+                  >
+                    {i + 1}
+                  </div>
+                  <span className="font-semibold text-sm">{room.name}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {"★".repeat(room.mustSeeRating)}{"☆".repeat(5 - room.mustSeeRating)}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <div 
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: CROWD_COLORS[room.crowdLevel] }}
+                />
+                <span>{CROWD_LABELS[room.crowdLevel]}</span>
+                <span className="text-gray-400">·</span>
+                <span>{room.recommendedDurationMinutes}m</span>
+              </div>
+
+              {room.highlights.length > 0 && (
+                <div className="space-y-1">
+                  {room.highlights.map(h => (
+                    <div key={h.name} className="text-xs text-gray-600">
+                      {h.type === "artwork" ? "🎨" : h.type === "sculpture" ? "🗿" : "🏛️"} {h.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 text-xs text-gray-500">
+                {room.hasSeating && <span>🪑 Seating</span>}
+                {room.hasAudioGuidePoint && <span>🎧 Audio</span>}
+                {!room.stepFree && <span className="text-amber-600">⚠️ Steps</span>}
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {/* Route summary */}
+      <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-purple-900">{route.name}</div>
+            <div className="text-sm text-purple-700">
+              {route.durationMinutes}m · {route.difficulty} · Best for: {route.forWhom.join(", ")}
+            </div>
+          </div>
+          <div className="text-2xl">{route.forWhom.includes("families") ? "👨‍👩‍👧‍👦" : "🧍"}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+File 14: artifacts/viz-studio/src/components/charts/AccessibilityGuide.tsx
+tsx
+Copy
+/**
+ * Accessibility Guide — React Renderer
+ * 
+ * Entrance-by-entrance accessibility breakdown.
+ * Step-free routes, elevator info, door widths.
+ */
+
+import React, { useState } from "react";
+import type { AccessibilityGuideSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: AccessibilityGuideSpec;
+  compact?: boolean;
+}
+
+export const AccessibilityGuide: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedEntrance, setSelectedEntrance] = useState<string>(
+    spec.recommendedRoute?.entranceId || spec.entrances[0]?.id
+  );
+
+  const selected = spec.entrances.find(e => e.id === selectedEntrance);
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="space-y-2">
+          {spec.entrances.slice(0, 3).map(e => (
+            <div key={e.id} className={`p-2 rounded-lg ${
+              e.accessibilityScore >= 4 ? "bg-green-50" : e.accessibilityScore >= 3 ? "bg-yellow-50" : "bg-red-50"
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{e.name}</span>
+                <div className="flex">
+                  {"★".repeat(Math.round(e.accessibilityScore))}{"☆".repeat(5 - Math.round(e.accessibilityScore))}
+                </div>
+              </div>
+              <div className="text-xs text-gray-500">
+                {e.stepFree.stepFree ? "✓ Step-free" : "⚠️ Steps present"}
+                {e.elevators && e.elevators.length > 0 && " · Elevator available"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Venue overview */}
+      <div className="bg-gray-50 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">♿</span>
+            <span className="font-semibold">Overall Accessibility</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {"★".repeat(Math.round(spec.venueOverview.overallRating))}
+            {"☆".repeat(5 - Math.round(spec.venueOverview.overallRating))}
+          </div>
+        </div>
+        <p className="text-sm text-gray-600">{spec.venueOverview.ratingDescription}</p>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {spec.venueOverview.wheelchairAccessible && (
+            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">Wheelchair accessible</span>
+          )}
+          {spec.venueOverview.hasAccessibleRestrooms && (
+            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">Accessible restrooms</span>
+          )}
+          {spec.venueOverview.hasAccessibleParking && (
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">Accessible parking</span>
+          )}
+        </div>
+      </div>
+
+      {/* Entrance selector */}
+      <div className="flex flex-wrap gap-2">
+        {spec.entrances.map(e => (
+          <button
+            key={e.id}
+            onClick={() => setSelectedEntrance(e.id)}
+            className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+              selectedEntrance === e.id
+                ? "bg-purple-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            {e.name}
+            {e.isRecommended && " ★"}
+          </button>
+        ))}
+      </div>
+
+      {/* Selected entrance detail */}
+      {selected && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+          {/* Score */}
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-lg">{selected.name}</h3>
+            <div className="flex items-center gap-1">
+              {"★".repeat(Math.round(selected.accessibilityScore))}
+              {"☆".repeat(5 - Math.round(selected.accessibilityScore))}
+            </div>
+          </div>
+
+          {/* Step-free access */}
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700">Step-Free Access</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "From street", value: selected.stepFree.fromStreet },
+                { label: "To ticket office", value: selected.stepFree.toTicketOffice },
+                { label: "To entry", value: selected.stepFree.toEntry },
+                { label: "To main areas", value: selected.stepFree.toMainAreas },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2 text-sm">
+                  <span className={item.value ? "text-green-500" : "text-red-500"}>
+                    {item.value ? "✓" : "✗"}
+                  </span>
+                  <span className={item.value ? "text-gray-700" : "text-gray-400"}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+            {selected.stepFree.totalSteps > 0 && (
+              <div className="text-xs text-amber-600">
+                ⚠️ {selected.stepFree.totalSteps} steps total
+                {selected.stepFree.hasRamp && " · Ramp available"}
+                {selected.stepFree.rampSteepness && ` (${selected.stepFree.rampSteepness})`}
+              </div>
+            )}
+          </div>
+
+          {/* Elevators */}
+          {selected.elevators && selected.elevators.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-700">Elevators</div>
+              {selected.elevators.map((elev, i) => (
+                <div key={i} className="bg-blue-50 rounded-lg p-2 text-sm">
+                  <div className="font-medium text-blue-900">{elev.from} → {elev.to}</div>
+                  {elev.capacity && <div className="text-xs text-blue-700">Capacity: {elev.capacity}</div>}
+                  {elev.requiresAssistance && <div className="text-xs text-amber-600">⚠️ Staff assistance required</div>}
+                  {elev.note && <div className="text-xs text-blue-600">{elev.note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Door widths */}
+          {selected.doorWidths && (
+            <div className="text-sm">
+              <span className="text-gray-500">Door widths: </span>
+              {selected.doorWidths.entranceCm && <span>Entrance {selected.doorWidths.entranceCm}cm</span>}
+              {selected.doorWidths.interiorCm && <span> · Interior {selected.doorWidths.interiorCm}cm</span>}
+            </div>
+          )}
+
+          {/* Suitable for */}
+          <div>
+            <div className="text-sm font-medium text-gray-700 mb-1">Suitable for</div>
+            <div className="flex flex-wrap gap-1">
+              {selected.suitableFor.map(sf => (
+                <span key={sf} className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs">
+                  {sf.replace(/_/g, " ")}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Restroom */}
+          {selected.accessibleRestroom?.available && (
+            <div className="bg-green-50 rounded-lg p-2 text-sm text-green-800">
+              ✓ Accessible restroom available
+              {selected.accessibleRestroom.location && ` · ${selected.accessibleRestroom.location}`}
+            </div>
+          )}
+
+          {/* Staff assistance */}
+          {selected.staffAssistance?.available && (
+            <div className="text-sm">
+              <span className="font-medium">Staff assistance:</span> {selected.staffAssistance.howToRequest}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recommended route */}
+      {spec.recommendedRoute && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+          <h3 className="font-semibold text-purple-900 mb-2">Recommended Accessible Route</h3>
+          <p className="text-sm text-purple-700">{spec.recommendedRoute.routeDescription}</p>
+          <div className="text-sm text-purple-600 mt-1">
+            Estimated time: {spec.recommendedRoute.estimatedTimeMinutes}m
+          </div>
+          <div className="flex flex-wrap gap-1 mt-2">
+            {spec.recommendedRoute.highlights.map(h => (
+              <span key={h} className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">{h}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pre-visit contact */}
+      {spec.preVisitInfo && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="font-semibold text-amber-900 mb-2">Pre-Visit Recommendation</h3>
+          {spec.preVisitInfo.shouldCallAhead && (
+            <p className="text-sm text-amber-800">
+              📞 Call ahead: {spec.preVisitInfo.phoneNumber}
+              {spec.preVisitInfo.recommendedNoticeDays && ` (${spec.preVisitInfo.recommendedNoticeDays} days notice)`}
+            </p>
+          )}
+          {spec.preVisitInfo.whatToMention && (
+            <p className="text-sm text-amber-700 mt-1">
+              Mention: {spec.preVisitInfo.whatToMention}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+File 15: artifacts/viz-studio/src/components/charts/BestForMatrix.tsx
+tsx
+Copy
+/**
+ * Best For Matrix — React Renderer
+ * 
+ * Decision matrix: visitor type × best option.
+ * Self-identifying quiz-style selector.
+ */
+
+import React, { useState } from "react";
+import type { BestForMatrixSpec } from "@headout/api-spec";
+
+interface Props {
+  spec: BestForMatrixSpec;
+  compact?: boolean;
+}
+
+const VISITOR_ICONS: Record<string, string> = {
+  first_timers: "🆕", families_with_kids: "👨‍👩‍👧", families_with_teens: "👨‍👩‍👧‍👦",
+  seniors: "🧓", solo_travelers: "🧍", couples: "💑",
+  groups: "👥", art_lovers: "🎨", history_buffs: "📜",
+  budget_conscious: "💰", time_constrained: "⏰", mobility_limited: "♿",
+  photography_enthusiasts: "📸", locals: "🏠",
+};
+
+export const BestForMatrix: React.FC<<Props> = ({ spec, compact = false }) => {
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  const recommendation = selectedType ? spec.recommendations[selectedType] : null;
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-gray-900">{spec.headline}</h3>
+        <div className="space-y-2">
+          {spec.options.slice(0, 3).map(opt => (
+            <div key={opt.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: opt.color }} />
+                <span className="text-sm font-medium">{opt.name}</span>
+              </div>
+              <div className="text-xs text-gray-500">{opt.shortDescription}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900">{spec.headline}</h2>
+        <p className="text-sm text-gray-500">{spec.subheadline}</p>
+      </div>
+
+      {/* Visitor type selector */}
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-gray-700">Who are you?</div>
+        <div className="flex flex-wrap gap-2">
+          {spec.visitorTypes.map(vt => (
+            <button
+              key={vt.id}
+              onClick={() => setSelectedType(selectedType === vt.id ? null : vt.id)}
+              className={`px-3 py-2 rounded-xl text-sm transition-all ${
+                selectedType === vt.id
+                  ? "bg-purple-600 text-white shadow-md"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              <div className="text-lg mb-0.5">{vt.icon}</div>
+              <div className="font-medium">{vt.label}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Options comparison grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {spec.options.map(opt => {
+          const isRecommended = recommendation?.primaryOptionId === opt.id;
+          const isSecondary = recommendation?.secondaryOptionId === opt.id;
+          const score = selectedType ? (opt.scores[selectedType as keyof typeof opt.scores] || 0) : null;
+
+          return (
+            <div
+              key={opt.id}
+              className={`rounded-xl border-2 p-4 transition-all ${
+                isRecommended ? "border-purple-500 shadow-lg bg-purple-50/30" :
+                isSecondary ? "border-purple-300 bg-purple-50/10" :
+                "border-gray-200"
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: opt.color }} />
+                <h3 className="font-bold text-gray-900">{opt.name}</h3>
+                {isRecommended && (
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                    ★ Best for you
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-gray-600 mb-3">{opt.shortDescription}</p>
+
+              {/* Score bar */}
+              {score !== null && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-gray-500">Match</span>
+                    <span className="font-medium">{score}/5</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-purple-500 rounded-full h-2 transition-all"
+                      style={{ width: `${(score / 5) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Facts */}
+              <div className="space-y-1 text-xs text-gray-500">
+                {opt.price && <div>€{opt.price.amount}</div>}
+                {opt.durationMinutes && <div>{opt.durationMinutes}m</div>}
+                {opt.waitTimeMinutes !== undefined && <div>{opt.waitTimeMinutes}m wait</div>}
+              </div>
+
+              {/* Top reason */}
+              <div className="mt-3 p-2 bg-gray-50 rounded-lg text-xs text-gray-700">
+                {opt.topReason}
+              </div>
+
+              {/* Not recommended warning */}
+              {selectedType && opt.notRecommendedFor?.includes(selectedType as any) && (
+                <div className="mt-2 p-2 bg-red-50 rounded-lg text-xs text-red-700">
+                  ⚠️ Not recommended for {selectedType.replace(/_/g, " ")}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Personalized recommendation */}
+      {recommendation && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+          <h3 className="font-semibold text-purple-900 mb-2">
+            For {spec.visitorTypes.find(v => v.id === selectedType)?.label}
+          </h3>
+          <p className="text-sm text-purple-700 mb-2">{recommendation.why}</p>
+          {recommendation.tip && (
+            <p className="text-sm text-purple-600">💡 {recommendation.tip}</p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium">
+              Book {spec.options.find(o => o.id === recommendation.primaryOptionId)?.name} →
+            </button>
+            {recommendation.secondaryOptionId && (
+              <button className="px-4 py-2 bg-white text-purple-600 border border-purple-200 rounded-lg text-sm">
+                Or {spec.options.find(o => o.id === recommendation.secondaryOptionId)?.name}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+File 16: Chart Registry Update
+artifacts/viz-studio/src/components/charts/index.ts (Add these exports)
+TypeScript
+Copy
+// ... existing exports ...
+
+// Chunk B: New chart types
+export { EntranceMap } from "./EntranceMap";
+export { FloorPlanFlow } from "./FloorPlanFlow";
+export { RulesChecklist } from "./RulesChecklist";
+export { TransitOptions } from "./TransitOptions";
+export { TimeValueMatrix } from "./TimeValueMatrix";
+export { AccessibilityGuide } from "./AccessibilityGuide";
+export { BestForMatrix } from "./BestForMatrix";
+File 17: Chart Router Update
+artifacts/viz-studio/src/components/ChartRenderer.tsx (Add to your switch statement)
+tsx
+Copy
+// ... existing imports ...
+import { 
+  EntranceMap, FloorPlanFlow, RulesChecklist, 
+  TransitOptions, TimeValueMatrix, AccessibilityGuide, BestForMatrix 
+} from "./charts";
+
+// In your render switch:
+case "entrance_map":
+  return <EntranceMap spec={spec} compact={compact} />;
+case "floor_plan_flow":
+  return <FloorPlanFlow spec={spec} compact={compact} />;
+case "rules_checklist":
+  return <RulesChecklist spec={spec} compact={compact} />;
+case "transit_options":
+  return <TransitOptions spec={spec} compact={compact} />;
+case "time_value_matrix":
+  return <TimeValueMatrix spec={spec} compact={compact} />;
+case "accessibility_guide":
+  return <AccessibilityGuide spec={spec} compact={compact} />;
+case "best_for_matrix":
+  return <BestForMatrix spec={spec} compact={compact} />;
+Summary of What You Just Got
+Table
+Chart	File	What It Does
+entrance_map	EntranceMap.tsx	Interactive SVG map with wait times, accessibility, transit
+floor_plan_flow	FloorPlanFlow.tsx	Room-by-room route with crowd levels and must-see ratings
+rules_checklist	RulesChecklist.tsx	Visual scannable cards with checkboxes and severity colors
+transit_options	TransitOptions.tsx	Ranked transport with route visualization
+time_value_matrix	TimeValueMatrix.tsx	ROI grid: visitor type × time saved vs. cost
+accessibility_guide	AccessibilityGuide.tsx	Entrance-by-entrance accessibility breakdown
+best_for_matrix	BestForMatrix.tsx	Decision matrix with self-identifying selector
+All 7 charts have:
+✅ Full Zod specs with strict validation
+✅ Compact mode for small embeds
+✅ Responsive design (mobile-first)
+✅ Interactive elements (click, hover, select)
+✅ Editorial overlay hooks (headline, subheadline, CTA)
+✅ Color-coded severity/status systems
+✅ Accessibility-friendly structure

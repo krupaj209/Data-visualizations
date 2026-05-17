@@ -72,7 +72,7 @@ function scoreQuestionForSection(
     reasons.push("No page-type variant");
   }
 
-  const signals = question.ceSignals;
+  const signals = question.ceSignals ?? {};
   if (ce.hasSeasonalVariation && signals.hasSeasonalVariation) {
     score += 10;
     reasons.push("CE has seasonal variation");
@@ -111,7 +111,7 @@ function scoreQuestionForSection(
     reasons.push("Preferred chart type available");
   }
 
-  for (const req of question.requires) {
+  for (const req of question.requires ?? []) {
     score -= 5;
     reasons.push(`Requires ${req} (dependency)`);
   }
@@ -130,7 +130,7 @@ function generateEditorial(
   chartData: any
 ): ResolvedSection["editorial"] {
   const variant = question.pageVariants?.[pageType];
-  const defaults = question.editorialDefaults;
+  const defaults = question.editorialDefaults ?? {};
 
   const replaceVars = (str: string) => {
     return str
@@ -145,7 +145,7 @@ function generateEditorial(
     headline: replaceVars(variant?.headline || defaults.ctaTemplate || question.headlineTemplate),
     subheadline: replaceVars(variant?.subheadline || question.subheadlineTemplate),
     cta: defaults.ctaTemplate ? replaceVars(defaults.ctaTemplate) : undefined,
-    confidenceBadge: defaults.confidenceBadge || "medium",
+    confidenceBadge: defaults.confidenceBadge ?? "medium",
     lastUpdated: new Date().toISOString(),
     personalizationNote: undefined,
   };
@@ -185,7 +185,7 @@ export async function buildDeck(
       scoreQuestionForSection(q, sectionDef, ce, pageType)
     ).sort((a, b) => b.score - a.score);
 
-    const toSelect = Math.min(sectionDef.maxQuestions, scored.length);
+    const toSelect = Math.min(sectionDef.maxQuestions ?? 1, scored.length);
     const selectedIds = scored.slice(0, toSelect).map(s => s.questionId);
     const resolvedIds = resolveConflicts(selectedIds);
 
@@ -208,7 +208,7 @@ export async function buildDeck(
         chartType: question.chartTypes[0],
         chartSpec,
         editorial,
-        layout: sectionDef.layout,
+        layout: sectionDef.layout ?? "full",
         generationMetadata: {
           drdConfidence: ce.drdConfidence[question.archetype] || 0.5,
           aiRationale: `Selected for ${sectionDef.name}: ${scored.find(s => s.questionId === questionId)?.reasons.join(", ")}`,
@@ -218,8 +218,9 @@ export async function buildDeck(
     }
   }
 
-  if (sections.length < template.minTotalSections) {
-    console.warn(`Deck for ${ce.slug} has only ${sections.length} sections, minimum is ${template.minTotalSections}`);
+  const minSections = template.minTotalSections ?? 0;
+  if (sections.length < minSections) {
+    console.warn(`Deck for ${ce.slug} has only ${sections.length} sections, minimum is ${minSections}`);
   }
 
   return {

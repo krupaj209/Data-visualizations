@@ -184,6 +184,9 @@ importers:
       '@workspace/integrations-gemini-ai':
         specifier: workspace:*
         version: link:../../lib/integrations-gemini-ai
+      '@workspace/page-decks':
+        specifier: workspace:*
+        version: link:../../lib/page-decks
       '@workspace/question-bank':
         specifier: workspace:*
         version: link:../../lib/question-bank
@@ -613,6 +616,16 @@ importers:
       p-retry:
         specifier: ^7.1.1
         version: 7.1.1
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.3.5
+
+  lib/page-decks:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

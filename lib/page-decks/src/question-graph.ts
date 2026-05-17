@@ -540,9 +540,10 @@ export function resolveConflicts(selected: string[]): string[] {
   const toRemove = new Set<string>();
 
   for (const node of selectedNodes) {
-    for (const conflictId of node.conflictsWith) {
+    for (const conflictId of node.conflictsWith ?? []) {
       if (selected.includes(conflictId) && !toRemove.has(node.questionId)) {
         const other = questionGraph[conflictId];
+        if (!other) continue;
         const thisPriority = Math.min(...Object.values(node.pageVariants || {}).map(v => v.priority));
         const otherPriority = Math.min(...Object.values(other.pageVariants || {}).map(v => v.priority));
 

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Home from "@/pages/Home";
 import CeDetail from "@/pages/CeDetail";
 import Embed from "@/pages/Embed";
+import DeckEmbed from "@/pages/DeckEmbed";
 import StyleGuide from "@/pages/StyleGuide";
 import Triage from "@/pages/Triage";
 import TriageQuestions from "@/pages/TriageQuestions";
@@ -24,6 +25,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/ce/:slug" component={CeDetail} />
+      <Route path="/embed/:ceSlug/:pageType/:sectionId" component={DeckEmbed} />
       <Route path="/embed/:id" component={Embed} />
       <Route path="/triage/questions" component={TriageQuestions} />
       <Route path="/triage" component={Triage} />
