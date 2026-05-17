@@ -314,6 +314,10 @@ function CeDetailInner({
     archetype?: string;
   } | null>(null);
   const [showRegenFeedback, setShowRegenFeedback] = useState(false);
+  // Transiently set when the writer clicks "View chart" in the Intel
+  // panel's Done/Rejected list. The chart row applies a purple outline
+  // for ~1.3s and clears itself via the timeout below.
+  const [flashChartId, setFlashChartId] = useState<number | null>(null);
   const [regenSummary, setRegenSummary] = useState<
     import("@workspace/api-client-react").RegenSummary | null
   >(null);
@@ -688,6 +692,7 @@ function CeDetailInner({
                 ceName={ce.name}
                 autoEdit={editId === chart.id}
                 sidePanelOpen={showIdeation || showIntel}
+                flash={flashChartId === chart.id}
               />
             ))}
             {visibleCharts.length === 0 && (
@@ -712,6 +717,19 @@ function CeDetailInner({
           <IntelPanel
             slug={slug}
             onClose={() => setShowIntel(false)}
+            charts={charts}
+            onViewChart={(chartId) => {
+              const el = document.getElementById(`chart-${chartId}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+              setFlashChartId(chartId);
+              window.setTimeout(() => {
+                setFlashChartId((current) =>
+                  current === chartId ? null : current,
+                );
+              }, 1300);
+            }}
             onChartCreated={() => {
               qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
               qc.invalidateQueries({ queryKey: getListCesQueryKey() });
@@ -775,12 +793,16 @@ function ChartRow({
   ceName,
   autoEdit,
   sidePanelOpen = false,
+  flash = false,
 }: {
   chart: Chart;
   ceSlug: string;
   ceName: string;
   autoEdit?: boolean;
   sidePanelOpen?: boolean;
+  /** Briefly outline this row when the writer clicks "View chart" in the
+   *  Intel panel's Done/Rejected list. Drops back to no outline after ~1.3s. */
+  flash?: boolean;
 }) {
   const [mode, setMode] = useState<"view" | "edit">(autoEdit ? "edit" : "view");
   const [verification, setVerification] = useState<ChartVerification | null>(
@@ -884,7 +906,16 @@ function ChartRow({
   }
 
   return (
-    <section>
+    <section
+      id={`chart-${chart.id}`}
+      style={{
+        scrollMarginTop: 80,
+        borderRadius: 16,
+        outline: flash ? `2px solid ${BRAND.purps}` : "2px solid transparent",
+        boxShadow: flash ? `0 0 0 6px ${BRAND.purpsSoft}` : "none",
+        transition: "outline-color 200ms ease, box-shadow 200ms ease",
+      }}
+    >
       <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">

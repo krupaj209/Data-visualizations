@@ -196,14 +196,33 @@ interface VisualizationPlan {
   live_search_notes?: { finding: string; source_url?: string }[];
 }
 
+type ChartForMatching = {
+  id: number;
+  question?: string;
+  provenance?: unknown;
+};
+
+function normalizeQuestionKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function IntelPanel({
   slug,
   onClose,
   onChartCreated,
+  charts = [],
+  onViewChart,
 }: {
   slug: string;
   onClose: () => void;
   onChartCreated?: () => void;
+  /** Existing charts on this CE — used to mark plan ideas as "Done". */
+  charts?: ChartForMatching[];
+  /** Scroll the matching chart card into view and flash its outline. */
+  onViewChart?: (chartId: number) => void;
 }) {
   const { data, isLoading, error } = useGetCeIntelligence(slug);
   const refreshMut = useRefreshCeIntelligence();
@@ -812,10 +831,45 @@ export function IntelPanel({
   );
 
   const isBusyGenerating = creatingQuestion !== null || !!bulkProgress?.running;
+
+  // Match plan ideas to existing charts on this CE so writers see which
+  // ideas are already "Done". Match against provenance.source_question
+  // (set on both assembler-generated and intel-panel-created charts) and
+  // fall back to the chart's `question` field for legacy rows.
+  const chartByQuestionKey = new Map<string, number>();
+  for (const c of charts) {
+    const prov = c.provenance as { source_question?: string } | null | undefined;
+    const candidates = [prov?.source_question, c.question]
+      .filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    for (const candidate of candidates) {
+      const key = normalizeQuestionKey(candidate);
+      if (key && !chartByQuestionKey.has(key)) {
+        chartByQuestionKey.set(key, c.id);
+      }
+    }
+  }
+
+  function existingChartIdFor(question: string): number | null {
+    const key = normalizeQuestionKey(question);
+    if (chartByQuestionKey.has(key)) return chartByQuestionKey.get(key)!;
+    const inSession = createdCharts[question];
+    return inSession ? inSession.chartId : null;
+  }
+
+  // Eligible for bulk-create = ideas that are still in "To create"
+  // (i.e. no chart on the CE yet and not created in this session).
   const eligibleRecommended = useMemo(() => {
     const list = plan?.recommended_visualizations ?? [];
-    return list.filter((item) => !createdCharts[item.question]);
-  }, [plan, createdCharts]);
+    return list.filter((item) => {
+      const key = normalizeQuestionKey(item.question);
+      if (chartByQuestionKey.has(key)) return false;
+      if (createdCharts[item.question]) return false;
+      return true;
+    });
+    // chartByQuestionKey is derived from `charts` each render, so depending
+    // on `charts` is sufficient.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, createdCharts, charts]);
   const selectedEligibleIdeas = useMemo(
     () =>
       eligibleRecommended.filter((i) => selectedIdeas.has(i.question)),
@@ -1247,127 +1301,123 @@ export function IntelPanel({
                     categories={plan.evidence_inventory_detailed.categories}
                   />
                 )}
-              <PlanList
-                title={`Recommended (${plan.recommended_visualizations.length})`}
-                selectAll={
-                  eligibleRecommended.length > 0
-                    ? {
-                        state:
-                          selectedEligibleCount === 0
-                            ? "none"
-                            : selectedEligibleCount ===
-                                eligibleRecommended.length
-                              ? "all"
-                              : "some",
-                        eligibleCount: eligibleRecommended.length,
-                        disabled: isBusyGenerating,
-                        onToggle: () => {
-                          if (
-                            selectedEligibleCount ===
-                            eligibleRecommended.length
-                          ) {
-                            clearSelectedIdeas();
-                          } else {
-                            setSelectedIdeas(
-                              new Set(
-                                eligibleRecommended.map((i) => i.question),
-                              ),
-                            );
-                          }
-                        },
-                      }
-                    : undefined
+              {(() => {
+                const toCreate: typeof plan.recommended_visualizations = [];
+                const done: {
+                  item: (typeof plan.recommended_visualizations)[number];
+                  chartId: number;
+                }[] = [];
+                for (const item of plan.recommended_visualizations) {
+                  const chartId = existingChartIdFor(item.question);
+                  if (chartId != null) {
+                    done.push({ item, chartId });
+                  } else {
+                    toCreate.push(item);
+                  }
                 }
-                items={plan.recommended_visualizations.map((item) => {
-                  const question = questionsByText.get(item.question);
-                  const created = createdCharts[item.question];
-                  const isEligible = !created;
-                  const checkboxDisabled = isBusyGenerating;
-                  return {
-                    key: `${item.priority}-${item.question}`,
-                    title: item.question,
-                    meta: item.archetype,
-                    body: item.why_it_matters,
-                    tone: "good" as const,
-                    evidenceStatus: question?.evidence_status,
-                    confidence: question?.confidence,
-                    sourceRefs: [
-                      ...(question?.source_refs ?? []),
-                      ...(item.evidence_refs ?? []),
-                    ],
-                    qualityScore: item.quality_score,
-                    editorial: item.quality_score?.editorial,
-                    editorialVerdict: item.quality_score?.editorial_verdict,
-                    // Cards promoted into Recommended by the recheck
-                    // pipeline carry `promoted_from_rejected: true` on
-                    // the persisted plan — surface that to writers.
-                    promotedBadge: item.promoted_from_rejected
-                      ? "Found by recheck"
-                      : undefined,
-                    createdChart: created,
-                    actionLabel: created ? "Created" : "Create chart",
-                    actionDisabled: !!created || isBusyGenerating,
-                    actionBusy: creatingQuestion === item.question,
-                    onAction: () => handleCreateFromPlan(item),
-                    cardError: bulkErrors[item.question],
-                    selectable: isEligible,
-                    selectDisabled: checkboxDisabled,
-                    selected: selectedIdeas.has(item.question),
-                    onSelectToggle:
-                      isEligible && !checkboxDisabled
-                        ? () => toggleSelectedIdea(item.question)
-                        : undefined,
-                  };
-                })}
-              />
-              <PlanList
-                title={`Rejected (${plan.rejected_visualizations.length})`}
-                items={plan.rejected_visualizations
-                  .slice(0, 4)
-                  .map((item) => ({
-                  key: item.question,
-                  title: item.question,
-                  meta: item.archetype ?? "no chart",
-                  body: item.reason,
-                  tone: "warn" as const,
-                  editorial: item.editorial,
-                  editorialVerdict: item.editorial_verdict,
-                  createdChart: createdCharts[item.question],
-                  extra: !createdCharts[item.question] ? (
-                    <RejectedRepairTools
-                      item={item}
-                      context={rejectedContext[item.question] ?? ""}
-                      selectedArchetype={
-                        rejectedArchetype[item.question] ||
-                        item.archetype ||
-                        ""
+                // Bulk-select (Task #114) is scoped to the "To create" list
+                // since "Done" items already have a chart and nothing to
+                // generate.
+                const selectedInToCreate = toCreate.filter((i) =>
+                  selectedIdeas.has(i.question),
+                ).length;
+                return (
+                  <>
+                    <PlanList
+                      title={`To create (${toCreate.length})`}
+                      selectAll={
+                        toCreate.length > 0
+                          ? {
+                              state:
+                                selectedInToCreate === 0
+                                  ? "none"
+                                  : selectedInToCreate === toCreate.length
+                                    ? "all"
+                                    : "some",
+                              eligibleCount: toCreate.length,
+                              disabled: isBusyGenerating,
+                              onToggle: () => {
+                                if (selectedInToCreate === toCreate.length) {
+                                  clearSelectedIdeas();
+                                } else {
+                                  setSelectedIdeas(
+                                    new Set(toCreate.map((i) => i.question)),
+                                  );
+                                }
+                              },
+                            }
+                          : undefined
                       }
-                      isBusy={creatingQuestion === item.question}
-                      disabled={creatingQuestion !== null}
-                      onContextChange={(value) =>
-                        setRejectedContext((prev) => ({
-                          ...prev,
-                          [item.question]: value,
-                        }))
+                      items={toCreate.map((item) => {
+                        const question = questionsByText.get(item.question);
+                        const checkboxDisabled = isBusyGenerating;
+                        return {
+                          key: `${item.priority}-${item.question}`,
+                          title: item.question,
+                          meta: item.archetype,
+                          body: item.why_it_matters,
+                          tone: "good" as const,
+                          // Drop separate evidenceStatus chip — merged into
+                          // the single qualityScore pill (Recommended · N).
+                          confidence: question?.confidence,
+                          sourceRefs: [
+                            ...(question?.source_refs ?? []),
+                            ...(item.evidence_refs ?? []),
+                          ],
+                          qualityScore: item.quality_score,
+                          editorial: item.quality_score?.editorial,
+                          editorialVerdict:
+                            item.quality_score?.editorial_verdict,
+                          promotedBadge: item.promoted_from_rejected
+                            ? "Found by recheck"
+                            : undefined,
+                          actionLabel: "Create chart",
+                          actionDisabled: isBusyGenerating,
+                          actionBusy: creatingQuestion === item.question,
+                          onAction: () => handleCreateFromPlan(item),
+                          cardError: bulkErrors[item.question],
+                          selectable: true,
+                          selectDisabled: checkboxDisabled,
+                          selected: selectedIdeas.has(item.question),
+                          onSelectToggle: !checkboxDisabled
+                            ? () => toggleSelectedIdea(item.question)
+                            : undefined,
+                        };
+                      })}
+                    />
+                    <DoneSection
+                      slug={slug}
+                      items={done}
+                      onViewChart={onViewChart}
+                    />
+                    <RejectedSection
+                      slug={slug}
+                      items={plan.rejected_visualizations.slice(0, 8)}
+                      totalCount={plan.rejected_visualizations.length}
+                      createdCharts={createdCharts}
+                      existingChartIdFor={existingChartIdFor}
+                      onViewChart={onViewChart}
+                      rejectedContext={rejectedContext}
+                      rejectedArchetype={rejectedArchetype}
+                      creatingQuestion={creatingQuestion}
+                      setRejectedContext={setRejectedContext}
+                      setRejectedArchetype={setRejectedArchetype}
+                      onAddContext={(item) =>
+                        handleCreateRejected(item, "context")
                       }
-                      onArchetypeChange={(value) =>
-                        setRejectedArchetype((prev) => ({
-                          ...prev,
-                          [item.question]: value,
-                        }))
+                      onSearchMore={(item) =>
+                        handleSearchMoreForRejected(item)
                       }
-                      onAddContext={() => handleCreateRejected(item, "context")}
-                      onSearchMore={() => handleSearchMoreForRejected(item)}
-                      onCreateEstimate={() =>
+                      onCreateEstimate={(item) =>
                         handleCreateRejected(item, "estimate")
                       }
-                      onChangeType={() =>
+                      onChangeType={(item) =>
                         handleCreateRejected(item, "changed_archetype")
                       }
                     />
-                  ) : null,
-                }))}
-              />
+                  </>
+                );
+              })()}
             </div>
           </section>
         )}
@@ -2409,13 +2459,6 @@ function PlanListItem({
             >
               {item.meta}
             </span>
-            {item.evidenceStatus && (
-              <EvidenceChip
-                label={item.evidenceStatus}
-                status={item.evidenceStatus}
-                count={item.confidence ?? 0}
-              />
-            )}
             {item.createdChart && (
               <span
                 style={{
@@ -2542,18 +2585,7 @@ function PlanListItem({
             </div>
           )}
           {item.sourceRefs && item.sourceRefs.length > 0 && (
-            <div
-              style={{
-                marginTop: 5,
-                fontSize: 10,
-                color: BRAND.slate500,
-                fontWeight: 650,
-                lineHeight: 1.35,
-              }}
-              title={item.sourceRefs.join("\n")}
-            >
-              Sources: {dedupe(item.sourceRefs).slice(0, 3).join(" · ")}
-            </div>
+            <SourcesDisclosure sourceRefs={item.sourceRefs} />
           )}
           {item.createdChart && (
             // Task #97: any time an idea has a corresponding chart on this
@@ -2669,6 +2701,556 @@ function PlanListItem({
       )}
       </div>
     </li>
+  );
+}
+
+function SourcesDisclosure({ sourceRefs }: { sourceRefs: string[] }) {
+  const [open, setOpen] = useState(false);
+  const deduped = dedupe(sourceRefs);
+  if (deduped.length === 0) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          border: "none",
+          background: "transparent",
+          padding: 0,
+          color: BRAND.slate500,
+          fontSize: 10,
+          fontWeight: 850,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+        aria-expanded={open}
+      >
+        {deduped.length} source{deduped.length === 1 ? "" : "s"}
+        <ChevronDown
+          size={11}
+          color={BRAND.slate500}
+          style={{
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 140ms ease",
+          }}
+        />
+      </button>
+      {open && (
+        <div
+          style={{
+            marginTop: 5,
+            fontSize: 10,
+            color: BRAND.slate700,
+            fontWeight: 650,
+            lineHeight: 1.4,
+            wordBreak: "break-word",
+          }}
+        >
+          {deduped.map((ref, i) => (
+            <div key={`${ref}-${i}`} style={{ marginBottom: 2 }}>
+              · {ref}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useSectionOpen(
+  storageKey: string,
+  defaultOpen: boolean,
+): [boolean, (next: boolean) => void] {
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = window.localStorage.getItem(storageKey);
+      if (v === "1") return true;
+      if (v === "0") return false;
+    } catch {
+      /* ignore */
+    }
+    return defaultOpen;
+  });
+  function update(next: boolean) {
+    setOpen(next);
+    try {
+      window.localStorage.setItem(storageKey, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+  return [open, update];
+}
+
+function SectionHeader({
+  label,
+  count,
+  open,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      style={{
+        width: "100%",
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        marginBottom: 6,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        cursor: "pointer",
+        textAlign: "left",
+        color: BRAND.slate500,
+        fontSize: 10,
+        fontWeight: 900,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+      }}
+    >
+      {label} ({count})
+      <ChevronDown
+        size={12}
+        style={{
+          transform: open ? "rotate(180deg)" : "rotate(0deg)",
+          transition: "transform 140ms ease",
+        }}
+      />
+    </button>
+  );
+}
+
+function CompactRow({
+  archetype,
+  question,
+  action,
+  onExpand,
+  expanded,
+  children,
+}: {
+  archetype: string;
+  question: string;
+  action: ReactNode;
+  onExpand: () => void;
+  expanded: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <li
+      style={{
+        borderRadius: 10,
+        background: "white",
+        border: `1px solid ${BRAND.slate100}`,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto minmax(0, 1fr) auto",
+          gap: 8,
+          alignItems: "center",
+          padding: "7px 9px",
+        }}
+      >
+        <span
+          style={{
+            borderRadius: 999,
+            padding: "2px 6px",
+            fontSize: 9,
+            fontWeight: 900,
+            color: BRAND.slate700,
+            background: BRAND.slate100,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {archetype}
+        </span>
+        <button
+          type="button"
+          onClick={onExpand}
+          title={question}
+          style={{
+            minWidth: 0,
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            textAlign: "left",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 700,
+            color: BRAND.slate950,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            lineHeight: 1.3,
+          }}
+        >
+          {question}
+        </button>
+        {action}
+      </div>
+      {expanded && children && (
+        <div
+          style={{
+            borderTop: `1px solid ${BRAND.slate100}`,
+            padding: "8px 10px 10px",
+            background: BRAND.slate50,
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function DoneSection({
+  slug,
+  items,
+  onViewChart,
+}: {
+  slug: string;
+  items: {
+    item: VisualizationPlan["recommended_visualizations"][number];
+    chartId: number;
+  }[];
+  onViewChart?: (chartId: number) => void;
+}) {
+  const [open, setOpen] = useSectionOpen(
+    `viz-studio:intel-section:${slug}:done`,
+    false,
+  );
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>(
+    () => ({}),
+  );
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <SectionHeader
+        label="Done"
+        count={items.length}
+        open={open}
+        onToggle={() => setOpen(!open)}
+      />
+      {open && (
+        <ul
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          {items.map(({ item, chartId }) => {
+            const rowKey = `${item.priority}-${item.question}`;
+            const isExpanded = !!expandedRows[rowKey];
+            return (
+              <CompactRow
+                key={rowKey}
+                archetype={item.archetype}
+                question={item.question}
+                expanded={isExpanded}
+                onExpand={() =>
+                  setExpandedRows((prev) => ({
+                    ...prev,
+                    [rowKey]: !prev[rowKey],
+                  }))
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewChart?.(chartId);
+                    }}
+                    title="Scroll to this chart"
+                    style={{
+                      border: `1px solid ${BRAND.slate200}`,
+                      borderRadius: 8,
+                      padding: "4px 8px",
+                      background: "white",
+                      color: BRAND.slate950,
+                      fontSize: 10,
+                      fontWeight: 850,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <ExternalLink size={11} />
+                    View chart
+                  </button>
+                }
+              >
+                {item.why_it_matters && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: BRAND.slate700,
+                      fontWeight: 600,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {item.why_it_matters}
+                  </div>
+                )}
+                {item.quality_score?.editorial_verdict && (
+                  <div style={{ marginTop: 6 }}>
+                    <EditorialVerdictPill
+                      verdict={item.quality_score.editorial_verdict}
+                      compact
+                    />
+                  </div>
+                )}
+                <div style={{ marginTop: 7 }}>
+                  <a
+                    href={`?edit=${chartId}`}
+                    style={{
+                      border: `1px solid ${BRAND.slate200}`,
+                      borderRadius: 9,
+                      padding: "5px 8px",
+                      background: "white",
+                      color: BRAND.slate950,
+                      fontSize: 11,
+                      fontWeight: 850,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <ExternalLink size={12} />
+                    Open in editor
+                  </a>
+                </div>
+              </CompactRow>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function RejectedSection({
+  slug,
+  items,
+  totalCount,
+  createdCharts,
+  existingChartIdFor,
+  onViewChart,
+  rejectedContext,
+  rejectedArchetype,
+  creatingQuestion,
+  setRejectedContext,
+  setRejectedArchetype,
+  onAddContext,
+  onSearchMore,
+  onCreateEstimate,
+  onChangeType,
+}: {
+  slug: string;
+  items: VisualizationPlan["rejected_visualizations"];
+  /** Full count (pre-slice) so the header reflects the true total even
+   *  when only the top N are rendered. */
+  totalCount: number;
+  createdCharts: Record<string, CreatedPlanChart>;
+  existingChartIdFor: (question: string) => number | null;
+  onViewChart?: (chartId: number) => void;
+  rejectedContext: Record<string, string>;
+  rejectedArchetype: Record<string, string>;
+  creatingQuestion: string | null;
+  setRejectedContext: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  setRejectedArchetype: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  onAddContext: (
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) => void;
+  onSearchMore: (
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) => void;
+  onCreateEstimate: (
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) => void;
+  onChangeType: (
+    item: VisualizationPlan["rejected_visualizations"][number],
+  ) => void;
+}) {
+  const [open, setOpen] = useSectionOpen(
+    `viz-studio:intel-section:${slug}:rejected`,
+    true,
+  );
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>(
+    () => ({}),
+  );
+  if (totalCount === 0) return null;
+  return (
+    <div>
+      <SectionHeader
+        label="Rejected"
+        count={totalCount}
+        open={open}
+        onToggle={() => setOpen(!open)}
+      />
+      {open && (
+        <ul
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          {items.map((item) => {
+            const isExpanded = !!expandedRows[item.question];
+            const existingChartId = existingChartIdFor(item.question);
+            const isBusy = creatingQuestion === item.question;
+            return (
+              <CompactRow
+                key={item.question}
+                archetype={item.archetype ?? "no chart"}
+                question={item.question}
+                expanded={isExpanded}
+                onExpand={() =>
+                  setExpandedRows((prev) => ({
+                    ...prev,
+                    [item.question]: !prev[item.question],
+                  }))
+                }
+                action={
+                  existingChartId != null ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewChart?.(existingChartId);
+                      }}
+                      title="Scroll to this chart"
+                      style={{
+                        border: `1px solid ${BRAND.slate200}`,
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        background: "white",
+                        color: BRAND.slate950,
+                        fontSize: 10,
+                        fontWeight: 850,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <ExternalLink size={11} />
+                      View chart
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSearchMore(item);
+                      }}
+                      disabled={creatingQuestion !== null}
+                      title="Recheck evidence for this rejected idea"
+                      style={{
+                        border: `1px solid ${BRAND.slate200}`,
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        background: "white",
+                        color: BRAND.purps,
+                        fontSize: 10,
+                        fontWeight: 850,
+                        cursor:
+                          creatingQuestion !== null
+                            ? "not-allowed"
+                            : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isBusy ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={11} />
+                      )}
+                      Search more
+                    </button>
+                  )
+                }
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: BRAND.slate700,
+                    fontWeight: 600,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {item.reason}
+                </div>
+                {item.editorial && (
+                  <EditorialVerdictStrip judgements={item.editorial} />
+                )}
+                {existingChartId == null && !createdCharts[item.question] && (
+                  <RejectedRepairTools
+                    item={item}
+                    context={rejectedContext[item.question] ?? ""}
+                    selectedArchetype={
+                      rejectedArchetype[item.question] ||
+                      item.archetype ||
+                      ""
+                    }
+                    isBusy={isBusy}
+                    disabled={creatingQuestion !== null}
+                    onContextChange={(value) =>
+                      setRejectedContext((prev) => ({
+                        ...prev,
+                        [item.question]: value,
+                      }))
+                    }
+                    onArchetypeChange={(value) =>
+                      setRejectedArchetype((prev) => ({
+                        ...prev,
+                        [item.question]: value,
+                      }))
+                    }
+                    onAddContext={() => onAddContext(item)}
+                    onSearchMore={() => onSearchMore(item)}
+                    onCreateEstimate={() => onCreateEstimate(item)}
+                    onChangeType={() => onChangeType(item)}
+                  />
+                )}
+              </CompactRow>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

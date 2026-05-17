@@ -187,11 +187,26 @@ export function QuestionsPanel({
           className="border-t px-5 pb-5 pt-3"
           style={{ borderColor: BRAND.slate200 }}
         >
+          <div
+            className="mb-3 rounded-xl px-3 py-2 text-[11px]"
+            style={{
+              background: BRAND.bgLilac,
+              color: BRAND.slate900,
+              fontWeight: 650,
+              lineHeight: 1.45,
+            }}
+          >
+            These are the <strong>templated questions</strong> the deterministic
+            assembler runs every time you click <strong>Regenerate</strong>.
+            <strong> Skip on regenerate</strong> silences a single question for
+            this CE only. AI-generated chart ideas live in the{" "}
+            <strong>CE Intel</strong> panel and aren't affected by this.
+          </div>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="max-w-[640px] text-xs" style={{ color: BRAND.slate700 }}>
-              These are the candidate questions the assembler evaluates for{" "}
-              {ceName}. Edits here apply only to this CE. Use "Open in editor"
-              to change defaults for the whole subcategory.
+              Candidate questions the assembler evaluates for {ceName}. Edits
+              here apply only to this CE. Use "Open in editor" to change
+              defaults for the whole subcategory.
             </p>
             <div className="flex items-center gap-2">
               {resolvedSubId && <OpenInBankLink subcategoryId={resolvedSubId} />}
@@ -379,6 +394,7 @@ function CeRowActions({
           type="button"
           disabled={!writerName || createPending}
           onClick={onMute}
+          title="Don't ask this question when regenerating the deck for this CE"
           className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
           style={{
             borderColor: BRAND.candySoft,
@@ -386,7 +402,7 @@ function CeRowActions({
             background: "white",
           }}
         >
-          <VolumeX size={11} /> Mute
+          <VolumeX size={11} /> Skip on regenerate
         </button>
       )}
       {onRevert && (
