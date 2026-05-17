@@ -20,7 +20,6 @@ import { generateCePayload, slugify } from "../lib/generate-ce";
 import { LOCKED_CE_SLUGS } from "../lib/locked-ces";
 import {
   CHART_ARCHETYPES,
-  isKnownSubcategory,
   PageType as QbPageType,
   type ChartArchetypeId,
 } from "@workspace/question-bank";
@@ -42,25 +41,7 @@ const RegenerateCeBody = z.object({
   pageType: QbPageType.optional(),
 });
 
-function inferSubcategoryId(ce: Ce): string {
-  const raw = (ce.category || "").trim();
-  if (raw && isKnownSubcategory(raw)) return raw;
-
-  const haystack = `${ce.name} ${ce.category} ${ce.slug}`.toLowerCase();
-  if (/\b(cruise|river|boat|thames|seine|canal)\b/.test(haystack)) {
-    return "sightseeing_cruises";
-  }
-  if (/\b(gallery|museum|uffizi|accademia|louvre|vatican)\b/.test(haystack)) {
-    return "museums";
-  }
-  if (/\b(colosseum|tower|landmark|monument|palace)\b/.test(haystack)) {
-    return "landmarks";
-  }
-  if (/\b(day trip|day-trip|excursion)\b/.test(haystack)) {
-    return "day_trips";
-  }
-  return raw || "landmarks";
-}
+import { inferSubcategoryId } from "../lib/infer-subcategory";
 
 function serializeCe(
   ce: Ce,

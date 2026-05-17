@@ -525,6 +525,223 @@ export interface CeInput {
   category?: string;
 }
 
+export type QuestionOverrideActionKind =
+  (typeof QuestionOverrideActionKind)[keyof typeof QuestionOverrideActionKind];
+
+export const QuestionOverrideActionKind = {
+  edit: "edit",
+  add: "add",
+  mute: "mute",
+} as const;
+
+export type QuestionOverrideKind =
+  (typeof QuestionOverrideKind)[keyof typeof QuestionOverrideKind];
+
+export const QuestionOverrideKind = {
+  standard: "standard",
+  signature: "signature",
+} as const;
+
+export type QuestionOverrideSource =
+  (typeof QuestionOverrideSource)[keyof typeof QuestionOverrideSource];
+
+export const QuestionOverrideSource = {
+  code: "code",
+  category_override: "category_override",
+  ce_override: "ce_override",
+} as const;
+
+export interface QuestionCategoryOverride {
+  id: number;
+  subcategoryId: string;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+  questionTemplate?: string | null;
+  kind?: QuestionOverrideKind | null;
+  notes?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionCeOverride {
+  id: number;
+  ceSlug: string;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+  questionTemplate?: string | null;
+  kind?: QuestionOverrideKind | null;
+  notes?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestionCategoryOverrideInput {
+  subcategoryId: string;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+  questionTemplate?: string;
+  kind?: QuestionOverrideKind;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface QuestionCategoryOverridePatch {
+  action?: QuestionOverrideActionKind;
+  questionTemplate?: string | null;
+  kind?: QuestionOverrideKind | null;
+  notes?: string | null;
+  createdBy?: string;
+}
+
+export interface QuestionCeOverrideInput {
+  ceSlug: string;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+  questionTemplate?: string;
+  kind?: QuestionOverrideKind;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface QuestionCeOverridePatch {
+  action?: QuestionOverrideActionKind;
+  questionTemplate?: string | null;
+  kind?: QuestionOverrideKind | null;
+  notes?: string | null;
+  createdBy?: string;
+}
+
+/**
+ * Apply one override across every subcategory belonging to the
+given Headout categoryId, in a single transaction.
+
+ */
+export interface QuestionCategoryOverrideBulkInput {
+  categoryId: number;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+  questionTemplate?: string;
+  kind?: QuestionOverrideKind;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface QuestionCategoryOverrideBulkDeleteInput {
+  categoryId: number;
+  bundleId: string;
+  archetype: string;
+  action: QuestionOverrideActionKind;
+}
+
+export interface QuestionCategoryOverrideBulkResult {
+  categoryId: number;
+  affectedSubcategoryIds: string[];
+  upserted: number;
+  deleted: number;
+  overrides: QuestionCategoryOverride[];
+}
+
+export interface MergedQuestionCandidate {
+  archetype: string;
+  questionTemplate: string;
+  kind: QuestionOverrideKind;
+  source: QuestionOverrideSource;
+  muted: boolean;
+  overrideId?: number | null;
+  requires?: string[];
+  prefers?: string[];
+}
+
+export interface MergedQuestionBundle {
+  bundleId: string;
+  intent: string;
+  label: string;
+  description: string;
+  candidates: MergedQuestionCandidate[];
+}
+
+export type QuestionBankScopeKind =
+  (typeof QuestionBankScopeKind)[keyof typeof QuestionBankScopeKind];
+
+export const QuestionBankScopeKind = {
+  global: "global",
+  category: "category",
+  subcategory: "subcategory",
+  ce: "ce",
+} as const;
+
+export interface QuestionBankScope {
+  kind: QuestionBankScopeKind;
+  categoryId?: number | null;
+  subcategoryId?: string | null;
+  ceSlug?: string | null;
+  /** When `kind == "ce"`, the subcategoryId that was inferred from
+the CE row and used to apply category-scope overrides.
+ */
+  resolvedSubcategoryId?: string | null;
+}
+
+export type QuestionBankViewArchetypes = { [key: string]: unknown };
+
+export type QuestionBankViewIntents = { [key: string]: unknown };
+
+export type QuestionBankViewBundles = { [key: string]: unknown };
+
+export type QuestionBankViewPageTemplates = { [key: string]: unknown };
+
+export type QuestionBankViewSubcategoriesItem = { [key: string]: unknown };
+
+export type QuestionBankViewPerSubcategoryMergedItem = {
+  subcategoryId: string;
+  mergedBundles: MergedQuestionBundle[];
+};
+
+export interface QuestionBankView {
+  archetypes: QuestionBankViewArchetypes;
+  intents: QuestionBankViewIntents;
+  bundles: QuestionBankViewBundles;
+  pageTemplates: QuestionBankViewPageTemplates;
+  subcategories: QuestionBankViewSubcategoriesItem[];
+  scope: QuestionBankScope;
+  /** Code defaults merged with active overrides for the requested
+scope. For `scope.kind == "category"` this is intentionally the
+unmerged code defaults — read `perSubcategoryMerged` instead.
+ */
+  mergedBundles: MergedQuestionBundle[];
+  categoryOverrides: QuestionCategoryOverride[];
+  ceOverrides: QuestionCeOverride[];
+  /** Populated only when `scope.kind == "category"`. One entry per
+subcategory in the category, each carrying that subcategory's
+merged bundles after applying its own category-scope overrides.
+ */
+  perSubcategoryMerged?: QuestionBankViewPerSubcategoryMergedItem[];
+}
+
+/**
+ * Returned by every CRUD endpoint so the UI doesn't need a follow-up
+fetch. Contains the freshly merged bank for the affected scope plus
+the row that was just created/updated (omitted on delete).
+
+ */
+export interface QuestionOverrideMutationResult {
+  view: QuestionBankView;
+  categoryOverride?: QuestionCategoryOverride | null;
+  ceOverride?: QuestionCeOverride | null;
+}
+
+export type GetQuestionBankParams = {
+  categoryId?: number;
+  subcategoryId?: string;
+  ceSlug?: string;
+};
+
 export type ListAllFeedbackParams = {
   status?: string;
 };

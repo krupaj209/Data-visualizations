@@ -22,7 +22,275 @@ tags:
     description: Chart feedback loop and triage
   - name: ce-intelligence
     description: Per-CE intelligence profile built from multi-source adapters
+  - name: question-bank
+    description: Read the merged question bank and CRUD per-scope overrides
 paths:
+  /question-bank:
+    get:
+      operationId: getQuestionBank
+      tags: [question-bank]
+      summary: Read the merged question bank (code defaults + active overrides)
+      description: |
+        Returns the registry snapshot plus a merged-bundles view that
+        composes code defaults with active category and CE overrides.
+
+        Filters are exclusive in precedence: `ceSlug` > `subcategoryId` >
+        `categoryId`. With no filters, only code defaults are returned.
+
+        When `ceSlug` is given, the CE row's inferred subcategoryId is used
+        to apply category-scope overrides as well. The `categoryOverrides`
+        and `ceOverrides` arrays return the raw rows that were applied to
+        the merge, so the editor UI can list and revert them without a
+        second fetch.
+
+        **Category-scope contract**: when filtering by `categoryId` alone,
+        the top-level `mergedBundles` returns code defaults only —
+        overrides from different subcategories in the same category cannot
+        be sensibly collapsed into a single merge. Clients must read
+        `perSubcategoryMerged` (one entry per subcategory in the category)
+        for the effective merged data at category scope. `categoryOverrides`
+        still returns every raw row in the category for editor list views.
+      parameters:
+        - in: query
+          name: categoryId
+          required: false
+          schema: { type: integer }
+        - in: query
+          name: subcategoryId
+          required: false
+          schema: { type: string }
+        - in: query
+          name: ceSlug
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Merged bank view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionBankView"
+        "400":
+          description: Invalid filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /question-bank/category-overrides:
+    post:
+      operationId: createCategoryOverride
+      tags: [question-bank]
+      summary: Create a category-scope override (one bundle candidate)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCategoryOverrideInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /question-bank/category-overrides/{id}:
+    patch:
+      operationId: updateCategoryOverride
+      tags: [question-bank]
+      summary: Edit an existing category-scope override row
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCategoryOverridePatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteCategoryOverride
+      tags: [question-bank]
+      summary: Revert (delete) a category-scope override row
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted (returns the freshly merged view for the affected subcategory)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /question-bank/category-overrides:bulk:
+    post:
+      operationId: bulkApplyCategoryOverride
+      tags: [question-bank]
+      summary: Apply one override across every subcategory in a category
+      description: |
+        Idempotent upsert on the
+        `(subcategoryId, bundleId, archetype, action)` unique tuple. Returns
+        the count of rows touched and the full set of override rows now
+        active for that category.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCategoryOverrideBulkInput"
+      responses:
+        "200":
+          description: Bulk apply summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionCategoryOverrideBulkResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: bulkRevertCategoryOverride
+      tags: [question-bank]
+      summary: Delete all matching overrides across every subcategory in a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCategoryOverrideBulkDeleteInput"
+      responses:
+        "200":
+          description: Bulk revert summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionCategoryOverrideBulkResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /question-bank/ce-overrides:
+    post:
+      operationId: createCeOverride
+      tags: [question-bank]
+      summary: Create a CE-scope override (one bundle candidate)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCeOverrideInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /question-bank/ce-overrides/{id}:
+    patch:
+      operationId: updateCeOverride
+      tags: [question-bank]
+      summary: Edit an existing CE-scope override row
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionCeOverridePatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteCeOverride
+      tags: [question-bank]
+      summary: Revert (delete) a CE-scope override row
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted (returns the freshly merged view for the affected CE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOverrideMutationResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -1798,3 +2066,323 @@ components:
         - name
         - city
         - country
+    QuestionOverrideActionKind:
+      type: string
+      enum: [edit, add, mute]
+    QuestionOverrideKind:
+      type: string
+      enum: [standard, signature]
+    QuestionOverrideSource:
+      type: string
+      enum: [code, category_override, ce_override]
+    QuestionCategoryOverride:
+      type: object
+      properties:
+        id: { type: integer }
+        subcategoryId: { type: string }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+          nullable: true
+        kind:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionOverrideKind"
+            - type: "null"
+        notes:
+          type: string
+          nullable: true
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required:
+        - id
+        - subcategoryId
+        - bundleId
+        - archetype
+        - action
+        - createdBy
+        - createdAt
+        - updatedAt
+    QuestionCeOverride:
+      type: object
+      properties:
+        id: { type: integer }
+        ceSlug: { type: string }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+          nullable: true
+        kind:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionOverrideKind"
+            - type: "null"
+        notes:
+          type: string
+          nullable: true
+        createdBy: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required:
+        - id
+        - ceSlug
+        - bundleId
+        - archetype
+        - action
+        - createdBy
+        - createdAt
+        - updatedAt
+    QuestionCategoryOverrideInput:
+      type: object
+      properties:
+        subcategoryId: { type: string }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+        kind: { $ref: "#/components/schemas/QuestionOverrideKind" }
+        notes: { type: string }
+        createdBy: { type: string }
+      required:
+        - subcategoryId
+        - bundleId
+        - archetype
+        - action
+    QuestionCategoryOverridePatch:
+      type: object
+      properties:
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+          nullable: true
+        kind:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionOverrideKind"
+            - type: "null"
+        notes:
+          type: string
+          nullable: true
+        createdBy: { type: string }
+    QuestionCeOverrideInput:
+      type: object
+      properties:
+        ceSlug: { type: string }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+        kind: { $ref: "#/components/schemas/QuestionOverrideKind" }
+        notes: { type: string }
+        createdBy: { type: string }
+      required:
+        - ceSlug
+        - bundleId
+        - archetype
+        - action
+    QuestionCeOverridePatch:
+      type: object
+      properties:
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate:
+          type: string
+          nullable: true
+        kind:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionOverrideKind"
+            - type: "null"
+        notes:
+          type: string
+          nullable: true
+        createdBy: { type: string }
+    QuestionCategoryOverrideBulkInput:
+      type: object
+      description: |
+        Apply one override across every subcategory belonging to the
+        given Headout categoryId, in a single transaction.
+      properties:
+        categoryId: { type: integer }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+        questionTemplate: { type: string }
+        kind: { $ref: "#/components/schemas/QuestionOverrideKind" }
+        notes: { type: string }
+        createdBy: { type: string }
+      required:
+        - categoryId
+        - bundleId
+        - archetype
+        - action
+    QuestionCategoryOverrideBulkDeleteInput:
+      type: object
+      properties:
+        categoryId: { type: integer }
+        bundleId: { type: string }
+        archetype: { type: string }
+        action: { $ref: "#/components/schemas/QuestionOverrideActionKind" }
+      required:
+        - categoryId
+        - bundleId
+        - archetype
+        - action
+    QuestionCategoryOverrideBulkResult:
+      type: object
+      properties:
+        categoryId: { type: integer }
+        affectedSubcategoryIds:
+          type: array
+          items: { type: string }
+        upserted: { type: integer }
+        deleted: { type: integer }
+        overrides:
+          type: array
+          items: { $ref: "#/components/schemas/QuestionCategoryOverride" }
+      required:
+        - categoryId
+        - affectedSubcategoryIds
+        - upserted
+        - deleted
+        - overrides
+    MergedQuestionCandidate:
+      type: object
+      properties:
+        archetype: { type: string }
+        questionTemplate: { type: string }
+        kind: { $ref: "#/components/schemas/QuestionOverrideKind" }
+        source: { $ref: "#/components/schemas/QuestionOverrideSource" }
+        muted: { type: boolean }
+        overrideId:
+          type: integer
+          nullable: true
+        requires:
+          type: array
+          items: { type: string }
+        prefers:
+          type: array
+          items: { type: string }
+      required:
+        - archetype
+        - questionTemplate
+        - kind
+        - source
+        - muted
+    MergedQuestionBundle:
+      type: object
+      properties:
+        bundleId: { type: string }
+        intent: { type: string }
+        label: { type: string }
+        description: { type: string }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/MergedQuestionCandidate" }
+      required:
+        - bundleId
+        - intent
+        - label
+        - description
+        - candidates
+    QuestionBankScope:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [global, category, subcategory, ce]
+        categoryId:
+          type: integer
+          nullable: true
+        subcategoryId:
+          type: string
+          nullable: true
+        ceSlug:
+          type: string
+          nullable: true
+        resolvedSubcategoryId:
+          type: string
+          nullable: true
+          description: |
+            When `kind == "ce"`, the subcategoryId that was inferred from
+            the CE row and used to apply category-scope overrides.
+      required:
+        - kind
+    QuestionBankView:
+      type: object
+      properties:
+        archetypes:
+          type: object
+          additionalProperties: true
+        intents:
+          type: object
+          additionalProperties: true
+        bundles:
+          type: object
+          additionalProperties: true
+        pageTemplates:
+          type: object
+          additionalProperties: true
+        subcategories:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        scope: { $ref: "#/components/schemas/QuestionBankScope" }
+        mergedBundles:
+          type: array
+          description: |
+            Code defaults merged with active overrides for the requested
+            scope. For `scope.kind == "category"` this is intentionally the
+            unmerged code defaults — read `perSubcategoryMerged` instead.
+          items: { $ref: "#/components/schemas/MergedQuestionBundle" }
+        categoryOverrides:
+          type: array
+          items: { $ref: "#/components/schemas/QuestionCategoryOverride" }
+        ceOverrides:
+          type: array
+          items: { $ref: "#/components/schemas/QuestionCeOverride" }
+        perSubcategoryMerged:
+          type: array
+          description: |
+            Populated only when `scope.kind == "category"`. One entry per
+            subcategory in the category, each carrying that subcategory's
+            merged bundles after applying its own category-scope overrides.
+          items:
+            type: object
+            properties:
+              subcategoryId: { type: string }
+              mergedBundles:
+                type: array
+                items: { $ref: "#/components/schemas/MergedQuestionBundle" }
+            required: [subcategoryId, mergedBundles]
+      required:
+        - archetypes
+        - intents
+        - bundles
+        - pageTemplates
+        - subcategories
+        - scope
+        - mergedBundles
+        - categoryOverrides
+        - ceOverrides
+    QuestionOverrideMutationResult:
+      type: object
+      description: |
+        Returned by every CRUD endpoint so the UI doesn't need a follow-up
+        fetch. Contains the freshly merged bank for the affected scope plus
+        the row that was just created/updated (omitted on delete).
+      properties:
+        view: { $ref: "#/components/schemas/QuestionBankView" }
+        categoryOverride:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionCategoryOverride"
+            - type: "null"
+        ceOverride:
+          oneOf:
+            - $ref: "#/components/schemas/QuestionCeOverride"
+            - type: "null"
+      required:
+        - view

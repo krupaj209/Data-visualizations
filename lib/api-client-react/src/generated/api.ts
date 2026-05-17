@@ -34,12 +34,22 @@ import type {
   Drd,
   DrdMarkdownUpload,
   FeedbackUpdate,
+  GetQuestionBankParams,
   HealthStatus,
   IdeationInput,
   IdeationMessage,
   ListAllFeedbackParams,
   PublishAllDraftsInput,
   PublishAllDraftsResult,
+  QuestionBankView,
+  QuestionCategoryOverrideBulkDeleteInput,
+  QuestionCategoryOverrideBulkInput,
+  QuestionCategoryOverrideBulkResult,
+  QuestionCategoryOverrideInput,
+  QuestionCategoryOverridePatch,
+  QuestionCeOverrideInput,
+  QuestionCeOverridePatch,
+  QuestionOverrideMutationResult,
   QuestionTroubleScore,
   RecheckGapRequest,
   RecheckGapResponse,
@@ -61,6 +71,836 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * Returns the registry snapshot plus a merged-bundles view that
+composes code defaults with active category and CE overrides.
+
+Filters are exclusive in precedence: `ceSlug` > `subcategoryId` >
+`categoryId`. With no filters, only code defaults are returned.
+
+When `ceSlug` is given, the CE row's inferred subcategoryId is used
+to apply category-scope overrides as well. The `categoryOverrides`
+and `ceOverrides` arrays return the raw rows that were applied to
+the merge, so the editor UI can list and revert them without a
+second fetch.
+
+**Category-scope contract**: when filtering by `categoryId` alone,
+the top-level `mergedBundles` returns code defaults only —
+overrides from different subcategories in the same category cannot
+be sensibly collapsed into a single merge. Clients must read
+`perSubcategoryMerged` (one entry per subcategory in the category)
+for the effective merged data at category scope. `categoryOverrides`
+still returns every raw row in the category for editor list views.
+
+ * @summary Read the merged question bank (code defaults + active overrides)
+ */
+export const getGetQuestionBankUrl = (params?: GetQuestionBankParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/question-bank?${stringifiedParams}`
+    : `/api/question-bank`;
+};
+
+export const getQuestionBank = async (
+  params?: GetQuestionBankParams,
+  options?: RequestInit,
+): Promise<QuestionBankView> => {
+  return customFetch<QuestionBankView>(getGetQuestionBankUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetQuestionBankQueryKey = (params?: GetQuestionBankParams) => {
+  return [`/api/question-bank`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetQuestionBankQueryOptions = <
+  TData = Awaited<ReturnType<typeof getQuestionBank>>,
+  TError = ErrorType<ApiError>,
+>(
+  params?: GetQuestionBankParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuestionBank>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetQuestionBankQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuestionBank>>> = ({
+    signal,
+  }) => getQuestionBank(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getQuestionBank>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetQuestionBankQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getQuestionBank>>
+>;
+export type GetQuestionBankQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Read the merged question bank (code defaults + active overrides)
+ */
+
+export function useGetQuestionBank<
+  TData = Awaited<ReturnType<typeof getQuestionBank>>,
+  TError = ErrorType<ApiError>,
+>(
+  params?: GetQuestionBankParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getQuestionBank>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetQuestionBankQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a category-scope override (one bundle candidate)
+ */
+export const getCreateCategoryOverrideUrl = () => {
+  return `/api/question-bank/category-overrides`;
+};
+
+export const createCategoryOverride = async (
+  questionCategoryOverrideInput: QuestionCategoryOverrideInput,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(
+    getCreateCategoryOverrideUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(questionCategoryOverrideInput),
+    },
+  );
+};
+
+export const getCreateCategoryOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideInput> },
+  TContext
+> => {
+  const mutationKey = ["createCategoryOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCategoryOverride>>,
+    { data: BodyType<QuestionCategoryOverrideInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCategoryOverride(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCategoryOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCategoryOverride>>
+>;
+export type CreateCategoryOverrideMutationBody =
+  BodyType<QuestionCategoryOverrideInput>;
+export type CreateCategoryOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Create a category-scope override (one bundle candidate)
+ */
+export const useCreateCategoryOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideInput> },
+  TContext
+> => {
+  return useMutation(getCreateCategoryOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Edit an existing category-scope override row
+ */
+export const getUpdateCategoryOverrideUrl = (id: number) => {
+  return `/api/question-bank/category-overrides/${id}`;
+};
+
+export const updateCategoryOverride = async (
+  id: number,
+  questionCategoryOverridePatch: QuestionCategoryOverridePatch,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(
+    getUpdateCategoryOverrideUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(questionCategoryOverridePatch),
+    },
+  );
+};
+
+export const getUpdateCategoryOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCategoryOverride>>,
+    TError,
+    { id: number; data: BodyType<QuestionCategoryOverridePatch> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCategoryOverride>>,
+  TError,
+  { id: number; data: BodyType<QuestionCategoryOverridePatch> },
+  TContext
+> => {
+  const mutationKey = ["updateCategoryOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCategoryOverride>>,
+    { id: number; data: BodyType<QuestionCategoryOverridePatch> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCategoryOverride(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCategoryOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCategoryOverride>>
+>;
+export type UpdateCategoryOverrideMutationBody =
+  BodyType<QuestionCategoryOverridePatch>;
+export type UpdateCategoryOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Edit an existing category-scope override row
+ */
+export const useUpdateCategoryOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCategoryOverride>>,
+    TError,
+    { id: number; data: BodyType<QuestionCategoryOverridePatch> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCategoryOverride>>,
+  TError,
+  { id: number; data: BodyType<QuestionCategoryOverridePatch> },
+  TContext
+> => {
+  return useMutation(getUpdateCategoryOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Revert (delete) a category-scope override row
+ */
+export const getDeleteCategoryOverrideUrl = (id: number) => {
+  return `/api/question-bank/category-overrides/${id}`;
+};
+
+export const deleteCategoryOverride = async (
+  id: number,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(
+    getDeleteCategoryOverrideUrl(id),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteCategoryOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCategoryOverride>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCategoryOverride>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteCategoryOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCategoryOverride>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCategoryOverride(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCategoryOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCategoryOverride>>
+>;
+
+export type DeleteCategoryOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Revert (delete) a category-scope override row
+ */
+export const useDeleteCategoryOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCategoryOverride>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCategoryOverride>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteCategoryOverrideMutationOptions(options));
+};
+
+/**
+ * Idempotent upsert on the
+`(subcategoryId, bundleId, archetype, action)` unique tuple. Returns
+the count of rows touched and the full set of override rows now
+active for that category.
+
+ * @summary Apply one override across every subcategory in a category
+ */
+export const getBulkApplyCategoryOverrideUrl = () => {
+  return `/api/question-bank/category-overrides:bulk`;
+};
+
+export const bulkApplyCategoryOverride = async (
+  questionCategoryOverrideBulkInput: QuestionCategoryOverrideBulkInput,
+  options?: RequestInit,
+): Promise<QuestionCategoryOverrideBulkResult> => {
+  return customFetch<QuestionCategoryOverrideBulkResult>(
+    getBulkApplyCategoryOverrideUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(questionCategoryOverrideBulkInput),
+    },
+  );
+};
+
+export const getBulkApplyCategoryOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkApplyCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkApplyCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideBulkInput> },
+  TContext
+> => {
+  const mutationKey = ["bulkApplyCategoryOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkApplyCategoryOverride>>,
+    { data: BodyType<QuestionCategoryOverrideBulkInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkApplyCategoryOverride(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkApplyCategoryOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkApplyCategoryOverride>>
+>;
+export type BulkApplyCategoryOverrideMutationBody =
+  BodyType<QuestionCategoryOverrideBulkInput>;
+export type BulkApplyCategoryOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Apply one override across every subcategory in a category
+ */
+export const useBulkApplyCategoryOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkApplyCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideBulkInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkApplyCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideBulkInput> },
+  TContext
+> => {
+  return useMutation(getBulkApplyCategoryOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Delete all matching overrides across every subcategory in a category
+ */
+export const getBulkRevertCategoryOverrideUrl = () => {
+  return `/api/question-bank/category-overrides:bulk`;
+};
+
+export const bulkRevertCategoryOverride = async (
+  questionCategoryOverrideBulkDeleteInput: QuestionCategoryOverrideBulkDeleteInput,
+  options?: RequestInit,
+): Promise<QuestionCategoryOverrideBulkResult> => {
+  return customFetch<QuestionCategoryOverrideBulkResult>(
+    getBulkRevertCategoryOverrideUrl(),
+    {
+      ...options,
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(questionCategoryOverrideBulkDeleteInput),
+    },
+  );
+};
+
+export const getBulkRevertCategoryOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkRevertCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideBulkDeleteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkRevertCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideBulkDeleteInput> },
+  TContext
+> => {
+  const mutationKey = ["bulkRevertCategoryOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkRevertCategoryOverride>>,
+    { data: BodyType<QuestionCategoryOverrideBulkDeleteInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkRevertCategoryOverride(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkRevertCategoryOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkRevertCategoryOverride>>
+>;
+export type BulkRevertCategoryOverrideMutationBody =
+  BodyType<QuestionCategoryOverrideBulkDeleteInput>;
+export type BulkRevertCategoryOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Delete all matching overrides across every subcategory in a category
+ */
+export const useBulkRevertCategoryOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkRevertCategoryOverride>>,
+    TError,
+    { data: BodyType<QuestionCategoryOverrideBulkDeleteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkRevertCategoryOverride>>,
+  TError,
+  { data: BodyType<QuestionCategoryOverrideBulkDeleteInput> },
+  TContext
+> => {
+  return useMutation(getBulkRevertCategoryOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Create a CE-scope override (one bundle candidate)
+ */
+export const getCreateCeOverrideUrl = () => {
+  return `/api/question-bank/ce-overrides`;
+};
+
+export const createCeOverride = async (
+  questionCeOverrideInput: QuestionCeOverrideInput,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(getCreateCeOverrideUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(questionCeOverrideInput),
+  });
+};
+
+export const getCreateCeOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCeOverride>>,
+    TError,
+    { data: BodyType<QuestionCeOverrideInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCeOverride>>,
+  TError,
+  { data: BodyType<QuestionCeOverrideInput> },
+  TContext
+> => {
+  const mutationKey = ["createCeOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCeOverride>>,
+    { data: BodyType<QuestionCeOverrideInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCeOverride(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCeOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCeOverride>>
+>;
+export type CreateCeOverrideMutationBody = BodyType<QuestionCeOverrideInput>;
+export type CreateCeOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Create a CE-scope override (one bundle candidate)
+ */
+export const useCreateCeOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCeOverride>>,
+    TError,
+    { data: BodyType<QuestionCeOverrideInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCeOverride>>,
+  TError,
+  { data: BodyType<QuestionCeOverrideInput> },
+  TContext
+> => {
+  return useMutation(getCreateCeOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Edit an existing CE-scope override row
+ */
+export const getUpdateCeOverrideUrl = (id: number) => {
+  return `/api/question-bank/ce-overrides/${id}`;
+};
+
+export const updateCeOverride = async (
+  id: number,
+  questionCeOverridePatch: QuestionCeOverridePatch,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(
+    getUpdateCeOverrideUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(questionCeOverridePatch),
+    },
+  );
+};
+
+export const getUpdateCeOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCeOverride>>,
+    TError,
+    { id: number; data: BodyType<QuestionCeOverridePatch> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCeOverride>>,
+  TError,
+  { id: number; data: BodyType<QuestionCeOverridePatch> },
+  TContext
+> => {
+  const mutationKey = ["updateCeOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCeOverride>>,
+    { id: number; data: BodyType<QuestionCeOverridePatch> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCeOverride(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCeOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCeOverride>>
+>;
+export type UpdateCeOverrideMutationBody = BodyType<QuestionCeOverridePatch>;
+export type UpdateCeOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Edit an existing CE-scope override row
+ */
+export const useUpdateCeOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCeOverride>>,
+    TError,
+    { id: number; data: BodyType<QuestionCeOverridePatch> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCeOverride>>,
+  TError,
+  { id: number; data: BodyType<QuestionCeOverridePatch> },
+  TContext
+> => {
+  return useMutation(getUpdateCeOverrideMutationOptions(options));
+};
+
+/**
+ * @summary Revert (delete) a CE-scope override row
+ */
+export const getDeleteCeOverrideUrl = (id: number) => {
+  return `/api/question-bank/ce-overrides/${id}`;
+};
+
+export const deleteCeOverride = async (
+  id: number,
+  options?: RequestInit,
+): Promise<QuestionOverrideMutationResult> => {
+  return customFetch<QuestionOverrideMutationResult>(
+    getDeleteCeOverrideUrl(id),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteCeOverrideMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCeOverride>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCeOverride>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteCeOverride"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCeOverride>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCeOverride(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCeOverrideMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCeOverride>>
+>;
+
+export type DeleteCeOverrideMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Revert (delete) a CE-scope override row
+ */
+export const useDeleteCeOverride = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCeOverride>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCeOverride>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteCeOverrideMutationOptions(options));
+};
 
 /**
  * Returns server health status

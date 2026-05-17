@@ -8,6 +8,928 @@
 import * as zod from "zod";
 
 /**
+ * Returns the registry snapshot plus a merged-bundles view that
+composes code defaults with active category and CE overrides.
+
+Filters are exclusive in precedence: `ceSlug` > `subcategoryId` >
+`categoryId`. With no filters, only code defaults are returned.
+
+When `ceSlug` is given, the CE row's inferred subcategoryId is used
+to apply category-scope overrides as well. The `categoryOverrides`
+and `ceOverrides` arrays return the raw rows that were applied to
+the merge, so the editor UI can list and revert them without a
+second fetch.
+
+**Category-scope contract**: when filtering by `categoryId` alone,
+the top-level `mergedBundles` returns code defaults only —
+overrides from different subcategories in the same category cannot
+be sensibly collapsed into a single merge. Clients must read
+`perSubcategoryMerged` (one entry per subcategory in the category)
+for the effective merged data at category scope. `categoryOverrides`
+still returns every raw row in the category for editor list views.
+
+ * @summary Read the merged question bank (code defaults + active overrides)
+ */
+export const GetQuestionBankQueryParams = zod.object({
+  categoryId: zod.coerce.number().optional(),
+  subcategoryId: zod.coerce.string().optional(),
+  ceSlug: zod.coerce.string().optional(),
+});
+
+export const GetQuestionBankResponse = zod.object({
+  archetypes: zod.record(zod.string(), zod.unknown()),
+  intents: zod.record(zod.string(), zod.unknown()),
+  bundles: zod.record(zod.string(), zod.unknown()),
+  pageTemplates: zod.record(zod.string(), zod.unknown()),
+  subcategories: zod.array(zod.record(zod.string(), zod.unknown())),
+  scope: zod.object({
+    kind: zod.enum(["global", "category", "subcategory", "ce"]),
+    categoryId: zod.number().nullish(),
+    subcategoryId: zod.string().nullish(),
+    ceSlug: zod.string().nullish(),
+    resolvedSubcategoryId: zod
+      .string()
+      .nullish()
+      .describe(
+        'When `kind == \"ce\"`, the subcategoryId that was inferred from\nthe CE row and used to apply category-scope overrides.\n',
+      ),
+  }),
+  mergedBundles: zod
+    .array(
+      zod.object({
+        bundleId: zod.string(),
+        intent: zod.string(),
+        label: zod.string(),
+        description: zod.string(),
+        candidates: zod.array(
+          zod.object({
+            archetype: zod.string(),
+            questionTemplate: zod.string(),
+            kind: zod.enum(["standard", "signature"]),
+            source: zod.enum(["code", "category_override", "ce_override"]),
+            muted: zod.boolean(),
+            overrideId: zod.number().nullish(),
+            requires: zod.array(zod.string()).optional(),
+            prefers: zod.array(zod.string()).optional(),
+          }),
+        ),
+      }),
+    )
+    .describe(
+      'Code defaults merged with active overrides for the requested\nscope. For `scope.kind == \"category\"` this is intentionally the\nunmerged code defaults — read `perSubcategoryMerged` instead.\n',
+    ),
+  categoryOverrides: zod.array(
+    zod.object({
+      id: zod.number(),
+      subcategoryId: zod.string(),
+      bundleId: zod.string(),
+      archetype: zod.string(),
+      action: zod.enum(["edit", "add", "mute"]),
+      questionTemplate: zod.string().nullish(),
+      kind: zod
+        .union([zod.enum(["standard", "signature"]), zod.null()])
+        .optional(),
+      notes: zod.string().nullish(),
+      createdBy: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+  ceOverrides: zod.array(
+    zod.object({
+      id: zod.number(),
+      ceSlug: zod.string(),
+      bundleId: zod.string(),
+      archetype: zod.string(),
+      action: zod.enum(["edit", "add", "mute"]),
+      questionTemplate: zod.string().nullish(),
+      kind: zod
+        .union([zod.enum(["standard", "signature"]), zod.null()])
+        .optional(),
+      notes: zod.string().nullish(),
+      createdBy: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+  perSubcategoryMerged: zod
+    .array(
+      zod.object({
+        subcategoryId: zod.string(),
+        mergedBundles: zod.array(
+          zod.object({
+            bundleId: zod.string(),
+            intent: zod.string(),
+            label: zod.string(),
+            description: zod.string(),
+            candidates: zod.array(
+              zod.object({
+                archetype: zod.string(),
+                questionTemplate: zod.string(),
+                kind: zod.enum(["standard", "signature"]),
+                source: zod.enum(["code", "category_override", "ce_override"]),
+                muted: zod.boolean(),
+                overrideId: zod.number().nullish(),
+                requires: zod.array(zod.string()).optional(),
+                prefers: zod.array(zod.string()).optional(),
+              }),
+            ),
+          }),
+        ),
+      }),
+    )
+    .optional()
+    .describe(
+      'Populated only when `scope.kind == \"category\"`. One entry per\nsubcategory in the category, each carrying that subcategory\'s\nmerged bundles after applying its own category-scope overrides.\n',
+    ),
+});
+
+/**
+ * @summary Create a category-scope override (one bundle candidate)
+ */
+export const CreateCategoryOverrideBody = zod.object({
+  subcategoryId: zod.string(),
+  bundleId: zod.string(),
+  archetype: zod.string(),
+  action: zod.enum(["edit", "add", "mute"]),
+  questionTemplate: zod.string().optional(),
+  kind: zod.enum(["standard", "signature"]).optional(),
+  notes: zod.string().optional(),
+  createdBy: zod.string().optional(),
+});
+
+/**
+ * @summary Edit an existing category-scope override row
+ */
+export const UpdateCategoryOverrideParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCategoryOverrideBody = zod.object({
+  action: zod.enum(["edit", "add", "mute"]).optional(),
+  questionTemplate: zod.string().nullish(),
+  kind: zod.union([zod.enum(["standard", "signature"]), zod.null()]).optional(),
+  notes: zod.string().nullish(),
+  createdBy: zod.string().optional(),
+});
+
+export const UpdateCategoryOverrideResponse = zod
+  .object({
+    view: zod.object({
+      archetypes: zod.record(zod.string(), zod.unknown()),
+      intents: zod.record(zod.string(), zod.unknown()),
+      bundles: zod.record(zod.string(), zod.unknown()),
+      pageTemplates: zod.record(zod.string(), zod.unknown()),
+      subcategories: zod.array(zod.record(zod.string(), zod.unknown())),
+      scope: zod.object({
+        kind: zod.enum(["global", "category", "subcategory", "ce"]),
+        categoryId: zod.number().nullish(),
+        subcategoryId: zod.string().nullish(),
+        ceSlug: zod.string().nullish(),
+        resolvedSubcategoryId: zod
+          .string()
+          .nullish()
+          .describe(
+            'When `kind == \"ce\"`, the subcategoryId that was inferred from\nthe CE row and used to apply category-scope overrides.\n',
+          ),
+      }),
+      mergedBundles: zod
+        .array(
+          zod.object({
+            bundleId: zod.string(),
+            intent: zod.string(),
+            label: zod.string(),
+            description: zod.string(),
+            candidates: zod.array(
+              zod.object({
+                archetype: zod.string(),
+                questionTemplate: zod.string(),
+                kind: zod.enum(["standard", "signature"]),
+                source: zod.enum(["code", "category_override", "ce_override"]),
+                muted: zod.boolean(),
+                overrideId: zod.number().nullish(),
+                requires: zod.array(zod.string()).optional(),
+                prefers: zod.array(zod.string()).optional(),
+              }),
+            ),
+          }),
+        )
+        .describe(
+          'Code defaults merged with active overrides for the requested\nscope. For `scope.kind == \"category\"` this is intentionally the\nunmerged code defaults — read `perSubcategoryMerged` instead.\n',
+        ),
+      categoryOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      ceOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      perSubcategoryMerged: zod
+        .array(
+          zod.object({
+            subcategoryId: zod.string(),
+            mergedBundles: zod.array(
+              zod.object({
+                bundleId: zod.string(),
+                intent: zod.string(),
+                label: zod.string(),
+                description: zod.string(),
+                candidates: zod.array(
+                  zod.object({
+                    archetype: zod.string(),
+                    questionTemplate: zod.string(),
+                    kind: zod.enum(["standard", "signature"]),
+                    source: zod.enum([
+                      "code",
+                      "category_override",
+                      "ce_override",
+                    ]),
+                    muted: zod.boolean(),
+                    overrideId: zod.number().nullish(),
+                    requires: zod.array(zod.string()).optional(),
+                    prefers: zod.array(zod.string()).optional(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        )
+        .optional()
+        .describe(
+          'Populated only when `scope.kind == \"category\"`. One entry per\nsubcategory in the category, each carrying that subcategory\'s\nmerged bundles after applying its own category-scope overrides.\n',
+        ),
+    }),
+    categoryOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    ceOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+  })
+  .describe(
+    "Returned by every CRUD endpoint so the UI doesn't need a follow-up\nfetch. Contains the freshly merged bank for the affected scope plus\nthe row that was just created\/updated (omitted on delete).\n",
+  );
+
+/**
+ * @summary Revert (delete) a category-scope override row
+ */
+export const DeleteCategoryOverrideParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCategoryOverrideResponse = zod
+  .object({
+    view: zod.object({
+      archetypes: zod.record(zod.string(), zod.unknown()),
+      intents: zod.record(zod.string(), zod.unknown()),
+      bundles: zod.record(zod.string(), zod.unknown()),
+      pageTemplates: zod.record(zod.string(), zod.unknown()),
+      subcategories: zod.array(zod.record(zod.string(), zod.unknown())),
+      scope: zod.object({
+        kind: zod.enum(["global", "category", "subcategory", "ce"]),
+        categoryId: zod.number().nullish(),
+        subcategoryId: zod.string().nullish(),
+        ceSlug: zod.string().nullish(),
+        resolvedSubcategoryId: zod
+          .string()
+          .nullish()
+          .describe(
+            'When `kind == \"ce\"`, the subcategoryId that was inferred from\nthe CE row and used to apply category-scope overrides.\n',
+          ),
+      }),
+      mergedBundles: zod
+        .array(
+          zod.object({
+            bundleId: zod.string(),
+            intent: zod.string(),
+            label: zod.string(),
+            description: zod.string(),
+            candidates: zod.array(
+              zod.object({
+                archetype: zod.string(),
+                questionTemplate: zod.string(),
+                kind: zod.enum(["standard", "signature"]),
+                source: zod.enum(["code", "category_override", "ce_override"]),
+                muted: zod.boolean(),
+                overrideId: zod.number().nullish(),
+                requires: zod.array(zod.string()).optional(),
+                prefers: zod.array(zod.string()).optional(),
+              }),
+            ),
+          }),
+        )
+        .describe(
+          'Code defaults merged with active overrides for the requested\nscope. For `scope.kind == \"category\"` this is intentionally the\nunmerged code defaults — read `perSubcategoryMerged` instead.\n',
+        ),
+      categoryOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      ceOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      perSubcategoryMerged: zod
+        .array(
+          zod.object({
+            subcategoryId: zod.string(),
+            mergedBundles: zod.array(
+              zod.object({
+                bundleId: zod.string(),
+                intent: zod.string(),
+                label: zod.string(),
+                description: zod.string(),
+                candidates: zod.array(
+                  zod.object({
+                    archetype: zod.string(),
+                    questionTemplate: zod.string(),
+                    kind: zod.enum(["standard", "signature"]),
+                    source: zod.enum([
+                      "code",
+                      "category_override",
+                      "ce_override",
+                    ]),
+                    muted: zod.boolean(),
+                    overrideId: zod.number().nullish(),
+                    requires: zod.array(zod.string()).optional(),
+                    prefers: zod.array(zod.string()).optional(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        )
+        .optional()
+        .describe(
+          'Populated only when `scope.kind == \"category\"`. One entry per\nsubcategory in the category, each carrying that subcategory\'s\nmerged bundles after applying its own category-scope overrides.\n',
+        ),
+    }),
+    categoryOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    ceOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+  })
+  .describe(
+    "Returned by every CRUD endpoint so the UI doesn't need a follow-up\nfetch. Contains the freshly merged bank for the affected scope plus\nthe row that was just created\/updated (omitted on delete).\n",
+  );
+
+/**
+ * Idempotent upsert on the
+`(subcategoryId, bundleId, archetype, action)` unique tuple. Returns
+the count of rows touched and the full set of override rows now
+active for that category.
+
+ * @summary Apply one override across every subcategory in a category
+ */
+export const BulkApplyCategoryOverrideBody = zod
+  .object({
+    categoryId: zod.number(),
+    bundleId: zod.string(),
+    archetype: zod.string(),
+    action: zod.enum(["edit", "add", "mute"]),
+    questionTemplate: zod.string().optional(),
+    kind: zod.enum(["standard", "signature"]).optional(),
+    notes: zod.string().optional(),
+    createdBy: zod.string().optional(),
+  })
+  .describe(
+    "Apply one override across every subcategory belonging to the\ngiven Headout categoryId, in a single transaction.\n",
+  );
+
+export const BulkApplyCategoryOverrideResponse = zod.object({
+  categoryId: zod.number(),
+  affectedSubcategoryIds: zod.array(zod.string()),
+  upserted: zod.number(),
+  deleted: zod.number(),
+  overrides: zod.array(
+    zod.object({
+      id: zod.number(),
+      subcategoryId: zod.string(),
+      bundleId: zod.string(),
+      archetype: zod.string(),
+      action: zod.enum(["edit", "add", "mute"]),
+      questionTemplate: zod.string().nullish(),
+      kind: zod
+        .union([zod.enum(["standard", "signature"]), zod.null()])
+        .optional(),
+      notes: zod.string().nullish(),
+      createdBy: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete all matching overrides across every subcategory in a category
+ */
+export const BulkRevertCategoryOverrideBody = zod.object({
+  categoryId: zod.number(),
+  bundleId: zod.string(),
+  archetype: zod.string(),
+  action: zod.enum(["edit", "add", "mute"]),
+});
+
+export const BulkRevertCategoryOverrideResponse = zod.object({
+  categoryId: zod.number(),
+  affectedSubcategoryIds: zod.array(zod.string()),
+  upserted: zod.number(),
+  deleted: zod.number(),
+  overrides: zod.array(
+    zod.object({
+      id: zod.number(),
+      subcategoryId: zod.string(),
+      bundleId: zod.string(),
+      archetype: zod.string(),
+      action: zod.enum(["edit", "add", "mute"]),
+      questionTemplate: zod.string().nullish(),
+      kind: zod
+        .union([zod.enum(["standard", "signature"]), zod.null()])
+        .optional(),
+      notes: zod.string().nullish(),
+      createdBy: zod.string(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create a CE-scope override (one bundle candidate)
+ */
+export const CreateCeOverrideBody = zod.object({
+  ceSlug: zod.string(),
+  bundleId: zod.string(),
+  archetype: zod.string(),
+  action: zod.enum(["edit", "add", "mute"]),
+  questionTemplate: zod.string().optional(),
+  kind: zod.enum(["standard", "signature"]).optional(),
+  notes: zod.string().optional(),
+  createdBy: zod.string().optional(),
+});
+
+/**
+ * @summary Edit an existing CE-scope override row
+ */
+export const UpdateCeOverrideParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCeOverrideBody = zod.object({
+  action: zod.enum(["edit", "add", "mute"]).optional(),
+  questionTemplate: zod.string().nullish(),
+  kind: zod.union([zod.enum(["standard", "signature"]), zod.null()]).optional(),
+  notes: zod.string().nullish(),
+  createdBy: zod.string().optional(),
+});
+
+export const UpdateCeOverrideResponse = zod
+  .object({
+    view: zod.object({
+      archetypes: zod.record(zod.string(), zod.unknown()),
+      intents: zod.record(zod.string(), zod.unknown()),
+      bundles: zod.record(zod.string(), zod.unknown()),
+      pageTemplates: zod.record(zod.string(), zod.unknown()),
+      subcategories: zod.array(zod.record(zod.string(), zod.unknown())),
+      scope: zod.object({
+        kind: zod.enum(["global", "category", "subcategory", "ce"]),
+        categoryId: zod.number().nullish(),
+        subcategoryId: zod.string().nullish(),
+        ceSlug: zod.string().nullish(),
+        resolvedSubcategoryId: zod
+          .string()
+          .nullish()
+          .describe(
+            'When `kind == \"ce\"`, the subcategoryId that was inferred from\nthe CE row and used to apply category-scope overrides.\n',
+          ),
+      }),
+      mergedBundles: zod
+        .array(
+          zod.object({
+            bundleId: zod.string(),
+            intent: zod.string(),
+            label: zod.string(),
+            description: zod.string(),
+            candidates: zod.array(
+              zod.object({
+                archetype: zod.string(),
+                questionTemplate: zod.string(),
+                kind: zod.enum(["standard", "signature"]),
+                source: zod.enum(["code", "category_override", "ce_override"]),
+                muted: zod.boolean(),
+                overrideId: zod.number().nullish(),
+                requires: zod.array(zod.string()).optional(),
+                prefers: zod.array(zod.string()).optional(),
+              }),
+            ),
+          }),
+        )
+        .describe(
+          'Code defaults merged with active overrides for the requested\nscope. For `scope.kind == \"category\"` this is intentionally the\nunmerged code defaults — read `perSubcategoryMerged` instead.\n',
+        ),
+      categoryOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      ceOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      perSubcategoryMerged: zod
+        .array(
+          zod.object({
+            subcategoryId: zod.string(),
+            mergedBundles: zod.array(
+              zod.object({
+                bundleId: zod.string(),
+                intent: zod.string(),
+                label: zod.string(),
+                description: zod.string(),
+                candidates: zod.array(
+                  zod.object({
+                    archetype: zod.string(),
+                    questionTemplate: zod.string(),
+                    kind: zod.enum(["standard", "signature"]),
+                    source: zod.enum([
+                      "code",
+                      "category_override",
+                      "ce_override",
+                    ]),
+                    muted: zod.boolean(),
+                    overrideId: zod.number().nullish(),
+                    requires: zod.array(zod.string()).optional(),
+                    prefers: zod.array(zod.string()).optional(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        )
+        .optional()
+        .describe(
+          'Populated only when `scope.kind == \"category\"`. One entry per\nsubcategory in the category, each carrying that subcategory\'s\nmerged bundles after applying its own category-scope overrides.\n',
+        ),
+    }),
+    categoryOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    ceOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+  })
+  .describe(
+    "Returned by every CRUD endpoint so the UI doesn't need a follow-up\nfetch. Contains the freshly merged bank for the affected scope plus\nthe row that was just created\/updated (omitted on delete).\n",
+  );
+
+/**
+ * @summary Revert (delete) a CE-scope override row
+ */
+export const DeleteCeOverrideParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCeOverrideResponse = zod
+  .object({
+    view: zod.object({
+      archetypes: zod.record(zod.string(), zod.unknown()),
+      intents: zod.record(zod.string(), zod.unknown()),
+      bundles: zod.record(zod.string(), zod.unknown()),
+      pageTemplates: zod.record(zod.string(), zod.unknown()),
+      subcategories: zod.array(zod.record(zod.string(), zod.unknown())),
+      scope: zod.object({
+        kind: zod.enum(["global", "category", "subcategory", "ce"]),
+        categoryId: zod.number().nullish(),
+        subcategoryId: zod.string().nullish(),
+        ceSlug: zod.string().nullish(),
+        resolvedSubcategoryId: zod
+          .string()
+          .nullish()
+          .describe(
+            'When `kind == \"ce\"`, the subcategoryId that was inferred from\nthe CE row and used to apply category-scope overrides.\n',
+          ),
+      }),
+      mergedBundles: zod
+        .array(
+          zod.object({
+            bundleId: zod.string(),
+            intent: zod.string(),
+            label: zod.string(),
+            description: zod.string(),
+            candidates: zod.array(
+              zod.object({
+                archetype: zod.string(),
+                questionTemplate: zod.string(),
+                kind: zod.enum(["standard", "signature"]),
+                source: zod.enum(["code", "category_override", "ce_override"]),
+                muted: zod.boolean(),
+                overrideId: zod.number().nullish(),
+                requires: zod.array(zod.string()).optional(),
+                prefers: zod.array(zod.string()).optional(),
+              }),
+            ),
+          }),
+        )
+        .describe(
+          'Code defaults merged with active overrides for the requested\nscope. For `scope.kind == \"category\"` this is intentionally the\nunmerged code defaults — read `perSubcategoryMerged` instead.\n',
+        ),
+      categoryOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      ceOverrides: zod.array(
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+      ),
+      perSubcategoryMerged: zod
+        .array(
+          zod.object({
+            subcategoryId: zod.string(),
+            mergedBundles: zod.array(
+              zod.object({
+                bundleId: zod.string(),
+                intent: zod.string(),
+                label: zod.string(),
+                description: zod.string(),
+                candidates: zod.array(
+                  zod.object({
+                    archetype: zod.string(),
+                    questionTemplate: zod.string(),
+                    kind: zod.enum(["standard", "signature"]),
+                    source: zod.enum([
+                      "code",
+                      "category_override",
+                      "ce_override",
+                    ]),
+                    muted: zod.boolean(),
+                    overrideId: zod.number().nullish(),
+                    requires: zod.array(zod.string()).optional(),
+                    prefers: zod.array(zod.string()).optional(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+        )
+        .optional()
+        .describe(
+          'Populated only when `scope.kind == \"category\"`. One entry per\nsubcategory in the category, each carrying that subcategory\'s\nmerged bundles after applying its own category-scope overrides.\n',
+        ),
+    }),
+    categoryOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          subcategoryId: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    ceOverride: zod
+      .union([
+        zod.object({
+          id: zod.number(),
+          ceSlug: zod.string(),
+          bundleId: zod.string(),
+          archetype: zod.string(),
+          action: zod.enum(["edit", "add", "mute"]),
+          questionTemplate: zod.string().nullish(),
+          kind: zod
+            .union([zod.enum(["standard", "signature"]), zod.null()])
+            .optional(),
+          notes: zod.string().nullish(),
+          createdBy: zod.string(),
+          createdAt: zod.string(),
+          updatedAt: zod.string(),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+  })
+  .describe(
+    "Returned by every CRUD endpoint so the UI doesn't need a follow-up\nfetch. Contains the freshly merged bank for the affected scope plus\nthe row that was just created\/updated (omitted on delete).\n",
+  );
+
+/**
  * Returns server health status
  * @summary Health check
  */
