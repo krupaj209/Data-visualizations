@@ -2179,6 +2179,12 @@ function PlanListItem({
             </div>
           )}
           {item.createdChart && (
+            // Task #97: any time an idea has a corresponding chart on this
+            // CE (whether created in this session or already linked from a
+            // previous session), surface a ghost "View chart" link to the
+            // editor. This replaces the older plain "Open draft" text link.
+            // The in-session "Created" disabled pill below is preserved so
+            // writers still get the immediate post-create confirmation.
             <div
               style={{
                 marginTop: 7,
@@ -2186,23 +2192,56 @@ function PlanListItem({
                 alignItems: "center",
                 gap: 8,
                 flexWrap: "wrap",
-                fontSize: 10,
-                fontWeight: 850,
               }}
             >
               <a
                 href={`?edit=${item.createdChart.chartId}`}
                 style={{
-                  color: BRAND.purps,
+                  border: `1px solid ${BRAND.slate200}`,
+                  borderRadius: 9,
+                  padding: "5px 8px",
+                  background: "white",
+                  color: BRAND.slate950,
+                  fontSize: 11,
+                  fontWeight: 850,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
                   textDecoration: "none",
                 }}
               >
-                Open draft
+                <ExternalLink size={12} />
+                View chart
               </a>
+              {item.actionDisabled && (
+                // Preserve the in-session "Created" confirmation so writers
+                // get immediate feedback after clicking Create chart, even
+                // though the primary CTA is now the View chart link above.
+                <span
+                  style={{
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    background: BRAND.bgMint,
+                    color: BRAND.okayInk,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {item.actionLabel ?? "Created"}
+                </span>
+              )}
             </div>
           )}
           {item.extra}
-          {item.onAction && (
+          {item.onAction && !item.createdChart && (
+            // Task #97: only render the primary "Create chart" CTA for
+            // pending ideas. Once an idea has a corresponding chart on the
+            // CE (via createdChart), the ghost "View chart" link above is
+            // the only call-to-action — no dead "Created" pill, no chance
+            // of accidentally re-creating the same chart.
             <button
               type="button"
               onClick={item.onAction}

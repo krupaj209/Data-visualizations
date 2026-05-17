@@ -47,7 +47,14 @@ export function SourcesFooter({ provenance, compact }: Props) {
   // snippets + estimates) — gives writers/embedders a one-glance read of
   // what kinds of evidence back this chart.
   const counts = evidenceKindCounts(provenance);
-  const rollup = EVIDENCE_KIND_VALUES.filter((k) => counts[k] > 0);
+  // Task #97: hide "estimate" and "unknown" buckets from the rollup chips.
+  // The ChartCard chrome already renders a canonical ESTIMATED pill, and
+  // "unknown" is noise to writers. Counts are still computed so they can be
+  // surfaced in the expanded source list if a backing URL exists.
+  const ROLLUP_KINDS = EVIDENCE_KIND_VALUES.filter(
+    (k) => k !== "estimate" && k !== "unknown",
+  );
+  const rollup = ROLLUP_KINDS.filter((k) => counts[k] > 0);
 
   // Group expanded source list by kind so reviewers can scan by trust tier.
   const byKind = new Map<EvidenceKind, typeof sources>();

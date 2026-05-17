@@ -13,6 +13,7 @@ import {
   EyeOff,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -87,11 +88,11 @@ const CHART_FRAME: Record<
   month_calendar: { aspectRatio: "5 / 4", minHeight: 360, maxHeight: 520 },
   ticket_ladder: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 420 },
   duration_profiles: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
-  entrance_lanes: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
-  compare_zones: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  entrance_lanes: { aspectRatio: "16 / 8", minHeight: 280 },
+  compare_zones: { aspectRatio: "16 / 8", minHeight: 280 },
   donut_breakdown: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
   stat_grid: { aspectRatio: "16 / 6", minHeight: 200, maxHeight: 280 },
-  co_bookings: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 360 },
+  co_bookings: { aspectRatio: "16 / 9", minHeight: 280 },
   zone_crowd_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
   zone_wait_heatmap: { aspectRatio: "16 / 8", minHeight: 300, maxHeight: 440 },
   golden_hour_match: { aspectRatio: "5 / 4", minHeight: 360, maxHeight: 520 },
@@ -101,18 +102,18 @@ const CHART_FRAME: Record<
   optimal_departure: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 360 },
   stop_frequency: { aspectRatio: "16 / 7", minHeight: 260, maxHeight: 360 },
   route_profile: { aspectRatio: "16 / 8", minHeight: 340, maxHeight: 500 },
-  ticket_access_matrix: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 460 },
+  ticket_access_matrix: { aspectRatio: "16 / 9", minHeight: 320 },
   duration_budget: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
-  landmark_coverage: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 480 },
-  itinerary_flow: { aspectRatio: "16 / 9", minHeight: 340, maxHeight: 500 },
-  best_for_matrix: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
+  landmark_coverage: { aspectRatio: "16 / 9", minHeight: 320 },
+  itinerary_flow: { aspectRatio: "16 / 9", minHeight: 340 },
+  best_for_matrix: { aspectRatio: "16 / 9", minHeight: 300 },
   season_weather_fit: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
   entrance_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 400 },
-  floor_plan_flow: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
-  rules_checklist: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 460 },
-  transit_options: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 400 },
-  time_value_matrix: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 460 },
-  accessibility_guide: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 460 },
+  floor_plan_flow: { aspectRatio: "16 / 9", minHeight: 300 },
+  rules_checklist: { aspectRatio: "16 / 9", minHeight: 300 },
+  transit_options: { aspectRatio: "16 / 9", minHeight: 280 },
+  time_value_matrix: { aspectRatio: "16 / 9", minHeight: 320 },
+  accessibility_guide: { aspectRatio: "16 / 9", minHeight: 300 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,
@@ -129,7 +130,7 @@ const CHART_FRAME: Record<
     maxHeight: 380,
   },
   price_curve: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
-  queue_compare: { aspectRatio: "16 / 8", minHeight: 280, maxHeight: 380 },
+  queue_compare: { aspectRatio: "16 / 8", minHeight: 280 },
   duration_stat: { aspectRatio: "16 / 9", minHeight: 380, maxHeight: 540 },
   ride_wait_curve: { aspectRatio: "12 / 5", minHeight: 300, maxHeight: 400 },
   activity_window: { aspectRatio: "12 / 5", minHeight: 300, maxHeight: 400 },
@@ -152,7 +153,44 @@ export default function CeDetail() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showNewChart, setShowNewChart] = useState(false);
   const [showIdeation, setShowIdeation] = useState(false);
-  const [showIntel, setShowIntel] = useState(false);
+  const intelStorageKey = `viz-studio:intel-open:${slug}`;
+  // Rehydrate per CE (not just on mount) so navigating from CE A → CE B
+  // picks up B's stored open/closed preference instead of leaking A's.
+  // `skipNextWriteRef` keeps the write-back effect from clobbering B's key
+  // with A's stale state on the render where `slug` changes but
+  // `setShowIntel` has not yet flushed.
+  const [showIntel, setShowIntel] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(intelStorageKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const skipNextWriteRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    skipNextWriteRef.current = true;
+    let next = false;
+    try {
+      next = window.localStorage.getItem(intelStorageKey) === "1";
+    } catch {
+      next = false;
+    }
+    setShowIntel(next);
+  }, [intelStorageKey]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (skipNextWriteRef.current) {
+      skipNextWriteRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(intelStorageKey, showIntel ? "1" : "0");
+    } catch {
+      /* no-op */
+    }
+  }, [intelStorageKey, showIntel]);
 
   // Deep-link from triage: `/ce/:slug?edit=<id>` — read once on mount.
   const searchParams = useMemo(
@@ -406,6 +444,13 @@ function CeDetailInner({
           >
             <Sparkles size={14} />
             CE Intel
+            <ChevronDown
+              size={12}
+              style={{
+                transform: showIntel ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 140ms ease",
+              }}
+            />
           </button>
 
           <button
@@ -837,53 +882,45 @@ function ChartRow({
             )}
           </div>
           <h3
+            className="text-lg"
+            title={headline}
             style={{
-              fontSize: 22,
               fontWeight: 800,
               color: BRAND.slate950,
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
+              letterSpacing: "-0.01em",
+              lineHeight: 1.25,
               maxWidth: 720,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              overflowWrap: "normal",
+              wordBreak: "normal",
             }}
           >
             {headline}
           </h3>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setMode(mode === "edit" ? "view" : "edit")}
-            style={ghostBtn(mode === "edit")}
-          >
-            {mode === "edit" ? <X size={14} /> : <Pencil size={14} />}
-            {mode === "edit" ? "Done" : "Edit"}
-          </button>
-          <FeedbackButton
-            chartId={chart.id}
-            ceSlug={ceSlug}
-            openCount={chart.openFeedbackCount ?? 0}
-            topSeverity={
-              (chart.topFeedbackSeverity as
-                | "high"
-                | "medium"
-                | "low"
-                | null
-                | undefined) ?? null
-            }
-          />
-          <button
-            type="button"
-            onClick={handleVerify}
-            disabled={verifyMut.isPending}
-            style={ghostBtn(false)}
-          >
-            {verifyMut.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <ShieldCheck size={14} />
+        <div className="chart-row-actions flex items-center gap-2 flex-wrap">
+          {Array.isArray(
+            (chart.provenance as ChartProvenanceLite | null)
+              ?.intelligence_refs,
+          ) &&
+            ((chart.provenance as ChartProvenanceLite)
+              .intelligence_refs?.length ?? 0) > 0 && (
+              <ChartCitations
+                ceSlug={ceSlug}
+                refs={
+                  (chart.provenance as ChartProvenanceLite)
+                    .intelligence_refs ?? []
+                }
+              />
             )}
-            Verify
-          </button>
+
+          <EvidenceKindRollup
+            provenance={chart.provenance as ChartProvenanceLite | null}
+          />
+
           <button
             type="button"
             onClick={handlePublishToggle}
@@ -905,30 +942,33 @@ function ChartRow({
             {isDraft ? "Publish" : "Unpublish"}
           </button>
 
-          {Array.isArray(
-            (chart.provenance as ChartProvenanceLite | null)
-              ?.intelligence_refs,
-          ) &&
-            ((chart.provenance as ChartProvenanceLite)
-              .intelligence_refs?.length ?? 0) > 0 && (
-              <ChartCitations
-                ceSlug={ceSlug}
-                refs={
-                  (chart.provenance as ChartProvenanceLite)
-                    .intelligence_refs ?? []
-                }
-              />
-            )}
+          <EmbedOpenLink chartId={chart.id} />
 
-          <EvidenceKindRollup
-            provenance={chart.provenance as ChartProvenanceLite | null}
+          <ChartActionsMenu
+            chartId={chart.id}
+            ceSlug={ceSlug}
+            openFeedbackCount={chart.openFeedbackCount ?? 0}
+            topFeedbackSeverity={
+              (chart.topFeedbackSeverity as
+                | "high"
+                | "medium"
+                | "low"
+                | null
+                | undefined) ?? null
+            }
+            mode={mode}
+            onToggleEdit={() => setMode(mode === "edit" ? "view" : "edit")}
+            onVerify={handleVerify}
+            verifyPending={verifyMut.isPending}
+            onDelete={handleDeleteChart}
+            deletePending={isDeleting}
           />
 
-          <EmbedActions chartId={chart.id} />
           <button
             type="button"
             onClick={handleDeleteChart}
             disabled={isDeleting}
+            className="chart-row-delete"
             style={{
               ...ghostBtn(false),
               color: BRAND.candy,
@@ -2169,9 +2209,12 @@ function EvidenceKindRollup({
   provenance: ChartProvenanceLite | null;
 }) {
   const counts = evidenceKindCounts(provenance);
-  const total = EVIDENCE_KIND_ORDER.reduce((s, k) => s + counts[k], 0);
+  // Display order skips "unknown" — the chip is noise to writers and was
+  // landing as a permanent "UNKNOWN 12" badge on most cards (Task #97).
+  const DISPLAY_ORDER = EVIDENCE_KIND_ORDER.filter((k) => k !== "unknown");
+  const total = DISPLAY_ORDER.reduce((s, k) => s + counts[k], 0);
   if (total === 0) return null;
-  const present = EVIDENCE_KIND_ORDER.filter((k) => counts[k] > 0);
+  const present = DISPLAY_ORDER.filter((k) => counts[k] > 0);
   const trustworthy = counts.official + counts.marketplace + counts.inferred;
   const thin = trustworthy === 0 && (counts.review > 0 || counts.estimate > 0);
   return (
@@ -3936,68 +3979,304 @@ function IdeationBubble({
 /* Embed actions (unchanged)                                                   */
 /* -------------------------------------------------------------------------- */
 
-function EmbedActions({ chartId }: { chartId: number }) {
+function embedUrls(chartId: number) {
   const embedPath = `${BASE}/embed/${chartId}`;
   const fullUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}${embedPath}`
       : embedPath;
   const iframe = `<iframe src="${fullUrl}" width="800" height="500" style="border:0;border-radius:24px" loading="lazy" allowfullscreen></iframe>`;
+  return { embedPath, fullUrl, iframe };
+}
 
+function EmbedOpenLink({ chartId }: { chartId: number }) {
+  const { embedPath } = embedUrls(chartId);
+  return (
+    <a
+      href={embedPath}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        background: BRAND.purps,
+        color: "white",
+        border: "none",
+        padding: "8px 12px",
+        borderRadius: 10,
+        fontWeight: 800,
+        fontSize: 12,
+        textDecoration: "none",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <ExternalLink size={14} />
+      Open
+    </a>
+  );
+}
+
+function ChartActionsMenu({
+  chartId,
+  ceSlug,
+  openFeedbackCount,
+  topFeedbackSeverity,
+  mode,
+  onToggleEdit,
+  onVerify,
+  verifyPending,
+  onDelete,
+  deletePending,
+}: {
+  chartId: number;
+  ceSlug: string;
+  openFeedbackCount: number;
+  topFeedbackSeverity: "high" | "medium" | "low" | null;
+  mode: "view" | "edit";
+  onToggleEdit: () => void;
+  onVerify: () => void;
+  verifyPending: boolean;
+  onDelete: () => void;
+  deletePending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [copied, setCopied] = useState<"url" | "iframe" | null>(null);
+  const { fullUrl, iframe } = embedUrls(chartId);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setShowFeedback(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setShowFeedback(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   function copy(text: string, kind: "url" | "iframe") {
     navigator.clipboard?.writeText(text);
     setCopied(kind);
     setTimeout(() => setCopied(null), 1800);
   }
 
+  const itemStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "8px 10px",
+    background: "transparent",
+    border: "none",
+    color: BRAND.slate950,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    textAlign: "left",
+    borderRadius: 8,
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <div ref={containerRef} style={{ position: "relative" }}>
       <button
         type="button"
-        onClick={() => copy(fullUrl, "url")}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More actions"
         style={{
-          ...ghostBtn(false),
-          background: copied === "url" ? BRAND.bgMint : "white",
-          color: copied === "url" ? "#0E8F4E" : BRAND.slate950,
+          ...ghostBtn(open),
+          padding: "8px 10px",
+          position: "relative",
         }}
       >
-        {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
-        {copied === "url" ? "Copied" : "URL"}
+        <MoreHorizontal size={14} />
+        {openFeedbackCount > 0 && (
+          <span
+            aria-label={`${openFeedbackCount} open feedback`}
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -4,
+              background:
+                topFeedbackSeverity === "high"
+                  ? BRAND.candy
+                  : topFeedbackSeverity === "medium"
+                    ? "#D97706"
+                    : BRAND.purps,
+              color: "white",
+              borderRadius: 999,
+              fontSize: 9,
+              fontWeight: 900,
+              padding: "1px 5px",
+              minWidth: 14,
+              textAlign: "center",
+              lineHeight: "12px",
+            }}
+          >
+            {openFeedbackCount}
+          </span>
+        )}
       </button>
-      <button
-        type="button"
-        onClick={() => copy(iframe, "iframe")}
-        style={{
-          ...ghostBtn(false),
-          background: copied === "iframe" ? BRAND.bgMint : "white",
-          color: copied === "iframe" ? "#0E8F4E" : BRAND.slate950,
-        }}
-      >
-        {copied === "iframe" ? <Check size={14} /> : <Code2 size={14} />}
-        {copied === "iframe" ? "Copied" : "iframe"}
-      </button>
-      <a
-        href={embedPath}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          background: BRAND.purps,
-          color: "white",
-          border: "none",
-          padding: "8px 12px",
-          borderRadius: 10,
-          fontWeight: 800,
-          fontSize: 12,
-          textDecoration: "none",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <ExternalLink size={14} />
-        Open
-      </a>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            zIndex: 60,
+            minWidth: 200,
+            background: "white",
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 12,
+            boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
+            padding: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            style={itemStyle}
+            onClick={() => {
+              onToggleEdit();
+              setOpen(false);
+            }}
+          >
+            {mode === "edit" ? <X size={14} /> : <Pencil size={14} />}
+            {mode === "edit" ? "Close editor" : "Edit"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            style={itemStyle}
+            disabled={verifyPending}
+            onClick={() => {
+              onVerify();
+              setOpen(false);
+            }}
+          >
+            {verifyPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <ShieldCheck size={14} />
+            )}
+            Verify
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            style={itemStyle}
+            onClick={() => setShowFeedback((v) => !v)}
+          >
+            <MessageSquare size={14} />
+            Feedback
+            {openFeedbackCount > 0 && (
+              <span
+                style={{
+                  marginLeft: "auto",
+                  background: BRAND.candySoft,
+                  color: BRAND.candy,
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: "1px 6px",
+                }}
+              >
+                {openFeedbackCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            style={itemStyle}
+            onClick={() => copy(fullUrl, "url")}
+          >
+            {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
+            {copied === "url" ? "Copied URL" : "Copy embed URL"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            style={itemStyle}
+            onClick={() => copy(iframe, "iframe")}
+          >
+            {copied === "iframe" ? <Check size={14} /> : <Code2 size={14} />}
+            {copied === "iframe" ? "Copied iframe" : "Copy iframe"}
+          </button>
+          <div
+            style={{
+              height: 1,
+              background: BRAND.slate100,
+              margin: "4px 0",
+            }}
+          />
+          <div
+            role="presentation"
+            style={{
+              padding: "4px 10px 2px",
+              color: BRAND.candy,
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Danger
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            style={{ ...itemStyle, color: BRAND.candy }}
+            disabled={deletePending}
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+          >
+            {deletePending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete chart
+          </button>
+          {showFeedback && (
+            <div
+              style={{
+                marginTop: 6,
+                borderTop: `1px solid ${BRAND.slate100}`,
+                paddingTop: 6,
+              }}
+            >
+              <FeedbackButton
+                chartId={chartId}
+                ceSlug={ceSlug}
+                openCount={openFeedbackCount}
+                topSeverity={topFeedbackSeverity}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

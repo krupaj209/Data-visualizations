@@ -77,3 +77,19 @@ body.embed-mode {
 }
 
 /* Per-chart-type frame proportions are defined in src/pages/CeDetail.tsx */
+
+/* Task #97: hide the inline Delete button on chart rows until the row is
+ * hovered or focused. The delete action remains accessible from the [⋯]
+ * overflow menu at all times. */
+.chart-row-delete {
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+section:hover > .flex .chart-row-delete,
+.chart-row-actions:hover .chart-row-delete,
+.chart-row-actions:focus-within .chart-row-delete,
+.chart-row-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
