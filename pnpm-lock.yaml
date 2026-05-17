@@ -506,6 +506,9 @@ importers:
       '@workspace/question-bank':
         specifier: workspace:*
         version: link:../../lib/question-bank
+      '@workspace/taxonomy':
+        specifier: workspace:*
+        version: link:../../lib/taxonomy
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1

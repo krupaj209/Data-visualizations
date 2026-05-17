@@ -70,6 +70,7 @@ import {
 import { toSentenceCase } from "@/lib/text";
 import { SpecEditor } from "@/components/SpecEditor";
 import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
+import { QuestionsPanel } from "@/components/QuestionsPanel";
 import {
   EditorialOverlay,
   EditorialKeyInsight,
@@ -703,6 +704,8 @@ function CeDetailInner({
               </div>
             )}
           </div>
+
+          <QuestionsPanel ceSlug={slug} ceName={ce.name} />
         </div>
 
         {showIntel && (

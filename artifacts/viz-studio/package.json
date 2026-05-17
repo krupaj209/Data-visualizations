@@ -31,6 +31,7 @@
     "@workspace/api-client-react": "workspace:*",
     "@workspace/editorial": "workspace:*",
     "@workspace/question-bank": "workspace:*",
+    "@workspace/taxonomy": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "date-fns": "^3.6.0",
