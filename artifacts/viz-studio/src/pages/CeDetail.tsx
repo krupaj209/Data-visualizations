@@ -4021,8 +4021,8 @@ function IdeationPanel({
     try {
       const url =
         mode === "topic"
-          ? `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation/feasibility`
-          : `${BASE}/api/ces/${encodeURIComponent(slug)}/ideation`;
+          ? `/api/ces/${encodeURIComponent(slug)}/ideation/feasibility`
+          : `/api/ces/${encodeURIComponent(slug)}/ideation`;
       const messageField = mode === "topic" ? "topic" : "message";
       let res: Response;
       if (ctxText || ctxPdf) {
