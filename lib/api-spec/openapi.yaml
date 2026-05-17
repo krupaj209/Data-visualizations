@@ -1125,6 +1125,22 @@ components:
         feedback:
           type: string
           maxLength: 4000
+        feedbackContext:
+          type: object
+          description: |
+            Structured chart-feedback context for inline "Send & regenerate"
+            actions. When `chartFeedbackId` is provided, the server marks the
+            referenced feedback row as `resolved` after a successful
+            regeneration so it drops out of Triage.
+          properties:
+            chartFeedbackId:
+              type: integer
+            note:
+              type: string
+              maxLength: 2000
+            issueCategory:
+              type: string
+              maxLength: 80
     TopicChartInput:
       type: object
       properties:
@@ -1487,6 +1503,9 @@ components:
           type: string
         status:
           type: string
+        resolvedChartId:
+          type: integer
+          nullable: true
         severity:
           type: string
         createdAt:

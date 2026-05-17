@@ -5,8 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RegenerateFeedbackInputFeedbackContext } from "./regenerateFeedbackInputFeedbackContext";
 
 export interface RegenerateFeedbackInput {
   /** @maxLength 4000 */
   feedback?: string;
+  /** Structured chart-feedback context for inline "Send & regenerate"
+actions. When `chartFeedbackId` is provided, the server marks the
+referenced feedback row as `resolved` after a successful
+regeneration so it drops out of Triage.
+ */
+  feedbackContext?: RegenerateFeedbackInputFeedbackContext;
 }

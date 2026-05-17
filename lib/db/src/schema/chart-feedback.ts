@@ -33,6 +33,17 @@ export const chartFeedbackTable = pgTable("chart_feedback", {
   reporterName: text("reporter_name").notNull().default(""),
   /** "open" | "resolved" | "dismissed" */
   status: text("status").notNull().default("open"),
+  /**
+   * When this feedback was resolved via inline "Send & regenerate", points at
+   * the chart row whose spec was regenerated in response. Currently this is
+   * always the same as `chartId` (single-chart regenerate updates the spec in
+   * place), but is recorded explicitly so Triage can audit the resolution
+   * linkage and survive any future move to "regenerate as a new chart id".
+   */
+  resolvedChartId: integer("resolved_chart_id").references(
+    () => chartsTable.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -106,9 +106,30 @@ export interface ChartPublishInput {
   writerId?: string;
 }
 
+/**
+ * Structured chart-feedback context for inline "Send & regenerate"
+actions. When `chartFeedbackId` is provided, the server marks the
+referenced feedback row as `resolved` after a successful
+regeneration so it drops out of Triage.
+
+ */
+export type RegenerateFeedbackInputFeedbackContext = {
+  chartFeedbackId?: number;
+  /** @maxLength 2000 */
+  note?: string;
+  /** @maxLength 80 */
+  issueCategory?: string;
+};
+
 export interface RegenerateFeedbackInput {
   /** @maxLength 4000 */
   feedback?: string;
+  /** Structured chart-feedback context for inline "Send & regenerate"
+actions. When `chartFeedbackId` is provided, the server marks the
+referenced feedback row as `resolved` after a successful
+regeneration so it drops out of Triage.
+ */
+  feedbackContext?: RegenerateFeedbackInputFeedbackContext;
 }
 
 export interface TopicChartInput {
@@ -341,6 +362,7 @@ export interface ChartFeedback {
   note: string;
   reporterName: string;
   status: string;
+  resolvedChartId?: number | null;
   severity: string;
   createdAt: string;
   updatedAt: string;

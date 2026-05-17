@@ -14,6 +14,7 @@ export interface ChartFeedback {
   note: string;
   reporterName: string;
   status: string;
+  resolvedChartId?: number | null;
   severity: string;
   createdAt: string;
   updatedAt: string;

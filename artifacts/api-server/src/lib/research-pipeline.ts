@@ -1291,14 +1291,33 @@ export async function regenerateSingleChart(args: {
   archetype: ChartArchetypeId;
   drdMarkdown: string;
   feedback?: string;
+  /**
+   * Structured feedback from an inline "Send & regenerate" action on a
+   * chart's feedback popover. Surfaced to the model as an explicit critique
+   * block so the new spec actually responds to the writer's complaint.
+   */
+  feedbackContext?: {
+    note?: string;
+    issueCategory?: string;
+  };
 }): Promise<{ chart: AiChart; provenance: ChartProvenance }> {
   const input: ResearchPipelineInput = {
     ce: args.ce,
     subcategoryId: "single_chart_regen",
     drdMarkdown: args.drdMarkdown,
   };
-  const question = args.feedback?.trim()
-    ? `${args.question}\n\nWriter feedback to address in this regeneration:\n${args.feedback.trim()}\n\nRegenerate this chart so it directly fixes that feedback while keeping the same visitor question and archetype unless the existing framing is the problem.`
+  const ctxNote = args.feedbackContext?.note?.trim() ?? "";
+  const ctxCategory = args.feedbackContext?.issueCategory?.trim() ?? "";
+  const ctxBlock =
+    ctxNote || ctxCategory
+      ? `A writer flagged this chart${
+          ctxCategory ? ` as \`${ctxCategory}\`` : ""
+        }${ctxNote ? ` and wrote: "${ctxNote}"` : ""}. Address this critique directly in the new version — change layout, data shape, copy, or chart-specific knobs as needed so the new spec visibly fixes the complaint.`
+      : "";
+  const freeFeedback = args.feedback?.trim() ?? "";
+  const combined = [ctxBlock, freeFeedback].filter(Boolean).join("\n\n");
+  const question = combined
+    ? `${args.question}\n\nWriter feedback to address in this regeneration:\n${combined}\n\nRegenerate this chart so it directly fixes that feedback while keeping the same visitor question and archetype unless the existing framing is the problem.`
     : args.question;
   const generated = await generateOneChart(input, question, args.archetype);
   const provenance = await verifyChart(input, generated.spec, generated.provenance);

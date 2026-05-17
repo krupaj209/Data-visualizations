@@ -644,8 +644,28 @@ export const RegenerateChartParams = zod.object({
 
 export const regenerateChartBodyFeedbackMax = 4000;
 
+export const regenerateChartBodyFeedbackContextNoteMax = 2000;
+
+export const regenerateChartBodyFeedbackContextIssueCategoryMax = 80;
+
 export const RegenerateChartBody = zod.object({
   feedback: zod.string().max(regenerateChartBodyFeedbackMax).optional(),
+  feedbackContext: zod
+    .object({
+      chartFeedbackId: zod.number().optional(),
+      note: zod
+        .string()
+        .max(regenerateChartBodyFeedbackContextNoteMax)
+        .optional(),
+      issueCategory: zod
+        .string()
+        .max(regenerateChartBodyFeedbackContextIssueCategoryMax)
+        .optional(),
+    })
+    .optional()
+    .describe(
+      'Structured chart-feedback context for inline \"Send & regenerate\"\nactions. When `chartFeedbackId` is provided, the server marks the\nreferenced feedback row as `resolved` after a successful\nregeneration so it drops out of Triage.\n',
+    ),
 });
 
 export const RegenerateChartResponse = zod.object({
@@ -728,6 +748,7 @@ export const ListChartFeedbackResponseItem = zod.object({
   note: zod.string(),
   reporterName: zod.string(),
   status: zod.string(),
+  resolvedChartId: zod.number().nullish(),
   severity: zod.string(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
@@ -899,6 +920,7 @@ export const ListAllFeedbackResponseItem = zod.object({
     note: zod.string(),
     reporterName: zod.string(),
     status: zod.string(),
+    resolvedChartId: zod.number().nullish(),
     severity: zod.string(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
@@ -973,6 +995,7 @@ export const UpdateFeedbackResponse = zod.object({
   note: zod.string(),
   reporterName: zod.string(),
   status: zod.string(),
+  resolvedChartId: zod.number().nullish(),
   severity: zod.string(),
   createdAt: zod.string(),
   updatedAt: zod.string(),

@@ -58,6 +58,7 @@ export * from "./regenerateCeResult";
 export * from "./regenerateCeResultDroppedQuestionsItem";
 export * from "./regenerateCeResultProposedHeroQuestionsItem";
 export * from "./regenerateFeedbackInput";
+export * from "./regenerateFeedbackInputFeedbackContext";
 export * from "./regenSummary";
 export * from "./regenSummaryStoredConstraints";
 export * from "./researchGenerateInput";

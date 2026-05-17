@@ -33,6 +33,13 @@ const STATUSES = ["open", "escalated", "resolved", "dismissed"] as const;
 
 const RegenerateChartBody = z.object({
   feedback: z.string().trim().max(4000).optional(),
+  feedbackContext: z
+    .object({
+      chartFeedbackId: z.number().int().positive().optional(),
+      note: z.string().trim().max(2000).optional(),
+      issueCategory: z.string().trim().max(80).optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -91,6 +98,7 @@ function serializeFeedback(f: ChartFeedback) {
     note: f.note,
     reporterName: f.reporterName,
     status: f.status,
+    resolvedChartId: f.resolvedChartId ?? null,
     severity: deriveSeverity(f.issueCategory, f.rating),
     createdAt: f.createdAt.toISOString(),
     updatedAt: f.updatedAt.toISOString(),
@@ -473,6 +481,18 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
       archetype: recommended as ChartArchetypeId,
       drdMarkdown: drd.markdown,
       feedback: body.data.feedback,
+      ...(body.data.feedbackContext
+        ? {
+            feedbackContext: {
+              ...(body.data.feedbackContext.note
+                ? { note: body.data.feedbackContext.note }
+                : {}),
+              ...(body.data.feedbackContext.issueCategory
+                ? { issueCategory: body.data.feedbackContext.issueCategory }
+                : {}),
+            },
+          }
+        : {}),
     });
   } catch (err) {
     req.log.error({ err }, "Single-chart regeneration failed");
@@ -512,6 +532,30 @@ router.post("/charts/:id/regenerate", async (req, res): Promise<void> => {
   // NOTE: do NOT log this regeneration into `chart_edits`. That table is
   // strictly the writer-origin implicit-feedback signal — mixing AI actions
   // in would inflate the "writer dissatisfaction" weight in trouble scoring.
+
+  // Close the feedback loop: if this regeneration was triggered from a
+  // specific feedback row (inline "Send & regenerate" on the chart card),
+  // mark that row resolved so it drops out of Triage. Best-effort — a
+  // failure here shouldn't roll back the successful regeneration.
+  const resolveId = body.data.feedbackContext?.chartFeedbackId;
+  if (resolveId) {
+    try {
+      await db
+        .update(chartFeedbackTable)
+        .set({ status: "resolved", resolvedChartId: updated.id })
+        .where(
+          and(
+            eq(chartFeedbackTable.id, resolveId),
+            eq(chartFeedbackTable.chartId, id),
+          ),
+        );
+    } catch (err) {
+      req.log.warn(
+        { err, resolveId, chartId: id },
+        "Failed to mark chart_feedback row resolved after regenerate",
+      );
+    }
+  }
 
   res.json({
     chart: serializeChart(updated),

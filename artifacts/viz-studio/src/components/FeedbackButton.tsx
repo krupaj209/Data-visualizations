@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquareWarning, Loader2, Check, X } from "lucide-react";
+import {
+  MessageSquareWarning,
+  Loader2,
+  Check,
+  X,
+  RefreshCw,
+} from "lucide-react";
 import {
   useCreateChartFeedback,
   useListChartFeedback,
+  useRegenerateChart,
   getListChartFeedbackQueryKey,
   getGetCeQueryKey,
   type ChartFeedback,
@@ -38,9 +45,14 @@ export function FeedbackButton({
   const [note, setNote] = useState("");
   const [reporter, setReporter] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [regenState, setRegenState] = useState<
+    "idle" | "pending" | "success" | "error"
+  >("idle");
+  const [regenError, setRegenError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const createMut = useCreateChartFeedback();
+  const regenMut = useRegenerateChart();
   const list = useListChartFeedback(chartId, {
     query: {
       enabled: open,
@@ -61,9 +73,12 @@ export function FeedbackButton({
           ? BRAND.purps
           : BRAND.slate500;
 
-  async function submit() {
-    if (rating == null && !category && !note.trim()) return;
-    await createMut.mutateAsync({
+  const meaningful =
+    rating != null || Boolean(category) || note.trim().length > 0;
+  const busy = createMut.isPending || regenState === "pending";
+
+  async function persistFeedback() {
+    return createMut.mutateAsync({
       id: chartId,
       data: {
         rating,
@@ -72,15 +87,70 @@ export function FeedbackButton({
         reporterName: reporter.trim(),
       },
     });
-    setSubmitted(true);
+  }
+
+  function resetForm() {
     setRating(null);
     setCategory("");
     setNote("");
+  }
+
+  async function submit() {
+    if (!meaningful) return;
+    await persistFeedback();
+    setSubmitted(true);
+    resetForm();
     qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
     if (ceSlug) {
       qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
     }
     setTimeout(() => setSubmitted(false), 1800);
+  }
+
+  async function submitAndRegenerate() {
+    if (!meaningful) return;
+    setRegenError(null);
+    let feedbackRow: ChartFeedback;
+    try {
+      feedbackRow = await persistFeedback();
+    } catch (err) {
+      setRegenError(
+        err instanceof Error ? err.message : "Could not save feedback.",
+      );
+      setRegenState("error");
+      return;
+    }
+    qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
+    setRegenState("pending");
+    try {
+      await regenMut.mutateAsync({
+        id: chartId,
+        data: {
+          feedbackContext: {
+            chartFeedbackId: feedbackRow.id,
+            note: feedbackRow.note || undefined,
+            issueCategory: feedbackRow.issueCategory ?? undefined,
+          },
+        },
+      });
+      qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
+      if (ceSlug) {
+        qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+      }
+      setRegenState("success");
+      resetForm();
+      setTimeout(() => {
+        setOpen(false);
+        setRegenState("idle");
+      }, 1200);
+    } catch (err) {
+      setRegenError(
+        err instanceof Error
+          ? err.message
+          : "Regeneration failed. The feedback was saved and is queryable from Triage.",
+      );
+      setRegenState("error");
+    }
   }
 
   return (
@@ -232,33 +302,93 @@ export function FeedbackButton({
               marginBottom: 10,
             }}
           />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={createMut.isPending}
-            style={{
-              width: "100%",
-              background: submitted ? BRAND.bgMint : BRAND.purps,
-              color: submitted ? "#0E8F4E" : "white",
-              border: "none",
-              padding: "10px 12px",
-              borderRadius: 10,
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-            }}
-          >
-            {createMut.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : submitted ? (
-              <Check size={14} />
-            ) : null}
-            {submitted ? "Sent" : "Send feedback"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !meaningful}
+              style={{
+                flex: 1,
+                background: submitted ? BRAND.bgMint : "white",
+                color: submitted ? "#0E8F4E" : BRAND.purps,
+                border: `1px solid ${submitted ? BRAND.bgMint : BRAND.purpsSoft}`,
+                padding: "10px 10px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: busy || !meaningful ? "not-allowed" : "pointer",
+                opacity: !meaningful && !busy ? 0.55 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              {createMut.isPending && regenState !== "pending" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : submitted ? (
+                <Check size={14} />
+              ) : null}
+              {submitted ? "Sent" : "Send"}
+            </button>
+            <button
+              type="button"
+              onClick={submitAndRegenerate}
+              disabled={busy || !meaningful}
+              style={{
+                flex: 1.4,
+                background:
+                  regenState === "success" ? BRAND.bgMint : BRAND.purps,
+                color: regenState === "success" ? "#0E8F4E" : "white",
+                border: "none",
+                padding: "10px 10px",
+                borderRadius: 10,
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: busy || !meaningful ? "not-allowed" : "pointer",
+                opacity: !meaningful && !busy ? 0.55 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+              title="Save the feedback and regenerate this chart with it as guidance"
+            >
+              {regenState === "pending" ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Regenerating chart…
+                </>
+              ) : regenState === "success" ? (
+                <>
+                  <Check size={14} />
+                  Regenerated
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={14} />
+                  Send &amp; regenerate
+                </>
+              )}
+            </button>
+          </div>
+          {regenState === "error" && regenError && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: BRAND.candySoft,
+                color: BRAND.candy,
+                fontSize: 11,
+                fontWeight: 700,
+                lineHeight: 1.4,
+              }}
+            >
+              {regenError}
+            </div>
+          )}
 
           {list.data && list.data.length > 0 && (
             <div style={{ marginTop: 14 }}>
