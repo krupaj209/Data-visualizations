@@ -139,6 +139,8 @@ function FormForType({
       return <EntranceLanesEditor spec={spec} onChange={onChange} />;
     case "co_bookings":
       return <CoBookingsEditor spec={spec} onChange={onChange} />;
+    case "entrance_map":
+      return <EntranceMapEditor spec={spec} onChange={onChange} />;
     default:
       return (
         <div style={dim}>
@@ -1143,6 +1145,402 @@ function CoBookingsEditor({
         — edit via JSON tab when needed.
       </Hint>
     </div>
+  );
+}
+
+const COMPASS_POSITIONS = [
+  "n",
+  "ne",
+  "e",
+  "se",
+  "s",
+  "sw",
+  "w",
+  "nw",
+] as const;
+const ENTRANCE_STATUSES = [
+  "recommended",
+  "standard",
+  "groups",
+  "accessible",
+  "avoid",
+  "closed",
+] as const;
+const TRANSPORT_MODES = [
+  "metro",
+  "bus",
+  "tram",
+  "train",
+  "walk",
+  "parking",
+  "taxi",
+  "ferry",
+] as const;
+
+/**
+ * Mini 3x3 compass picker — venue sits in the center cell; the eight
+ * surrounding cells correspond to the 8 compass positions on the schematic.
+ * Visual-first so writers can place pins relative to the venue at a glance.
+ */
+function CompassPicker({
+  value,
+  onChange,
+  allowClear = true,
+}: {
+  value: (typeof COMPASS_POSITIONS)[number] | undefined;
+  onChange: (v: (typeof COMPASS_POSITIONS)[number] | undefined) => void;
+  allowClear?: boolean;
+}) {
+  // 3x3 grid laid out row-major: NW N NE / W . E / SW S SE.
+  const grid: ((typeof COMPASS_POSITIONS)[number] | null)[] = [
+    "nw",
+    "n",
+    "ne",
+    "w",
+    null,
+    "e",
+    "sw",
+    "s",
+    "se",
+  ];
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 22px)",
+        gridTemplateRows: "repeat(3, 22px)",
+        gap: 2,
+        background: BRAND.slate100,
+        padding: 3,
+        borderRadius: 6,
+        width: "fit-content",
+      }}
+    >
+      {grid.map((pos, i) => {
+        if (pos === null) {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => allowClear && onChange(undefined)}
+              title={allowClear ? "Auto-place / clear" : "Venue"}
+              style={{
+                background: "white",
+                border: `1px solid ${BRAND.slate200}`,
+                borderRadius: 4,
+                fontSize: 8,
+                fontWeight: 800,
+                color: BRAND.slate500,
+                cursor: allowClear ? "pointer" : "default",
+                padding: 0,
+              }}
+            >
+              {value === undefined && allowClear ? "•" : ""}
+            </button>
+          );
+        }
+        const active = value === pos;
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChange(pos)}
+            title={pos.toUpperCase()}
+            style={{
+              background: active ? BRAND.purps : "white",
+              border: `1px solid ${active ? BRAND.purps : BRAND.slate200}`,
+              borderRadius: 4,
+              fontSize: 9,
+              fontWeight: 800,
+              color: active ? "white" : BRAND.slate700,
+              cursor: "pointer",
+              padding: 0,
+              textTransform: "uppercase",
+            }}
+          >
+            {pos}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EntranceMapEditor({
+  spec,
+  onChange,
+}: {
+  spec: Spec<"entrance_map">;
+  onChange: (next: ChartSpec) => void;
+}) {
+  const entranceNames = spec.entrances.map((e) => e.name).filter(Boolean);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3" style={gridCols("1fr 1fr")}>
+        <Field label="Venue label (center of map)">
+          <TextInput
+            value={spec.venue_label ?? ""}
+            placeholder="e.g. Vatican Museums"
+            onChange={(v) =>
+              onChange({ ...spec, venue_label: v || undefined })
+            }
+          />
+        </Field>
+        <Field label="Intro phrase (auto if blank)">
+          <TextInput
+            value={spec.intro_phrase ?? ""}
+            placeholder="e.g. 3 entrances · west, north…"
+            onChange={(v) =>
+              onChange({ ...spec, intro_phrase: v || undefined })
+            }
+          />
+        </Field>
+      </div>
+
+      <Field label="Entrances (compass position places pin on schematic)">
+        <ListEditor
+          items={spec.entrances}
+          empty={(): Spec<"entrance_map">["entrances"][number] => ({
+            name: "New entrance",
+            status: "standard",
+          })}
+          onChange={(next) => onChange({ ...spec, entrances: next })}
+          minItems={1}
+          render={(item, set) => (
+            <div className="flex flex-col gap-2">
+              <div className="grid gap-2" style={gridCols("1fr 130px 110px")}>
+                <TextInput
+                  value={item.name}
+                  onChange={(v) => set({ ...item, name: v })}
+                />
+                <Select
+                  value={item.status}
+                  options={ENTRANCE_STATUSES}
+                  onChange={(v) => set({ ...item, status: v })}
+                />
+                <Select
+                  value={item.accent ?? "slate"}
+                  options={ACCENTS}
+                  onChange={(v) => set({ ...item, accent: v })}
+                />
+              </div>
+              <div className="flex items-start gap-3 flex-wrap">
+                <label className="flex flex-col gap-1">
+                  <span style={tinyLabel}>Position</span>
+                  <CompassPicker
+                    value={item.position}
+                    onChange={(v) => set({ ...item, position: v })}
+                  />
+                </label>
+                <div className="flex flex-col gap-1" style={{ flex: 1, minWidth: 140 }}>
+                  <span style={tinyLabel}>Wait label</span>
+                  <TextInput
+                    value={item.wait_label ?? ""}
+                    placeholder="e.g. 5–10 min"
+                    onChange={(v) =>
+                      set({ ...item, wait_label: v || undefined })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2" style={gridCols("110px 1fr")}>
+                <Select
+                  value={item.transport?.mode ?? "metro"}
+                  options={TRANSPORT_MODES}
+                  onChange={(v) =>
+                    set({
+                      ...item,
+                      // Only attach a transport block once the writer has
+                      // supplied a label — picking the mode alone shouldn't
+                      // persist a semantically empty `{mode, label: ""}`.
+                      transport: item.transport?.label
+                        ? { mode: v, label: item.transport.label }
+                        : undefined,
+                    })
+                  }
+                />
+                <TextInput
+                  value={item.transport?.label ?? ""}
+                  placeholder="Transport stop (e.g. Ottaviano M-A) — leave blank to remove"
+                  onChange={(v) =>
+                    set({
+                      ...item,
+                      transport: v
+                        ? { mode: item.transport?.mode ?? "metro", label: v }
+                        : undefined,
+                    })
+                  }
+                />
+              </div>
+              <TextInput
+                value={(item.best_for ?? []).join(", ")}
+                placeholder='Best for tags, comma-separated (e.g. "groups, families")'
+                onChange={(v) =>
+                  set({
+                    ...item,
+                    best_for: v
+                      ? v.split(",").map((s) => s.trim()).filter(Boolean)
+                      : undefined,
+                  })
+                }
+              />
+            </div>
+          )}
+        />
+      </Field>
+
+      <Field label="Walking routes (dashed line between two entrances)">
+        <ListEditor
+          items={spec.walking_routes ?? []}
+          empty={(): NonNullable<Spec<"entrance_map">["walking_routes"]>[number] => ({
+            from: entranceNames[0] ?? "",
+            to: entranceNames[1] ?? entranceNames[0] ?? "",
+          })}
+          onChange={(next) =>
+            onChange({
+              ...spec,
+              walking_routes: next.length > 0 ? next : undefined,
+            })
+          }
+          render={(item, set) => (
+            <div className="grid gap-2" style={gridCols("1fr 1fr 90px")}>
+              <NameSelect
+                value={item.from}
+                names={entranceNames}
+                onChange={(v) => set({ ...item, from: v })}
+              />
+              <NameSelect
+                value={item.to}
+                names={entranceNames}
+                onChange={(v) => set({ ...item, to: v })}
+              />
+              <NumInput
+                value={item.minutes ?? 0}
+                min={0}
+                max={120}
+                onChange={(v) =>
+                  set({ ...item, minutes: v > 0 ? v : undefined })
+                }
+              />
+            </div>
+          )}
+        />
+        <Hint>
+          Endpoints must match an entrance name above exactly. Minutes
+          column accepts 0 for "no time label".
+        </Hint>
+      </Field>
+
+      <Field label="Assembly point (guided-tour meeting pin)">
+        {spec.assembly_point ? (
+          <div className="flex flex-col gap-2">
+            <div className="grid gap-2" style={gridCols("1fr auto")}>
+              <TextInput
+                value={spec.assembly_point.label}
+                placeholder="e.g. Tour group meet-up"
+                onChange={(v) =>
+                  onChange({
+                    ...spec,
+                    assembly_point: {
+                      ...spec.assembly_point!,
+                      label: v,
+                    },
+                  })
+                }
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  onChange({ ...spec, assembly_point: undefined })
+                }
+                style={removeBtn}
+                title="Remove assembly point"
+              >
+                ×
+              </button>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span style={tinyLabel}>Position</span>
+              <CompassPicker
+                value={spec.assembly_point.position}
+                onChange={(v) =>
+                  v &&
+                  onChange({
+                    ...spec,
+                    assembly_point: {
+                      ...spec.assembly_point!,
+                      position: v,
+                    },
+                  })
+                }
+                allowClear={false}
+              />
+            </label>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...spec,
+                assembly_point: { label: "Meeting point", position: "s" },
+              })
+            }
+            style={addBtn}
+          >
+            + Add assembly point
+          </button>
+        )}
+      </Field>
+
+      <Field label="Callout (footer line)">
+        <TextInput
+          value={spec.callout ?? ""}
+          onChange={(v) => onChange({ ...spec, callout: v || undefined })}
+        />
+      </Field>
+      <Hint>
+        Click a compass cell to place a pin; click the center to auto-place
+        (legacy specs without positions still render). Per-entrance `note`
+        is an advanced field — edit via JSON tab when needed.
+      </Hint>
+    </div>
+  );
+}
+
+/**
+ * Datalist-backed text input that suggests existing entrance names. We avoid
+ * a hard <select> so the walking-route from/to stays editable while the
+ * writer is still typing names into the entrance list above.
+ */
+function NameSelect({
+  value,
+  names,
+  onChange,
+}: {
+  value: string;
+  names: string[];
+  onChange: (v: string) => void;
+}) {
+  const listId = useMemo(
+    () => `names-${Math.random().toString(36).slice(2, 8)}`,
+    [],
+  );
+  return (
+    <>
+      <input
+        value={value}
+        list={listId}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+        placeholder="Entrance name"
+      />
+      <datalist id={listId}>
+        {names.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+    </>
   );
 }
 
