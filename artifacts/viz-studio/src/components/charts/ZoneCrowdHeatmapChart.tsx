@@ -70,7 +70,9 @@ export function ZoneCrowdHeatmapChart({ spec, context, compact = false }: Props)
               </div>
               {spec.best_window && (
                 <CalloutPill bg={BRAND.purpsSoft} fg={BRAND.purps}>
-                  Best · {spec.best_window.label}
+                  Best · {spec.best_window.zone}{" "}
+                  {fmtHour(spec.best_window.start_hour)}–
+                  {fmtHour(spec.best_window.end_hour)}
                 </CalloutPill>
               )}
             </div>

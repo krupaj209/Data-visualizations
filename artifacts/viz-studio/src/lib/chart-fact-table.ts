@@ -4,7 +4,7 @@ import {
   type ChartProvenanceLite,
   type ChartSpec,
 } from "./chart-spec";
-import { formatHour } from "./time";
+import { formatClock, formatClockRangesInText, formatHour } from "./time";
 
 export type ChartFactStatus =
   | "verified"
@@ -389,14 +389,14 @@ export function buildChartFactRows(
           withSource({
             id: `daily-zone-${index}`,
             claim: `${zone.label} time window`,
-            value: `${zone.start}-${zone.end} · ${zone.tone}`,
+            value: `${formatClock(zone.start)}-${formatClock(zone.end)} · ${zone.tone}`,
             path: `zones[${index}]`,
           }),
         ),
         ...spec.points.map((point, index) =>
           withSource({
             id: `daily-point-${index}`,
-            claim: `${point.time} crowd level`,
+            claim: `${formatClock(point.time)} crowd level`,
             value: `${point.crowd}/10`,
             path: `points[${index}].crowd`,
           }),
@@ -414,15 +414,15 @@ export function buildChartFactRows(
         ...spec.context_pills.map((pill, index) =>
           withSource({
             id: `tribune-pill-${index}`,
-            claim: pill.title,
-            value: pill.subtitle,
+            claim: formatClockRangesInText(pill.title),
+            value: formatClockRangesInText(pill.subtitle),
             path: `context_pills[${index}]`,
           }),
         ),
         ...spec.points.map((point, index) =>
           withSource({
             id: `tribune-point-${index}`,
-            claim: `${point.time} density`,
+            claim: `${formatClock(point.time)} density`,
             value: `${point.density}/10`,
             path: `points[${index}].density`,
           }),
@@ -454,8 +454,8 @@ export function buildChartFactRows(
         withSource({
           id: `lane-${index}`,
           claim: `${lane.name} lane wait`,
-          value: `${lane.wait_label}${lane.wait_peak ? ` · peak ${lane.wait_peak}` : ""}${
-            lane.wait_off_peak ? ` · off-peak ${lane.wait_off_peak}` : ""
+          value: `${formatClockRangesInText(lane.wait_label)}${lane.wait_peak ? ` · peak ${formatClockRangesInText(lane.wait_peak)}` : ""}${
+            lane.wait_off_peak ? ` · off-peak ${formatClockRangesInText(lane.wait_off_peak)}` : ""
           }`,
           path: `lanes[${index}]`,
         }),
@@ -545,14 +545,14 @@ export function buildChartFactRows(
         withSource({
           id: "programme-hours",
           claim: "Programme operating window",
-          value: `${spec.open_time}-${spec.close_time}`,
+          value: `${formatClock(spec.open_time)}-${formatClock(spec.close_time)}`,
           path: "open_time",
         }),
         ...spec.events.map((event, index) =>
           withSource({
             id: `programme-${index}`,
             claim: event.name,
-            value: `${event.start_time} · ${event.duration_min} min · ${event.location} · popularity ${event.popularity}/100`,
+            value: `${formatClock(event.start_time)} · ${event.duration_min} min · ${event.location} · popularity ${event.popularity}/100`,
             path: `events[${index}]`,
           }),
         ),
@@ -582,7 +582,7 @@ export function buildChartFactRows(
           withSource({
             id: `slot-${index}`,
             claim: `${slot.name} slot`,
-            value: `${slot.time_window ?? "No time window"}${
+            value: `${slot.time_window ? formatClockRangesInText(slot.time_window) : "No time window"}${
               slot.recommended ? " · recommended" : ""
             }`,
             path: `slots[${index}]`,

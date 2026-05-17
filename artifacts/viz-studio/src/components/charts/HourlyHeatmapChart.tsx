@@ -3,6 +3,7 @@ import { BRAND } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill, LegendSwatch } from "@/components/charts/system";
 import {
+  DAY_FULL,
   DAY_LABELS,
   DAY_ORDER,
   type HourlyHeatmapSpec,
@@ -137,7 +138,9 @@ export function HourlyHeatmapChart({ spec, context, compact }: Props) {
           </div>
           {spec.best_window && (
             <CalloutPill bg={BRAND.purpsSoft} fg={BRAND.purps}>
-              Best window · {spec.best_window.label}
+              Best window · {DAY_FULL[spec.best_window.day]}{" "}
+              {formatHour(spec.best_window.start_hour)}–
+              {formatHour(spec.best_window.end_hour)}
             </CalloutPill>
           )}
         </div>

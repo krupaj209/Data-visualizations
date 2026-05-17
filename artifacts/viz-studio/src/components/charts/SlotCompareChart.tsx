@@ -4,6 +4,7 @@ import { ChartCard } from "@/components/ChartCard";
 import { ACCENT_FG, ACCENT_FILL, ACCENT_SOFT, BRAND } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { type SlotCompareSpec } from "@/lib/chart-spec";
+import { formatClockRangesInText } from "@/lib/time";
 
 interface Props {
   spec: SlotCompareSpec;
@@ -73,7 +74,7 @@ export function SlotCompareChart({ spec, context, compact = false }: Props) {
                       fontWeight: 600,
                     }}
                   >
-                    {s.time_window}
+                    {formatClockRangesInText(s.time_window)}
                   </span>
                 )}
                 {s.recommended && (

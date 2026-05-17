@@ -90,7 +90,9 @@ export function ZoneWaitHeatmapChart({ spec, context, compact = false }: Props) 
               </div>
               {spec.best_window && (
                 <CalloutPill bg={BRAND.bgMint} fg={BRAND.okayInk}>
-                  Best · {spec.best_window.label}
+                  Best · {spec.best_window.zone}{" "}
+                  {fmtHour(spec.best_window.start_hour)}–
+                  {fmtHour(spec.best_window.end_hour)}
                 </CalloutPill>
               )}
             </div>

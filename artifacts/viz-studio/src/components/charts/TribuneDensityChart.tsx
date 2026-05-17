@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatClock as fmtClock } from "@/lib/time";
+import {
+  formatClock as fmtClock,
+  formatClockRangesInText as fmtClockRanges,
+} from "@/lib/time";
 import { motion } from "framer-motion";
 import { Calendar, Users, Sun, Clock } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
@@ -555,7 +558,7 @@ export function TribuneDensityChart({
                       placement="below"
                       offset={14}
                     >
-                      {p.time} · {p.density}/10
+                      {fmtClock(p.time)} · {p.density}/10
                     </ChartTooltip>
                   )}
                 </div>
@@ -574,7 +577,7 @@ export function TribuneDensityChart({
                 )}
                 pillLabel={
                   selection?.kind === "pill"
-                    ? context_pills[selection.idx].title
+                    ? fmtClockRanges(context_pills[selection.idx].title)
                     : undefined
                 }
               />
@@ -737,7 +740,7 @@ export function TribuneDensityChart({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {p.title}
+                      {fmtClockRanges(p.title)}
                     </div>
                     <div
                       style={{
@@ -750,7 +753,7 @@ export function TribuneDensityChart({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {p.subtitle}
+                      {fmtClockRanges(p.subtitle)}
                     </div>
                   </div>
                 </ChipButton>

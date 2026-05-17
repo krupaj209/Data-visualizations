@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
+import { formatClockRangesInText } from "@/lib/time";
 import { ACCENT_FG, ACCENT_FILL, ACCENT_SOFT, BRAND } from "@/lib/brand";
 import {
   type EntranceMapSpec,
@@ -141,7 +142,7 @@ export function EntranceMapChart({ spec, context, compact = false }: Props) {
                           borderRadius: 999,
                         }}
                       >
-                        {e.wait_label}
+                        {formatClockRangesInText(e.wait_label)}
                       </span>
                     )}
                   </div>

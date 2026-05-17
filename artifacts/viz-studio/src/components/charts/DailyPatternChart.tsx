@@ -357,7 +357,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
               {caption.opens && (
                 <span>
                   Opens{" "}
-                  <strong style={{ fontWeight: 800 }}>{caption.opens}</strong>
+                  <strong style={{ fontWeight: 800 }}>{fmtClock(caption.opens)}</strong>
                 </span>
               )}
               {caption.opens && caption.last_entry && (
@@ -367,7 +367,7 @@ export function DailyPatternChart({ spec, context, compact = false }: Props) {
                 <span>
                   Last entry{" "}
                   <strong style={{ fontWeight: 800 }}>
-                    {caption.last_entry}
+                    {fmtClock(caption.last_entry)}
                   </strong>
                 </span>
               )}

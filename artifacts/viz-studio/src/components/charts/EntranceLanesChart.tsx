@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDown } from "lucide-react";
 import { ChartCard } from "@/components/ChartCard";
+import { formatClockRangesInText } from "@/lib/time";
 import { BRAND } from "@/lib/brand";
 import { CHART_TYPE } from "@/lib/chart-system";
 import { CalloutPill } from "@/components/charts/system";
@@ -127,7 +128,7 @@ export function EntranceLanesChart({
                 lineHeight: 1.3,
               }}
             >
-              {shared_caption}
+              {formatClockRangesInText(shared_caption)}
             </div>
           </div>
         )}
@@ -322,7 +323,7 @@ export function EntranceLanesChart({
                   }}
                 >
                   <CalloutPill bg={tone.pillBg} fg={tone.pillFg}>
-                    {lane.wait_label}
+                    {formatClockRangesInText(lane.wait_label)}
                   </CalloutPill>
                 </div>
               </Fragment>
@@ -407,12 +408,12 @@ export function EntranceLanesChart({
                 >
                   {locked.wait_peak && (
                     <CalloutPill bg="white" fg={lockedTone.pillFg}>
-                      Peak: {locked.wait_peak}
+                      Peak: {formatClockRangesInText(locked.wait_peak)}
                     </CalloutPill>
                   )}
                   {locked.wait_off_peak && (
                     <CalloutPill bg="white" fg={BRAND.slate700}>
-                      Off-peak: {locked.wait_off_peak}
+                      Off-peak: {formatClockRangesInText(locked.wait_off_peak)}
                     </CalloutPill>
                   )}
                 </div>

@@ -69,6 +69,13 @@ export default defineConfig({
         ),
       },
       {
+        find: "@/lib/time",
+        replacement: path.resolve(
+          import.meta.dirname,
+          "../viz-studio/src/lib/time",
+        ),
+      },
+      {
         find: /^@viz\/(.*)$/,
         replacement:
           path.resolve(import.meta.dirname, "../viz-studio/src") + "/$1",

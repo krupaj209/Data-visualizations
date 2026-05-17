@@ -44,6 +44,21 @@ export function formatClock(t: string): string {
 }
 
 /**
+ * Reformat every `HH:MM` (24-hour) token inside a freeform string so it
+ * matches the Headout clock format. Used for fields like
+ * `slot_compare.time_window` or `entrance_lanes.shared_caption` where the
+ * spec stores a short freeform label that may contain a clock time but
+ * also non-time copy. Tokens that are already in Headout form (e.g.
+ * "9am", "12 noon") are untouched. Hour-only matches (no `:MM`) are not
+ * rewritten because they collide with year/count numbers.
+ */
+export function formatClockRangesInText(text: string): string {
+  return text.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (_, h, m) =>
+    formatClock(`${h}:${m}`),
+  );
+}
+
+/**
  * Headout date format: "24 January" (day, full month name, no comma).
  * Accepts "YYYY-MM-DD" strings or Date objects.
  */

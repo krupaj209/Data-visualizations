@@ -13,6 +13,7 @@
       "@/components/ChartCard": ["../viz-studio/src/components/ChartCard"],
       "@/lib/brand": ["../viz-studio/src/lib/brand"],
       "@/lib/chart-spec": ["../viz-studio/src/lib/chart-spec"],
+      "@/lib/time": ["../viz-studio/src/lib/time"],
       "@viz/*": ["../viz-studio/src/*"],
       "@/*": ["./src/*"]
     }
