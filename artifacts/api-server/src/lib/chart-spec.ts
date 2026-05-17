@@ -1341,9 +1341,44 @@ const entranceStatusEnum = z.enum([
   "standard",
 ]);
 
+/**
+ * Compass-based positions used by the schematic entrance map. Writers
+ * pick a cardinal/intercardinal direction relative to the venue silhouette
+ * (north = top of the map). This is intentionally coarser than {x, y}
+ * coordinates so writers can ground positions from an official venue map
+ * without measuring pixels.
+ */
+const compassPositionEnum = z.enum([
+  "n",
+  "ne",
+  "e",
+  "se",
+  "s",
+  "sw",
+  "w",
+  "nw",
+]);
+
+const transportModeEnum = z.enum([
+  "metro",
+  "bus",
+  "tram",
+  "train",
+  "walk",
+  "parking",
+  "taxi",
+  "ferry",
+]);
+
 export const entranceMapSpec = z.object({
   type: z.literal("entrance_map"),
   venue_label: z.string().max(60).optional(),
+  /**
+   * Short positional summary line rendered above the schematic, e.g.
+   * "3 entrances · west, north, north-east". The long-form sentence
+   * stays in the host page body copy per the CMS playbook.
+   */
+  intro_phrase: z.string().max(120).optional(),
   entrances: z
     .array(
       z.object({
@@ -1353,12 +1388,81 @@ export const entranceMapSpec = z.object({
         best_for: z.array(z.string().max(40)).max(4).optional(),
         accent: accentEnum.optional(),
         note: z.string().max(160).optional(),
+        /**
+         * Compass direction of this entrance relative to the venue
+         * silhouette (north = top). Omit when not grounded; the renderer
+         * falls back to an auto-layout ring.
+         */
+        position: compassPositionEnum.optional(),
+        /**
+         * Nearest transport stop / parking. `label` is a short caption
+         * (e.g. "Metro B · Colosseo", "Parking · Via Labicana").
+         */
+        transport: z
+          .object({
+            mode: transportModeEnum,
+            label: z.string().max(40),
+          })
+          .optional(),
       }),
     )
     .min(2)
     .max(6),
+  /**
+   * Optional dashed connections between entrances, e.g. when the venue
+   * is large enough that visitors might walk between gates.
+   * `from` / `to` reference entrance names.
+   */
+  walking_routes: z
+    .array(
+      z.object({
+        from: z.string().max(60),
+        to: z.string().max(60),
+        minutes: z.number().int().min(1).max(120).optional(),
+      }),
+    )
+    .max(6)
+    .optional(),
+  /**
+   * Optional guided-tour assembly / meeting point, rendered as a starred
+   * pin so it stays visually distinct from the entrances themselves.
+   */
+  assembly_point: z
+    .object({
+      label: z.string().max(60),
+      position: compassPositionEnum,
+    })
+    .optional(),
   callout: z.string().max(200).optional(),
 });
+
+/**
+ * Post-parse check: `walking_routes.from/to` must reference entrance names.
+ * Kept outside the schema (rather than via `.superRefine`) so
+ * `entranceMapSpec` stays a `ZodObject` and remains usable as a discriminated
+ * union member in `chartSpec`. Call from route handlers when stricter
+ * validation is wanted; the renderer silently drops unmatched routes.
+ */
+export function validateEntranceMapRoutes(
+  spec: z.infer<typeof entranceMapSpec>,
+): string[] {
+  if (!spec.walking_routes || spec.walking_routes.length === 0) return [];
+  const names = new Set(spec.entrances.map((e) => e.name));
+  const errs: string[] = [];
+  spec.walking_routes.forEach((r, i) => {
+    if (!names.has(r.from)) {
+      errs.push(
+        `walking_routes[${i}].from "${r.from}" must match an entrance name`,
+      );
+    }
+    if (!names.has(r.to)) {
+      errs.push(
+        `walking_routes[${i}].to "${r.to}" must match an entrance name`,
+      );
+    }
+  });
+  return errs;
+}
 
 /**
  * `floor_plan_flow` — recommended order of floors / rooms / wings inside a

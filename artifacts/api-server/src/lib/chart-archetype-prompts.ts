@@ -305,10 +305,30 @@ SOURCING: scores should be defensible from grounded sources — NOAA / city tour
 
   entrance_map: `{ "type": "entrance_map",
   "venue_label"?: "<short label, e.g. Colosseum>",
-  "entrances": [ { "name": "Sperone Valadier", "status": "<recommended|avoid|groups|accessible|closed|standard>", "wait_label"?: "<e.g. 15-25 min>", "best_for"?: ["skip-the-line tickets","families"], "accent"?: "<purps|candy|hola|okay|slate>", "note"?: "..." }, ... 2-6 items ],
+  "intro_phrase"?: "<short positional summary, ≤120 chars, e.g. '3 entrances · west, north, north-east'>",
+  "entrances": [ {
+    "name": "Sperone Valadier",
+    "status": "<recommended|avoid|groups|accessible|closed|standard>",
+    "wait_label"?: "<e.g. 15-25 min>",
+    "best_for"?: ["skip-the-line tickets","families"],
+    "accent"?: "<purps|candy|hola|okay|slate>",
+    "note"?: "...",
+    "position"?: "<n|ne|e|se|s|sw|w|nw — compass direction relative to the venue, north = top>",
+    "transport"?: { "mode": "<metro|bus|tram|train|walk|parking|taxi|ferry>", "label": "<≤40 chars, e.g. 'Metro B · Colosseo'>" }
+  }, ... 2-6 items ],
+  "walking_routes"?: [ { "from": "<entrance name>", "to": "<entrance name>", "minutes"?: <int> } ],
+  "assembly_point"?: { "label": "<short, e.g. 'Tour meeting point'>", "position": "<n|ne|e|se|s|sw|w|nw>" },
   "callout"?: "<one-sentence takeaway, ≤200 chars>" }
 Use for venues with multiple named gates / entrances where the visitor's decision is "which door?". Each entrance MUST be a real, named gate (no generic "main entrance" placeholders). status:"recommended" reserved for the gate that materially saves time for the most common ticket type; status:"avoid" for tour-group choke points; status:"groups" for group-only lanes; status:"accessible" for the step-free / wheelchair entrance; status:"closed" for permanently shut entrances still on old maps. best_for tags are short (≤40 chars). wait_label is a coarse range, not a precise number.
-SOURCING: entrance names, status, and wait windows MUST be grounded from the operator's official site, an official venue map, or recent (≤24 month) visitor reports. Generic "use the side entrance" advice without a named gate is not enough. If you can't ground at least 2 named entrances with distinct status, drop the chart. Tag any wait_label you estimated in provenance.estimates with spec.entrances[i].wait_label.`,
+
+SPATIAL FIELDS: This chart renders as a schematic map (SVG silhouette + labeled pins around it). When you have an official venue map, fill the spatial fields:
+- intro_phrase: a short positional summary like "3 entrances · west, north, north-east" derived from the directions you set.
+- position: pick the compass direction that matches the entrance's location on the operator's map, with north pointing up. Never invent positions — they MUST come from the venue's official map.
+- transport: the nearest metro/bus/tram stop or parking facility (one per entrance), short label.
+- walking_routes: include ONLY when the venue is large enough that visitors might walk between gates (theme parks, archaeological parks, multi-building campuses). Reference entrance names exactly.
+- assembly_point: include ONLY when there is a published guided-tour meeting point distinct from the entrances themselves.
+
+SOURCING: entrance names, status, and wait windows MUST be grounded from the operator's official site, an official venue map, or recent (≤24 month) visitor reports. Generic "use the side entrance" advice without a named gate is not enough. If you can't ground at least 2 named entrances with distinct status, drop the chart. If you can't ground an official venue map, OMIT position, transport, walking_routes, assembly_point, and intro_phrase (the renderer auto-distributes pins around a ring so the list information still surfaces). Tag any wait_label you estimated in provenance.estimates with spec.entrances[i].wait_label.`,
 
   floor_plan_flow: `{ "type": "floor_plan_flow",
   "start_label"?: "<short start label, e.g. Ground floor entrance>",

@@ -32,6 +32,124 @@ test("entrance_map rejects an empty entrances array", () => {
   assert.equal(res.success, false);
 });
 
+test("entrance_map accepts the full spatial spec (Colosseum shape)", () => {
+  const res = parse({
+    type: "entrance_map",
+    venue_label: "Colosseum",
+    intro_phrase: "3 entrances · west, north, north-east",
+    entrances: [
+      {
+        name: "Sperone Valadier",
+        status: "recommended",
+        position: "w",
+        wait_label: "10–20 min",
+        best_for: ["individuals", "skip-the-line tickets"],
+        transport: { mode: "metro", label: "Metro B · Colosseo" },
+      },
+      {
+        name: "Group Gate",
+        status: "groups",
+        position: "n",
+        transport: { mode: "metro", label: "Metro B · Colosseo" },
+      },
+      {
+        name: "Stern Gate",
+        status: "groups",
+        position: "ne",
+        transport: { mode: "bus", label: "Bus 75 · Via Labicana" },
+      },
+    ],
+    walking_routes: [
+      { from: "Sperone Valadier", to: "Group Gate", minutes: 4 },
+    ],
+    assembly_point: {
+      label: "Tour meeting point · Arco di Costantino",
+      position: "sw",
+    },
+    callout: "Three gates around the amphitheatre.",
+  });
+  assert.equal(res.success, true, JSON.stringify(res));
+});
+
+test("entrance_map accepts every compass direction", () => {
+  const dirs = ["n", "ne", "e", "se", "s", "sw", "w", "nw"] as const;
+  for (const dir of dirs) {
+    const res = parse({
+      type: "entrance_map",
+      entrances: [
+        { name: "Gate A", status: "recommended", position: dir },
+        { name: "Gate B", status: "standard" },
+      ],
+    });
+    assert.equal(res.success, true, `compass ${dir} should validate`);
+  }
+});
+
+test("entrance_map rejects an unknown compass position", () => {
+  const res = parse({
+    type: "entrance_map",
+    entrances: [
+      { name: "Gate A", status: "recommended", position: "northwesterly" },
+      { name: "Gate B", status: "standard" },
+    ],
+  });
+  assert.equal(res.success, false);
+});
+
+test("entrance_map rejects an unknown transport mode", () => {
+  const res = parse({
+    type: "entrance_map",
+    entrances: [
+      {
+        name: "Gate A",
+        status: "recommended",
+        transport: { mode: "rocket", label: "Falcon 9" },
+      },
+      { name: "Gate B", status: "standard" },
+    ],
+  });
+  assert.equal(res.success, false);
+});
+
+test("entrance_map rejects an intro_phrase over 120 chars", () => {
+  const res = parse({
+    type: "entrance_map",
+    intro_phrase: "x".repeat(121),
+    entrances: [
+      { name: "A", status: "recommended" },
+      { name: "B", status: "standard" },
+    ],
+  });
+  assert.equal(res.success, false);
+});
+
+test("entrance_map auto-layout: legacy spec (no positions) still validates", () => {
+  // The renderer falls back to an auto-distributed ring when no entrance
+  // carries a position. The Vatican Museums seed shape is the canonical case.
+  const res = parse({
+    type: "entrance_map",
+    venue_label: "Vatican Museums",
+    entrances: [
+      { name: "Viale Vaticano (main)", status: "standard", wait_label: "60–120 min" },
+      { name: "Sant'Anna Gate (reserved)", status: "recommended", wait_label: "5–15 min" },
+      { name: "Cancello Petriano", status: "groups" },
+      { name: "Step-free entrance", status: "accessible" },
+      { name: "Old service gate", status: "closed" },
+    ],
+  });
+  assert.equal(res.success, true, JSON.stringify(res));
+  if (res.success && res.data.type === "entrance_map") {
+    // Confirm no entrance ended up with a position — the renderer uses the
+    // absence of positions to trigger its auto-layout ring fallback.
+    const anyPositioned = res.data.entrances.some((e) => Boolean(e.position));
+    assert.equal(
+      anyPositioned,
+      false,
+      "legacy spec should have no positions so the renderer auto-distributes",
+    );
+  }
+});
+
 /* ---------------- floor_plan_flow ---------------- */
 
 test("floor_plan_flow accepts a start..end ordered spec", () => {

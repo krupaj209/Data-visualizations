@@ -268,6 +268,70 @@ export const colosseum: CuratedCe = {
       } as Record<string, unknown>,
     },
     {
+      slug: "entrance-map",
+      question: "Which entrance should I use at the Colosseum?",
+      title: "Three gates around the amphitheatre",
+      subtitle: "Pick the right door for your ticket type",
+      insight:
+        "The Colosseum has three working entrances, all on the north / west side facing the Metro stop. Pre-booked individual visitors should head to Sperone Valadier on the west — Group Gate and Stern Gate are reserved for organised tours.",
+      chart_type: "entrance_map",
+      spec: {
+        type: "entrance_map",
+        venue_label: "Colosseum",
+        intro_phrase: "3 entrances · west, north, north-east",
+        entrances: [
+          {
+            name: "Sperone Valadier",
+            status: "recommended",
+            position: "w",
+            wait_label: "10–20 min",
+            best_for: ["individuals", "skip-the-line tickets"],
+            transport: { mode: "metro", label: "Metro B · Colosseo (3 min walk)" },
+            note: "Main visitor entrance on the west side, facing Via di San Gregorio.",
+          },
+          {
+            name: "Group Gate",
+            status: "groups",
+            position: "n",
+            wait_label: "Tour-led",
+            best_for: ["organised groups", "guided tours"],
+            transport: { mode: "metro", label: "Metro B · Colosseo (2 min walk)" },
+            note: "Reserved for tour operators — individuals are turned away here.",
+          },
+          {
+            name: "Stern Gate",
+            status: "groups",
+            position: "ne",
+            wait_label: "Tour-led",
+            best_for: ["school groups"],
+            transport: { mode: "bus", label: "Bus 75/87 · Via Labicana" },
+            note: "Facing Via Labicana on the north-east; school and pre-booked group lanes only.",
+          },
+        ],
+        assembly_point: {
+          label: "Tour meeting point · Arco di Costantino",
+          position: "sw",
+        },
+        callout:
+          "The Colosseum has three entrances on its northern half — Sperone Valadier on the west for individual ticket-holders, Group Gate on the north for organised groups, and Stern Gate on the north-east facing Via Labicana. All three are a 2–3 minute walk from Metro B Colosseo.",
+      },
+      provenance: {
+        status: "curated",
+        web_sources: [
+          {
+            url: "https://parcocolosseo.it/en/visit/the-entrances/",
+            title: "Parco archeologico del Colosseo — Entrances",
+          },
+        ],
+        estimates: [
+          {
+            field: "entrances[].wait_label",
+            note: "Coarse wait windows synthesised from visitor reports — Sperone Valadier averages 10–20 min for pre-booked timed entry; the two group gates are tour-led with no individual queue.",
+          },
+        ],
+      } as Record<string, unknown>,
+    },
+    {
       slug: "time-budget",
       question: "How long should I budget for the Colosseum visit?",
       title: "Budgeting your time",

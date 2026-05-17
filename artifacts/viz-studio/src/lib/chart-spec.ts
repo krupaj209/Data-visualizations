@@ -806,9 +806,31 @@ export type EntranceStatus =
   | "closed"
   | "standard";
 
+export type CompassPosition =
+  | "n"
+  | "ne"
+  | "e"
+  | "se"
+  | "s"
+  | "sw"
+  | "w"
+  | "nw";
+
+export type TransportMode =
+  | "metro"
+  | "bus"
+  | "tram"
+  | "train"
+  | "walk"
+  | "parking"
+  | "taxi"
+  | "ferry";
+
 export interface EntranceMapSpec {
   type: "entrance_map";
   venue_label?: string;
+  /** Short positional summary line, e.g. "3 entrances · west, north, north-east". */
+  intro_phrase?: string;
   entrances: {
     name: string;
     status: EntranceStatus;
@@ -816,7 +838,15 @@ export interface EntranceMapSpec {
     best_for?: string[];
     accent?: AccentKey;
     note?: string;
+    /** Compass direction relative to the venue silhouette (north = top). */
+    position?: CompassPosition;
+    /** Nearest transport stop / parking. */
+    transport?: { mode: TransportMode; label: string };
   }[];
+  /** Optional dashed walking routes between entrances (referenced by name). */
+  walking_routes?: { from: string; to: string; minutes?: number }[];
+  /** Optional guided-tour assembly / meeting point. */
+  assembly_point?: { label: string; position: CompassPosition };
   callout?: string;
 }
 
