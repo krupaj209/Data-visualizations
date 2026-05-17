@@ -9,6 +9,7 @@
   "exclude": [
     "src/smoke-chart-spec.mts",
     "src/test-editorial-verdict.mts",
-    "src/test-cruise-timing-floor.mts"
+    "src/test-cruise-timing-floor.mts",
+    "src/test-page-type-specs.mts"
   ]
 }

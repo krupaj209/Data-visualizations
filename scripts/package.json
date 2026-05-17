@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "smoke-chart-spec": "tsx ./src/smoke-chart-spec.mts",
     "test-editorial-verdict": "tsx ./src/test-editorial-verdict.mts",
+    "test-page-type-specs": "tsx ./src/test-page-type-specs.mts",
     "test-cruise-timing-floor": "tsx ./src/test-cruise-timing-floor.mts",
     "reset-dev-db-to-curated": "tsx ./src/reset-dev-db-to-curated.mts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

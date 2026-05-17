@@ -1311,6 +1311,227 @@ export const seasonWeatherFitSpec = z.object({
 });
 
 
+/* ========================================================================== */
+/* Task #92 page-type chart specs                                              */
+/* ========================================================================== */
+
+/**
+ * `entrance_map` — list of named entrances at a CE with a status badge,
+ * who each one is for, and an optional wait-time hint. Designed for venues
+ * with multiple gates where the visitor's decision is "which door?".
+ */
+const entranceStatusEnum = z.enum([
+  "recommended",
+  "avoid",
+  "groups",
+  "accessible",
+  "closed",
+  "standard",
+]);
+
+export const entranceMapSpec = z.object({
+  type: z.literal("entrance_map"),
+  venue_label: z.string().max(60).optional(),
+  entrances: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        status: entranceStatusEnum,
+        wait_label: z.string().max(40).optional(),
+        best_for: z.array(z.string().max(40)).max(4).optional(),
+        accent: accentEnum.optional(),
+        note: z.string().max(160).optional(),
+      }),
+    )
+    .min(2)
+    .max(6),
+  callout: z.string().max(200).optional(),
+});
+
+/**
+ * `floor_plan_flow` — recommended order of floors / rooms / wings inside a
+ * single venue, with per-stop dwell minutes. Distinct from `itinerary_flow`
+ * (city-scale tour) and from `daily_programme` (timed events). FIRST stop
+ * must be `start`, LAST must be `end`.
+ */
+export const floorPlanFlowSpec = z.object({
+  type: z.literal("floor_plan_flow"),
+  start_label: z.string().max(60).optional(),
+  total_min: z.number().int().min(15).max(720).optional(),
+  stops: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        level: z.string().max(40).optional(),
+        kind: z.enum(["start", "highlight", "stop", "end"]),
+        dwell_min: z.number().int().min(0).max(360).optional(),
+        accent: accentEnum.optional(),
+        note: z.string().max(140).optional(),
+      }),
+    )
+    .min(3)
+    .max(10),
+  callout: z.string().max(200).optional(),
+});
+
+/**
+ * `rules_checklist` — what's allowed / restricted / prohibited at a CE.
+ * Each item carries a category so the renderer can group them (security,
+ * dress code, behavior, items, photography, food). Use ONLY when grounded
+ * from the official site or first-party security/dress policy.
+ */
+const rulesSeverityEnum = z.enum([
+  "allowed",
+  "restricted",
+  "prohibited",
+  "required",
+]);
+const rulesCategoryEnum = z.enum([
+  "items",
+  "dress",
+  "behavior",
+  "security",
+  "photography",
+  "food",
+  "other",
+]);
+
+export const rulesChecklistSpec = z.object({
+  type: z.literal("rules_checklist"),
+  headline: z.string().max(80).optional(),
+  items: z
+    .array(
+      z.object({
+        label: z.string().max(80),
+        severity: rulesSeverityEnum,
+        category: rulesCategoryEnum,
+        note: z.string().max(140).optional(),
+      }),
+    )
+    .min(4)
+    .max(12),
+  source_note: z.string().max(200).optional(),
+});
+
+/**
+ * `transit_options` — how to get to a CE from a common origin (city centre,
+ * nearest airport). Each option has a mode, time range, optional cost +
+ * frequency labels, and an optional final-leg walking minutes.
+ */
+const transitModeEnum = z.enum([
+  "metro",
+  "bus",
+  "tram",
+  "train",
+  "walk",
+  "taxi",
+  "car",
+  "ferry",
+  "shuttle",
+]);
+
+export const transitOptionsSpec = z.object({
+  type: z.literal("transit_options"),
+  origin_label: z.string().max(60).optional(),
+  destination_label: z.string().max(60).optional(),
+  options: z
+    .array(
+      z.object({
+        mode: transitModeEnum,
+        label: z.string().max(60),
+        minutes_min: z.number().int().min(0).max(720),
+        minutes_max: z.number().int().min(0).max(720),
+        cost_label: z.string().max(40).optional(),
+        frequency_label: z.string().max(60).optional(),
+        walk_min: z.number().int().min(0).max(60).optional(),
+        accent: accentEnum.optional(),
+        recommended: z.boolean().optional(),
+        note: z.string().max(160).optional(),
+      }),
+    )
+    .min(2)
+    .max(6),
+  callout: z.string().max(200).optional(),
+});
+
+/**
+ * `time_value_matrix` — small set of "trip scenarios" (e.g. Half-day basic,
+ * Full-day skip-the-line, Two-day deep dive) scored on 3-6 dimensions
+ * (e.g. coverage, queue savings, cost-per-hour, kid-friendliness). The
+ * summary must point to one scenario id as `best_value_scenario`.
+ */
+export const timeValueMatrixSpec = z.object({
+  type: z.literal("time_value_matrix"),
+  currency: z.string().min(1).max(8).optional(),
+  scenarios: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        label: z.string().max(60),
+        accent: accentEnum,
+        time_label: z.string().max(40).optional(),
+        price_label: z.string().max(40).optional(),
+        note: z.string().max(140).optional(),
+      }),
+    )
+    .min(2)
+    .max(5),
+  dimensions: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        scores: z.array(z.number().int().min(0).max(100)).min(2).max(5),
+        note: z.string().max(120).optional(),
+      }),
+    )
+    .min(3)
+    .max(6),
+  summary: z.object({
+    best_value_scenario: z.string().min(1).max(40),
+    headline: z.string().max(160).optional(),
+  }),
+  insight: z.string().max(200).optional(),
+});
+
+/**
+ * `accessibility_guide` — discrete accessibility features at a CE with an
+ * availability status (full / partial / none / on_request) and a category.
+ * Used on the Plan-Your-Visit page. Must be grounded from the official
+ * accessibility page; drop the chart if grounding is thin.
+ */
+const accessAvailabilityEnum = z.enum([
+  "full",
+  "partial",
+  "none",
+  "on_request",
+]);
+const accessCategoryEnum = z.enum([
+  "mobility",
+  "sensory",
+  "cognitive",
+  "services",
+  "facilities",
+]);
+
+export const accessibilityGuideSpec = z.object({
+  type: z.literal("accessibility_guide"),
+  headline: z.string().max(80).optional(),
+  features: z
+    .array(
+      z.object({
+        label: z.string().max(80),
+        category: accessCategoryEnum,
+        availability: accessAvailabilityEnum,
+        detail: z.string().max(160).optional(),
+      }),
+    )
+    .min(4)
+    .max(12),
+  contact: z.string().max(160).optional(),
+  callout: z.string().max(200).optional(),
+});
+
+
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
   hourlyHeatmapSpec,
@@ -1354,6 +1575,12 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   itineraryFlowSpec,
   bestForMatrixSpec,
   seasonWeatherFitSpec,
+  entranceMapSpec,
+  floorPlanFlowSpec,
+  rulesChecklistSpec,
+  transitOptionsSpec,
+  timeValueMatrixSpec,
+  accessibilityGuideSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -1764,6 +1991,63 @@ export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
         });
       }
     });
+  } else if (val.type === "floor_plan_flow") {
+    if (val.stops[0]?.kind !== "start") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "stops[0].kind must be 'start'",
+        path: ["stops", 0, "kind"],
+      });
+    }
+    if (val.stops[val.stops.length - 1]?.kind !== "end") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "last stop must have kind='end'",
+        path: ["stops", val.stops.length - 1, "kind"],
+      });
+    }
+  } else if (val.type === "transit_options") {
+    val.options.forEach((o, i) => {
+      if (o.minutes_min > o.minutes_max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `options[${i}].minutes_min must be ≤ minutes_max`,
+          path: ["options", i, "minutes_min"],
+        });
+      }
+    });
+    if (val.options.filter((o) => o.recommended).length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At most one transit option may be recommended",
+        path: ["options"],
+      });
+    }
+  } else if (val.type === "time_value_matrix") {
+    const ids = val.scenarios.map((s) => s.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "scenarios[].id must be unique",
+        path: ["scenarios"],
+      });
+    }
+    if (!ids.includes(val.summary.best_value_scenario)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "summary.best_value_scenario must match one of scenarios[].id",
+        path: ["summary", "best_value_scenario"],
+      });
+    }
+    val.dimensions.forEach((d, i) => {
+      if (d.scores.length !== val.scenarios.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `dimensions[${i}].scores must have one entry per scenario (${val.scenarios.length})`,
+          path: ["dimensions", i, "scores"],
+        });
+      }
+    });
   } else if (val.type === "season_weather_fit") {
     if (new Set(val.months.map((m) => m.month)).size !== 12) {
       ctx.addIssue({
@@ -1862,4 +2146,10 @@ export const CHART_TYPES = [
   "itinerary_flow",
   "best_for_matrix",
   "season_weather_fit",
+  "entrance_map",
+  "floor_plan_flow",
+  "rules_checklist",
+  "transit_options",
+  "time_value_matrix",
+  "accessibility_guide",
 ] as const;

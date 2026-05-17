@@ -682,6 +682,128 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     interactive: true,
     implemented: true,
   },
+
+  /* ---------------- Task #92 page-type charts ---------------- */
+  entrance_map: {
+    id: "entrance_map",
+    label: "Entrance map",
+    answers:
+      "Which entrance / gate should I head to for the shortest queue or my ticket type?",
+    data_shape: [
+      "2-6 named entrances each with a status badge (recommended, avoid, groups, accessible, closed, standard)",
+      "Optional wait label, best-for tags, and a note per entrance",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "religious_sites",
+      "theme_parks",
+      "observation_decks",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  floor_plan_flow: {
+    id: "floor_plan_flow",
+    label: "Floor plan flow",
+    answers:
+      "Which order should I visit the floors / wings / rooms inside the venue?",
+    data_shape: [
+      "3-10 ordered stops with kind (start, highlight, stop, end) and optional dwell minutes",
+      "First stop must be 'start' and last must be 'end'",
+    ],
+    typical_subcategories: [
+      "museums",
+      "landmarks",
+      "religious_sites",
+      "observation_decks",
+      "aquariums",
+      "zoos",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  rules_checklist: {
+    id: "rules_checklist",
+    label: "Rules checklist",
+    answers:
+      "What's allowed, restricted, or prohibited at the venue (bags, dress code, photography, food)?",
+    data_shape: [
+      "4-12 rule items, each with severity (allowed | restricted | prohibited | required) and a category",
+      "Optional source_note crediting the official policy page",
+    ],
+    typical_subcategories: [
+      "religious_sites",
+      "museums",
+      "landmarks",
+      "theme_parks",
+      "water_parks",
+      "live_sports",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  transit_options: {
+    id: "transit_options",
+    label: "Transit options",
+    answers:
+      "How do I get to the venue from the city centre or airport — by which mode, in how many minutes, at what cost?",
+    data_shape: [
+      "2-6 transit options each with mode, minutes_min..minutes_max range, optional cost and frequency labels",
+      "At most one option may be marked recommended",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "theme_parks",
+      "water_parks",
+      "observation_decks",
+      "airport_transfers",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  time_value_matrix: {
+    id: "time_value_matrix",
+    label: "Time-value matrix",
+    answers:
+      "Which trip scenario (half-day basic vs full-day skip-the-line vs multi-day deep-dive) gives the best value for my time budget?",
+    data_shape: [
+      "2-5 named scenarios each with a stable id, time_label, price_label, and accent",
+      "3-6 scoring dimensions, each with exactly one 0-100 score per scenario",
+      "summary.best_value_scenario must match one of scenarios[].id",
+    ],
+    typical_subcategories: [
+      "landmarks",
+      "museums",
+      "theme_parks",
+      "city_cards",
+      "observation_decks",
+      "hop_on_hop_off",
+    ],
+    interactive: false,
+    implemented: true,
+  },
+  accessibility_guide: {
+    id: "accessibility_guide",
+    label: "Accessibility guide",
+    answers:
+      "Which accessibility features (wheelchair access, elevators, audio guides, sensory aids) are available, and to what extent?",
+    data_shape: [
+      "4-12 named features each with category (mobility | sensory | cognitive | services | facilities) and availability (full | partial | none | on_request)",
+      "Optional contact line for accessibility services",
+    ],
+    typical_subcategories: [
+      "museums",
+      "landmarks",
+      "religious_sites",
+      "theme_parks",
+      "observation_decks",
+      "aquariums",
+    ],
+    interactive: false,
+    implemented: true,
+  },
 };
 
 export const CHART_ARCHETYPE_IDS = Object.keys(

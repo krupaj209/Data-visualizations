@@ -194,6 +194,42 @@ test("dedupes buckets between reason and data_shape", () => {
   assert.equal(new Set(buckets).size, buckets.length, "no dupes");
 });
 
+test("rejection mentioning dress code derives rules_items bucket", () => {
+  const out = deriveMissingEvidenceQueries({
+    ceName: "St Peter's Basilica",
+    rejectionReason: "No official dress code or prohibited-items policy in DRD",
+    question: "What's allowed inside?",
+  });
+  assert.ok(
+    out.some((b) => b.bucket === "rules_items"),
+    "expected rules_items bucket",
+  );
+});
+
+test("rejection mentioning wheelchair derives accessibility bucket", () => {
+  const out = deriveMissingEvidenceQueries({
+    ceName: "Louvre",
+    rejectionReason: "No wheelchair or step-free access information found",
+    question: "Is it accessible?",
+  });
+  assert.ok(
+    out.some((b) => b.bucket === "accessibility"),
+    "expected accessibility bucket",
+  );
+});
+
+test("rejection mentioning metro derives transit_access bucket", () => {
+  const out = deriveMissingEvidenceQueries({
+    ceName: "Colosseum",
+    rejectionReason: "No metro line or nearest stop directions in DRD",
+    question: "How do I get there?",
+  });
+  assert.ok(
+    out.some((b) => b.bucket === "transit_access"),
+    "expected transit_access bucket",
+  );
+});
+
 test("respects an explicit cap=1", () => {
   const out = deriveMissingEvidenceQueries({
     ceName: "X",

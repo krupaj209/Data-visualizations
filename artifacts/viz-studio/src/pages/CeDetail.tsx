@@ -107,6 +107,12 @@ const CHART_FRAME: Record<
   itinerary_flow: { aspectRatio: "16 / 9", minHeight: 340, maxHeight: 500 },
   best_for_matrix: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
   season_weather_fit: { aspectRatio: "12 / 5", minHeight: 280, maxHeight: 380 },
+  entrance_map: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 400 },
+  floor_plan_flow: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 440 },
+  rules_checklist: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 460 },
+  transit_options: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 400 },
+  time_value_matrix: { aspectRatio: "16 / 9", minHeight: 320, maxHeight: 460 },
+  accessibility_guide: { aspectRatio: "16 / 9", minHeight: 300, maxHeight: 460 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,

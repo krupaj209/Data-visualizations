@@ -313,6 +313,26 @@ export function ChartRenderer({
           compact={compact}
         />
       );
+    case "entrance_map":
+    case "floor_plan_flow":
+    case "rules_checklist":
+    case "transit_options":
+    case "time_value_matrix":
+    case "accessibility_guide":
+      return (
+        <div
+          className="h-full w-full flex items-center justify-center text-sm"
+          style={{
+            background: BRAND.slate100,
+            borderRadius: 24,
+            color: BRAND.slate700,
+          }}
+        >
+          <span>
+            {spec.type} renderer coming soon
+          </span>
+        </div>
+      );
     default: {
       const exhaustive: never = spec;
       void exhaustive;

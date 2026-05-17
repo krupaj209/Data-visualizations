@@ -424,6 +424,23 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       notes:
         "Prefer for historically rich monuments. Needs 5-9 dated turning points; skip thin one-date histories.",
     }),
+    sig({
+      question: "Which entrance should I head to?",
+      recommended_archetype: "entrance_map",
+      skip_if: { type: "no_data_signal", signal: "named_entrances_by_status" },
+      notes:
+        "Use for monuments with multiple named gates whose status materially differs (group lane, accessible gate, ticket-holder gate).",
+    }),
+    sig({
+      question: "How do I get to the venue?",
+      recommended_archetype: "transit_options",
+      skip_if: { type: "no_data_signal", signal: "transit_options_from_centre" },
+    }),
+    sig({
+      question: "Which trip plan is the best value for my time?",
+      recommended_archetype: "time_value_matrix",
+      skip_if: { type: "no_data_signal", signal: "trip_scenario_pricing" },
+    }),
   ],
   museums: [
     sig({
@@ -448,6 +465,26 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       question: "What are the collection's biggest turning points?",
       recommended_archetype: "history_timeline",
       skip_if: { type: "no_data_signal", signal: "collection_history_dates" },
+    }),
+    sig({
+      question: "Which entrance should I head to?",
+      recommended_archetype: "entrance_map",
+      skip_if: { type: "no_data_signal", signal: "named_entrances_by_status" },
+    }),
+    sig({
+      question: "Which order should I walk through the wings?",
+      recommended_archetype: "floor_plan_flow",
+      skip_if: { type: "no_data_signal", signal: "recommended_room_order" },
+    }),
+    sig({
+      question: "What are the bag, photography, and security rules?",
+      recommended_archetype: "rules_checklist",
+      skip_if: { type: "no_data_signal", signal: "official_visitor_rules" },
+    }),
+    sig({
+      question: "How accessible is the venue for my needs?",
+      recommended_archetype: "accessibility_guide",
+      skip_if: { type: "no_data_signal", signal: "accessibility_features" },
     }),
   ],
   theme_parks: [
@@ -481,6 +518,16 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       question: "Which upcoming dates look easiest to visit?",
       recommended_archetype: "month_calendar",
       skip_if: { type: "no_data_signal", signal: "day_level_crowd_index" },
+    }),
+    sig({
+      question: "What are the bag and security rules?",
+      recommended_archetype: "rules_checklist",
+      skip_if: { type: "no_data_signal", signal: "official_visitor_rules" },
+    }),
+    sig({
+      question: "How do I get to the park from the city?",
+      recommended_archetype: "transit_options",
+      skip_if: { type: "no_data_signal", signal: "transit_options_from_centre" },
     }),
   ],
   water_parks: [
@@ -550,6 +597,16 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "optimal_departure",
       skip_if: { type: "no_data_signal", signal: "light_visibility_by_slot" },
     }),
+    sig({
+      question: "How do I get to the tower?",
+      recommended_archetype: "transit_options",
+      skip_if: { type: "no_data_signal", signal: "transit_options_from_centre" },
+    }),
+    sig({
+      question: "Which visit plan is the best value for my time?",
+      recommended_archetype: "time_value_matrix",
+      skip_if: { type: "no_data_signal", signal: "trip_scenario_pricing" },
+    }),
   ],
   city_cards: [
     sig({
@@ -571,6 +628,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       recommended_archetype: "slot_compare",
       skip_if: { type: "no_data_signal", signal: "validity_window_use_cases" },
     }),
+    sig({
+      question: "Which card tier is the best value for my time?",
+      recommended_archetype: "time_value_matrix",
+      skip_if: { type: "no_data_signal", signal: "card_tier_value_scenarios" },
+    }),
   ],
   religious_sites: [
     sig({
@@ -587,6 +649,18 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       question: "What are the site's major historical moments?",
       recommended_archetype: "history_timeline",
       skip_if: { type: "no_data_signal", signal: "religious_site_history_dates" },
+    }),
+    sig({
+      question: "What's the dress code and what's prohibited inside?",
+      recommended_archetype: "rules_checklist",
+      skip_if: { type: "no_data_signal", signal: "official_visitor_rules" },
+      notes:
+        "High-priority signature for religious sites — dress code + bag/photo rules are the most-asked plan-your-visit question.",
+    }),
+    sig({
+      question: "How accessible is the site for my needs?",
+      recommended_archetype: "accessibility_guide",
+      skip_if: { type: "no_data_signal", signal: "accessibility_features" },
     }),
   ],
   immersive_experiences: [
@@ -646,6 +720,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       question: "Which route loop fits my day?",
       recommended_archetype: "landmark_coverage",
       skip_if: { type: "no_data_signal", signal: "loop_time_per_route" },
+    }),
+    sig({
+      question: "Which pass duration is the best value for my time?",
+      recommended_archetype: "time_value_matrix",
+      skip_if: { type: "no_data_signal", signal: "pass_duration_value_scenarios" },
     }),
   ],
   walking_tours: [
@@ -1319,6 +1398,11 @@ const RAW_BANK: Partial<Record<SubcategoryId, BankQuestion[]>> = {
       question: "Private or shared transfer — what changes?",
       recommended_archetype: "slot_compare",
       skip_if: { type: "no_data_signal", signal: "time_and_price_per_type" },
+    }),
+    sig({
+      question: "Which transfer mode is fastest and cheapest from the airport?",
+      recommended_archetype: "transit_options",
+      skip_if: { type: "no_data_signal", signal: "transit_options_from_airport" },
     }),
   ],
   train_tickets: [

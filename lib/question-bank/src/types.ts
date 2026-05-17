@@ -53,7 +53,14 @@ export type ChartArchetypeId =
   // Curated florence-cluster chart-spec types now exposed to the planner
   // (Task #80: needed so the cruise/category-CE timing floor can pick a
   // single-day crowd curve when no full hourly grid is grounded).
-  | "daily_pattern";
+  | "daily_pattern"
+  // Task #92 page-type charts (Entrances / Plan-Your-Visit)
+  | "entrance_map"
+  | "floor_plan_flow"
+  | "rules_checklist"
+  | "transit_options"
+  | "time_value_matrix"
+  | "accessibility_guide";
 
 export interface ChartArchetype {
   id: ChartArchetypeId;

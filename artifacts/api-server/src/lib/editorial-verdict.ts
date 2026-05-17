@@ -252,6 +252,33 @@ const REASON_PATTERNS: {
       query: `${ce} how far in advance book sell out lead time`,
     }),
   },
+  {
+    bucket: "rules_items",
+    pattern:
+      /\b(rule|rules|bag|backpack|security|prohibited|allowed|dress|dress.?code|cover|liquid|tripod|photography)\b/i,
+    describe: (ce) => ({
+      description: `official visitor rules / security / dress-code policy for ${ce} (what's allowed, prohibited, required)`,
+      query: `${ce} official visitor rules dress code bag policy prohibited items`,
+    }),
+  },
+  {
+    bucket: "accessibility",
+    pattern:
+      /\b(accessibility|accessible|wheelchair|step.?free|elevator|lift|disabled|companion|sensory|audio.?guide)\b/i,
+    describe: (ce) => ({
+      description: `official accessibility provisions at ${ce} (wheelchair access, elevators, sensory aids, companion tickets)`,
+      query: `${ce} accessibility wheelchair step-free elevator companion services`,
+    }),
+  },
+  {
+    bucket: "transit_access",
+    pattern:
+      /\b(transit|metro|subway|underground|bus|tram|train|shuttle|ferry|getting.?there|nearest.?stop|how.?to.?get)\b/i,
+    describe: (ce) => ({
+      description: `how to get to ${ce} by public transit (modes, lines, journey time, frequency, cost)`,
+      query: `${ce} how to get there metro bus directions journey time`,
+    }),
+  },
 ];
 
 /**

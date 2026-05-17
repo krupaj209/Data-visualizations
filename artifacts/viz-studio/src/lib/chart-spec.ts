@@ -780,7 +780,152 @@ export type ChartSpec =
   | LandmarkCoverageSpec
   | ItineraryFlowSpec
   | BestForMatrixSpec
-  | SeasonWeatherFitSpec;
+  | SeasonWeatherFitSpec
+  | EntranceMapSpec
+  | FloorPlanFlowSpec
+  | RulesChecklistSpec
+  | TransitOptionsSpec
+  | TimeValueMatrixSpec
+  | AccessibilityGuideSpec;
+
+/* ========================================================================== */
+/* Task #92 page-type chart specs                                              */
+/* ========================================================================== */
+
+export type EntranceStatus =
+  | "recommended"
+  | "avoid"
+  | "groups"
+  | "accessible"
+  | "closed"
+  | "standard";
+
+export interface EntranceMapSpec {
+  type: "entrance_map";
+  venue_label?: string;
+  entrances: {
+    name: string;
+    status: EntranceStatus;
+    wait_label?: string;
+    best_for?: string[];
+    accent?: AccentKey;
+    note?: string;
+  }[];
+  callout?: string;
+}
+
+export interface FloorPlanFlowSpec {
+  type: "floor_plan_flow";
+  start_label?: string;
+  total_min?: number;
+  stops: {
+    name: string;
+    level?: string;
+    kind: "start" | "highlight" | "stop" | "end";
+    dwell_min?: number;
+    accent?: AccentKey;
+    note?: string;
+  }[];
+  callout?: string;
+}
+
+export type RulesSeverity = "allowed" | "restricted" | "prohibited" | "required";
+export type RulesCategory =
+  | "items"
+  | "dress"
+  | "behavior"
+  | "security"
+  | "photography"
+  | "food"
+  | "other";
+
+export interface RulesChecklistSpec {
+  type: "rules_checklist";
+  headline?: string;
+  items: {
+    label: string;
+    severity: RulesSeverity;
+    category: RulesCategory;
+    note?: string;
+  }[];
+  source_note?: string;
+}
+
+export type TransitMode =
+  | "metro"
+  | "bus"
+  | "tram"
+  | "train"
+  | "walk"
+  | "taxi"
+  | "car"
+  | "ferry"
+  | "shuttle";
+
+export interface TransitOptionsSpec {
+  type: "transit_options";
+  origin_label?: string;
+  destination_label?: string;
+  options: {
+    mode: TransitMode;
+    label: string;
+    minutes_min: number;
+    minutes_max: number;
+    cost_label?: string;
+    frequency_label?: string;
+    walk_min?: number;
+    accent?: AccentKey;
+    recommended?: boolean;
+    note?: string;
+  }[];
+  callout?: string;
+}
+
+export interface TimeValueMatrixSpec {
+  type: "time_value_matrix";
+  currency?: string;
+  scenarios: {
+    id: string;
+    label: string;
+    accent: AccentKey;
+    time_label?: string;
+    price_label?: string;
+    note?: string;
+  }[];
+  dimensions: {
+    label: string;
+    /** One 0-100 score per scenario, in scenario order. */
+    scores: number[];
+    note?: string;
+  }[];
+  summary: {
+    /** Must match one of scenarios[].id. */
+    best_value_scenario: string;
+    headline?: string;
+  };
+  insight?: string;
+}
+
+export type AccessAvailability = "full" | "partial" | "none" | "on_request";
+export type AccessCategory =
+  | "mobility"
+  | "sensory"
+  | "cognitive"
+  | "services"
+  | "facilities";
+
+export interface AccessibilityGuideSpec {
+  type: "accessibility_guide";
+  headline?: string;
+  features: {
+    label: string;
+    category: AccessCategory;
+    availability: AccessAvailability;
+    detail?: string;
+  }[];
+  contact?: string;
+  callout?: string;
+}
 
 /* ========================================================================== */
 /* Task #67 v3 promoted archetypes                                             */

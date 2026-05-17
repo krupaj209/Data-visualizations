@@ -46,4 +46,10 @@ export const CHART_TYPE_META: Record<
   itinerary_flow: { label: "Itinerary flow", emoji: "🚶" },
   best_for_matrix: { label: "Best-for matrix", emoji: "🎯" },
   season_weather_fit: { label: "Season & weather fit", emoji: "🌤" },
+  entrance_map: { label: "Entrance map", emoji: "🚪" },
+  floor_plan_flow: { label: "Floor-plan flow", emoji: "🗺" },
+  rules_checklist: { label: "Rules checklist", emoji: "📜" },
+  transit_options: { label: "Transit options", emoji: "🚇" },
+  time_value_matrix: { label: "Time-value matrix", emoji: "⏳" },
+  accessibility_guide: { label: "Accessibility guide", emoji: "♿" },
 };
