@@ -12,8 +12,11 @@
  */
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
-import type { EditorialOverlay as EditorialOverlayType } from "@workspace/editorial";
+import { Check, Copy, RefreshCw } from "lucide-react";
+import {
+  STALE_THRESHOLD_DAYS,
+  type EditorialOverlay as EditorialOverlayType,
+} from "@workspace/editorial";
 import { BRAND } from "@/lib/brand";
 
 interface Props {
@@ -21,6 +24,24 @@ interface Props {
   /** No-op for now — embeds don't render this component, but kept for
    *  parity with the surrounding chart-rendering API. */
   compact?: boolean;
+}
+
+const DATE_FMT = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+function ageDaysFrom(d: Date): number {
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function relativeAge(days: number): string {
+  if (days <= 1) return "today";
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  if (days < 365) return `${Math.round(days / 30)} months ago`;
+  return `${Math.round(days / 365)} years ago`;
 }
 
 function escapeHtml(s: string): string {
@@ -71,6 +92,10 @@ export function EditorialOverlay({ overlay, compact = false }: Props) {
     typeof overlay.freshness.lastUpdated === "string"
       ? new Date(overlay.freshness.lastUpdated)
       : overlay.freshness.lastUpdated;
+  const ageDays = Number.isNaN(lastUpdated.getTime())
+    ? null
+    : ageDaysFrom(lastUpdated);
+  const isStale = ageDays !== null && ageDays > STALE_THRESHOLD_DAYS;
 
   return (
     <div
@@ -155,17 +180,51 @@ export function EditorialOverlay({ overlay, compact = false }: Props) {
       </div>
 
       <div
-        className="flex items-center gap-1.5"
+        className="flex items-center gap-2 flex-wrap"
         style={{
           fontSize: 10,
-          color: BRAND.slate500,
+          color: isStale ? "#A65A00" : BRAND.slate500,
           fontWeight: 600,
         }}
       >
-        <span aria-hidden>🕐</span>
-        <span>
-          Updated {lastUpdated.toLocaleDateString()} · {overlay.freshness.updateFrequency} refresh
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden>🕐</span>
+          <span>
+            {ageDays === null ? (
+              <>Update date unknown · {overlay.freshness.updateFrequency} refresh</>
+            ) : (
+              <>
+                Updated {DATE_FMT.format(lastUpdated)}{" "}
+                <span style={{ color: BRAND.slate500, fontWeight: 500 }}>
+                  ({relativeAge(ageDays)})
+                </span>
+              </>
+            )}
+          </span>
         </span>
+        {isStale && (
+          <span
+            title={`This chart was last regenerated ${ageDays} days ago. The underlying research may be out of date — consider running Regenerate.`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: "#FFF4DD",
+              color: "#A65A00",
+              border: "1px solid #F2C879",
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <RefreshCw size={10} aria-hidden />
+            Refresh suggested
+          </span>
+        )}
       </div>
     </div>
   );

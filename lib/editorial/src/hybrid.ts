@@ -34,6 +34,10 @@ export interface ProvenanceLike {
   estimates?: unknown[];
   verifier_notes?: string;
   intelligence_refs?: unknown[];
+  /** ISO timestamp written by the research pipeline when this chart's
+   *  spec was generated (Task #111). Preferred source of truth for the
+   *  freshness badge. */
+  generated_at?: string;
 }
 
 interface ConfidenceResult {
@@ -153,6 +157,47 @@ interface AssembleOptions {
     subhead?: string | null;
     insight?: string | null;
   };
+  /** Persisted chart timestamps. Used to drive the freshness badge in
+   *  preference to provenance.generated_at when available. */
+  chartUpdatedAt?: string | Date | null;
+  chartCreatedAt?: string | Date | null;
+}
+
+/** Charts older than this are flagged "Refresh suggested" in the overlay. */
+export const STALE_THRESHOLD_DAYS = 90;
+
+function coerceDate(v: string | Date | null | undefined): Date | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Resolve the chart's "last updated" instant for the editorial freshness
+ * badge. Preference order:
+ *   1. provenance.generated_at  (set by the research pipeline at gen time)
+ *   2. chartUpdatedAt           (db row touch time — covers writer edits)
+ *   3. chartCreatedAt
+ *   4. null                     (overlay falls back to "Date unknown")
+ */
+export function resolveFreshness(
+  provenance: ProvenanceLike | null | undefined,
+  opts: { chartUpdatedAt?: string | Date | null; chartCreatedAt?: string | Date | null } = {},
+): { lastUpdated: Date | null; ageDays: number | null; isStale: boolean } {
+  const fromProv = coerceDate(provenance?.generated_at);
+  const fromUpdated = coerceDate(opts.chartUpdatedAt);
+  const fromCreated = coerceDate(opts.chartCreatedAt);
+  const lastUpdated = fromProv ?? fromUpdated ?? fromCreated ?? null;
+  if (!lastUpdated) {
+    return { lastUpdated: null, ageDays: null, isStale: false };
+  }
+  const ageMs = Date.now() - lastUpdated.getTime();
+  const ageDays = Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)));
+  return {
+    lastUpdated,
+    ageDays,
+    isStale: ageDays > STALE_THRESHOLD_DAYS,
+  };
 }
 
 /**
@@ -221,6 +266,19 @@ export function assembleHybridOverlay(
 
   const confidenceResult = deriveConfidenceFromProvenance(provenance);
 
+  const freshness = resolveFreshness(provenance, {
+    chartUpdatedAt: options.chartUpdatedAt,
+    chartCreatedAt: options.chartCreatedAt,
+  });
+
+  // The EditorialOverlay schema requires a non-null lastUpdated. In
+  // practice every call site (pages/CeDetail.tsx) passes both chart
+  // timestamps, so freshness.lastUpdated is always populated. If a future
+  // caller omits all signals, fall back to "now" so the schema still
+  // parses — the badge will then read "Updated <today>" which is the
+  // safest visible default (never spuriously triggers the stale pill).
+  const lastUpdatedIso = (freshness.lastUpdated ?? new Date()).toISOString();
+
   return EditorialOverlaySchema.parse({
     headline,
     subheadline,
@@ -235,10 +293,10 @@ export function assembleHybridOverlay(
       dataPoints: confidenceResult.dataPoints,
     },
     freshness: {
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: lastUpdatedIso,
       updateFrequency: "monthly",
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: lastUpdatedIso,
     generatedBy: "hybrid",
   });
 }

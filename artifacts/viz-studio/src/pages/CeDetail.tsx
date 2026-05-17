@@ -856,6 +856,8 @@ function ChartRow({
           subhead: chart.overlaySubhead ?? null,
           insight: chart.overlayInsight ?? null,
         },
+        chartUpdatedAt: chart.updatedAt,
+        chartCreatedAt: chart.createdAt,
       },
     );
   }, [
@@ -867,6 +869,8 @@ function ChartRow({
     chart.overlayHeadline,
     chart.overlaySubhead,
     chart.overlayInsight,
+    chart.updatedAt,
+    chart.createdAt,
     ceName,
   ]);
   const status = chart.status ?? "published";
@@ -2789,6 +2793,8 @@ function ChartEditor({
           subhead: overlaySubhead,
           insight: overlayInsight,
         },
+        chartUpdatedAt: chart.updatedAt,
+        chartCreatedAt: chart.createdAt,
       },
     );
   }, [
@@ -2801,6 +2807,8 @@ function ChartEditor({
     overlayInsight,
     chart.provenance,
     chart.title,
+    chart.updatedAt,
+    chart.createdAt,
   ]);
 
   async function handleSave() {

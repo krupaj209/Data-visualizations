@@ -147,6 +147,13 @@ export interface ChartProvenance {
    * IntelPanel deep-link directly into the override editor.
    */
   override_id?: number;
+  /**
+   * ISO timestamp recorded when the research pipeline generated this
+   * chart's spec + grounding. Used by the editorial overlay to surface
+   * an accurate freshness badge to writers. Optional for back-compat
+   * with legacy rows that predate Task #111.
+   */
+  generated_at?: string;
 }
 
 export interface GeneratedChart {
@@ -241,6 +248,7 @@ export function buildChartProvenance(
     page_type: pageType,
     override_source: sel.override_source,
     ...(sel.override_id !== undefined ? { override_id: sel.override_id } : {}),
+    generated_at: new Date().toISOString(),
   };
 }
 

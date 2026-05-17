@@ -1096,6 +1096,10 @@ export interface ChartProvenanceLite {
   bundle_score?: number;
   triggering_signals?: string[];
   page_type?: string;
+  /** Task #111 — ISO timestamp recorded when the research pipeline
+   *  generated this chart's spec. Surfaced in the editorial overlay
+   *  freshness badge. Optional for legacy rows. */
+  generated_at?: string;
 }
 
 const EVIDENCE_KIND_VALUES: readonly EvidenceKind[] = [

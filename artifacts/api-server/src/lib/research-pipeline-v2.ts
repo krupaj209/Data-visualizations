@@ -370,6 +370,7 @@ export async function runPipelineV2(
             override_source: "code" as const,
             active_category_override_ids: activeOverrideIds.category,
             active_ce_override_ids: activeOverrideIds.ce,
+            generated_at: new Date().toISOString(),
           },
           sortOrder: draftSortBase + insertIndex,
         })
