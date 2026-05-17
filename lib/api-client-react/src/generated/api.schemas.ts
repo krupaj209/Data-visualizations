@@ -55,6 +55,19 @@ export interface Chart {
   lastEditedByWriterAt?: string | null;
   /** Whether interactive affordances render in embeds. Default true. */
   interactive: boolean;
+  /** Writer-edited editorial overlay headline shown on the Studio CE
+detail page. Falls back to spec.title when null. Never read by
+embeds.
+ */
+  overlayHeadline?: string | null;
+  /** Writer-edited editorial overlay subhead. Falls back to
+spec.subtitle when null. Never read by embeds.
+ */
+  overlaySubhead?: string | null;
+  /** Writer-edited editorial overlay key-insight callout copy. Falls
+back to spec.insight when null. Never read by embeds.
+ */
+  overlayInsight?: string | null;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;
@@ -72,6 +85,16 @@ export interface ChartUpdateInput {
   insight?: string;
   spec?: ChartUpdateInputSpec;
   interactive?: boolean;
+  /**
+   * Pass a non-empty string to set, an empty string or null to clear.
+
+   * @maxLength 160
+   */
+  overlayHeadline?: string | null;
+  /** @maxLength 240 */
+  overlaySubhead?: string | null;
+  /** @maxLength 500 */
+  overlayInsight?: string | null;
   writerId?: string;
 }
 

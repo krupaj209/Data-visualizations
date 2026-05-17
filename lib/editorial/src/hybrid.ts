@@ -142,6 +142,17 @@ interface ChartSpecLike {
 interface AssembleOptions {
   pageType?: string;
   archetype?: string;
+  /**
+   * Writer-editable overlay copy persisted on the chart row. When any of
+   * these are non-empty strings they win over the chart spec's
+   * title/subtitle/insight on the Studio CE detail page. Embeds never
+   * read these — they continue to render straight from the chart spec.
+   */
+  overlay?: {
+    headline?: string | null;
+    subhead?: string | null;
+    insight?: string | null;
+  };
 }
 
 /**
@@ -171,23 +182,39 @@ export function assembleHybridOverlay(
     ceData: { name: ceName },
   });
 
+  const overlay = options.overlay ?? {};
+  const overlayHeadline =
+    typeof overlay.headline === "string" && overlay.headline.trim()
+      ? overlay.headline.trim()
+      : undefined;
+  const overlaySubhead =
+    typeof overlay.subhead === "string" && overlay.subhead.trim()
+      ? overlay.subhead.trim()
+      : undefined;
+  const overlayInsight =
+    typeof overlay.insight === "string" && overlay.insight.trim()
+      ? overlay.insight.trim()
+      : undefined;
+
   const headline =
+    overlayHeadline ||
     (typeof chartSpec.headline === "string" && chartSpec.headline.trim()) ||
     (typeof chartSpec.title === "string" && chartSpec.title.trim()) ||
     templated.headline;
 
   const subheadline =
+    overlaySubhead ||
     (typeof chartSpec.subtitle === "string" && chartSpec.subtitle.trim()) ||
     templated.subheadline;
 
-  // Field-by-field fallback: prefer spec.insight verbatim; otherwise fall
-  // back to whatever key-insight tip the template engine generated so the
-  // overlay never silently drops the callout for charts that don't carry
-  // their own `insight` string.
+  // Field-by-field fallback: prefer the writer's overlay copy, then the
+  // chart spec's `insight`, then the templated tip so the overlay never
+  // silently drops the callout for charts without their own copy.
   const insightCopy =
-    typeof chartSpec.insight === "string" && chartSpec.insight.trim()
+    overlayInsight ||
+    (typeof chartSpec.insight === "string" && chartSpec.insight.trim()
       ? chartSpec.insight.trim()
-      : undefined;
+      : undefined);
   const tip = insightCopy
     ? { icon: "💡", text: insightCopy, highlight: true as const }
     : templated.tip ?? undefined;

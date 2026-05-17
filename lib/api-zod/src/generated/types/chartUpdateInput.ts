@@ -14,5 +14,15 @@ export interface ChartUpdateInput {
   insight?: string;
   spec?: ChartUpdateInputSpec;
   interactive?: boolean;
+  /**
+   * Pass a non-empty string to set, an empty string or null to clear.
+
+   * @maxLength 160
+   */
+  overlayHeadline?: string | null;
+  /** @maxLength 240 */
+  overlaySubhead?: string | null;
+  /** @maxLength 500 */
+  overlayInsight?: string | null;
   writerId?: string;
 }

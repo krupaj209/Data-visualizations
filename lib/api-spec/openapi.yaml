@@ -1312,6 +1312,25 @@ components:
         interactive:
           type: boolean
           description: Whether interactive affordances render in embeds. Default true.
+        overlayHeadline:
+          type: string
+          nullable: true
+          description: |
+            Writer-edited editorial overlay headline shown on the Studio CE
+            detail page. Falls back to spec.title when null. Never read by
+            embeds.
+        overlaySubhead:
+          type: string
+          nullable: true
+          description: |
+            Writer-edited editorial overlay subhead. Falls back to
+            spec.subtitle when null. Never read by embeds.
+        overlayInsight:
+          type: string
+          nullable: true
+          description: |
+            Writer-edited editorial overlay key-insight callout copy. Falls
+            back to spec.insight when null. Never read by embeds.
         sortOrder:
           type: integer
         openFeedbackCount:
@@ -1356,6 +1375,20 @@ components:
           additionalProperties: true
         interactive:
           type: boolean
+        overlayHeadline:
+          type: string
+          nullable: true
+          maxLength: 160
+          description: |
+            Pass a non-empty string to set, an empty string or null to clear.
+        overlaySubhead:
+          type: string
+          nullable: true
+          maxLength: 240
+        overlayInsight:
+          type: string
+          nullable: true
+          maxLength: 500
         writerId:
           type: string
     ChartFactReviewInput:

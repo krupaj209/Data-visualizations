@@ -23,6 +23,19 @@ export interface Chart {
   lastEditedByWriterAt?: string | null;
   /** Whether interactive affordances render in embeds. Default true. */
   interactive: boolean;
+  /** Writer-edited editorial overlay headline shown on the Studio CE
+detail page. Falls back to spec.title when null. Never read by
+embeds.
+ */
+  overlayHeadline?: string | null;
+  /** Writer-edited editorial overlay subhead. Falls back to
+spec.subtitle when null. Never read by embeds.
+ */
+  overlaySubhead?: string | null;
+  /** Writer-edited editorial overlay key-insight callout copy. Falls
+back to spec.insight when null. Never read by embeds.
+ */
+  overlayInsight?: string | null;
   sortOrder: number;
   openFeedbackCount?: number;
   topFeedbackSeverity?: string | null;

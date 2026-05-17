@@ -1023,6 +1023,24 @@ export const GetCeResponse = zod.object({
         .describe(
           "Whether interactive affordances render in embeds. Default true.",
         ),
+      overlayHeadline: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+        ),
+      overlaySubhead: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+        ),
+      overlayInsight: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+        ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
       topFeedbackSeverity: zod.string().nullish(),
@@ -1112,6 +1130,24 @@ export const RegenerateCeResponse = zod.object({
         .boolean()
         .describe(
           "Whether interactive affordances render in embeds. Default true.",
+        ),
+      overlayHeadline: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+        ),
+      overlaySubhead: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+        ),
+      overlayInsight: zod
+        .string()
+        .nullish()
+        .describe(
+          "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
         ),
       sortOrder: zod.number(),
       openFeedbackCount: zod.number().optional(),
@@ -1477,6 +1513,24 @@ export const GetChartResponse = zod.object({
       .describe(
         "Whether interactive affordances render in embeds. Default true.",
       ),
+    overlayHeadline: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+      ),
+    overlaySubhead: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+      ),
+    overlayInsight: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+      ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
     topFeedbackSeverity: zod.string().nullish(),
@@ -1518,6 +1572,12 @@ export const UpdateChartParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const updateChartBodyOverlayHeadlineMax = 160;
+
+export const updateChartBodyOverlaySubheadMax = 240;
+
+export const updateChartBodyOverlayInsightMax = 500;
+
 export const UpdateChartBody = zod.object({
   question: zod.string().optional(),
   title: zod.string().optional(),
@@ -1525,6 +1585,15 @@ export const UpdateChartBody = zod.object({
   insight: zod.string().optional(),
   spec: zod.record(zod.string(), zod.unknown()).optional(),
   interactive: zod.boolean().optional(),
+  overlayHeadline: zod
+    .string()
+    .max(updateChartBodyOverlayHeadlineMax)
+    .nullish()
+    .describe(
+      "Pass a non-empty string to set, an empty string or null to clear.\n",
+    ),
+  overlaySubhead: zod.string().max(updateChartBodyOverlaySubheadMax).nullish(),
+  overlayInsight: zod.string().max(updateChartBodyOverlayInsightMax).nullish(),
   writerId: zod.string().optional(),
 });
 
@@ -1545,6 +1614,24 @@ export const UpdateChartResponse = zod.object({
     .boolean()
     .describe(
       "Whether interactive affordances render in embeds. Default true.",
+    ),
+  overlayHeadline: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+    ),
+  overlaySubhead: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+    ),
+  overlayInsight: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
     ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
@@ -1608,6 +1695,24 @@ export const RegenerateChartResponse = zod.object({
       .boolean()
       .describe(
         "Whether interactive affordances render in embeds. Default true.",
+      ),
+    overlayHeadline: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+      ),
+    overlaySubhead: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+      ),
+    overlayInsight: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),
@@ -1723,6 +1828,24 @@ export const PublishChartResponse = zod.object({
     .describe(
       "Whether interactive affordances render in embeds. Default true.",
     ),
+  overlayHeadline: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+    ),
+  overlaySubhead: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+    ),
+  overlayInsight: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+    ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
   topFeedbackSeverity: zod.string().nullish(),
@@ -1769,6 +1892,24 @@ export const UpsertChartFactReviewResponse = zod.object({
     .describe(
       "Whether interactive affordances render in embeds. Default true.",
     ),
+  overlayHeadline: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+    ),
+  overlaySubhead: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+    ),
+  overlayInsight: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
+    ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
   topFeedbackSeverity: zod.string().nullish(),
@@ -1802,6 +1943,24 @@ export const ClearChartFactReviewResponse = zod.object({
     .boolean()
     .describe(
       "Whether interactive affordances render in embeds. Default true.",
+    ),
+  overlayHeadline: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+    ),
+  overlaySubhead: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+    ),
+  overlayInsight: zod
+    .string()
+    .nullish()
+    .describe(
+      "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
     ),
   sortOrder: zod.number(),
   openFeedbackCount: zod.number().optional(),
@@ -1864,6 +2023,24 @@ export const ListAllFeedbackResponseItem = zod.object({
       .boolean()
       .describe(
         "Whether interactive affordances render in embeds. Default true.",
+      ),
+    overlayHeadline: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay headline shown on the Studio CE\ndetail page. Falls back to spec.title when null. Never read by\nembeds.\n",
+      ),
+    overlaySubhead: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay subhead. Falls back to\nspec.subtitle when null. Never read by embeds.\n",
+      ),
+    overlayInsight: zod
+      .string()
+      .nullish()
+      .describe(
+        "Writer-edited editorial overlay key-insight callout copy. Falls\nback to spec.insight when null. Never read by embeds.\n",
       ),
     sortOrder: zod.number(),
     openFeedbackCount: zod.number().optional(),

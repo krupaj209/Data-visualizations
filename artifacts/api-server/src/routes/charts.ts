@@ -69,6 +69,9 @@ function serializeChart(chart: Chart) {
       ? chart.lastEditedByWriterAt.toISOString()
       : null,
     interactive: chart.interactive,
+    overlayHeadline: chart.overlayHeadline ?? null,
+    overlaySubhead: chart.overlaySubhead ?? null,
+    overlayInsight: chart.overlayInsight ?? null,
     sortOrder: chart.sortOrder,
     createdAt: chart.createdAt.toISOString(),
     updatedAt: chart.updatedAt.toISOString(),
@@ -127,6 +130,11 @@ const updateBody = z.object({
   insight: z.string().max(400).optional(),
   spec: z.unknown().optional(),
   interactive: z.boolean().optional(),
+  // Editorial overlay copy — independent of spec.title/subtitle/insight.
+  // Pass `null` or `""` to clear, any non-empty string to set.
+  overlayHeadline: z.string().max(160).nullable().optional(),
+  overlaySubhead: z.string().max(240).nullable().optional(),
+  overlayInsight: z.string().max(500).nullable().optional(),
   writerId: z.string().max(120).optional(),
 });
 
@@ -181,6 +189,21 @@ router.patch("/charts/:id", async (req, res): Promise<void> => {
 
   if (parsed.data.interactive !== undefined) {
     update.interactive = parsed.data.interactive;
+  }
+
+  // Overlay copy is independent of spec/title/subtitle/insight. Treat empty
+  // string the same as null (writers clear the field by deleting all text).
+  if (parsed.data.overlayHeadline !== undefined) {
+    const v = parsed.data.overlayHeadline;
+    update.overlayHeadline = v && v.trim() ? v.trim() : null;
+  }
+  if (parsed.data.overlaySubhead !== undefined) {
+    const v = parsed.data.overlaySubhead;
+    update.overlaySubhead = v && v.trim() ? v.trim() : null;
+  }
+  if (parsed.data.overlayInsight !== undefined) {
+    const v = parsed.data.overlayInsight;
+    update.overlayInsight = v && v.trim() ? v.trim() : null;
   }
 
   if (Object.keys(update).length === 0) {

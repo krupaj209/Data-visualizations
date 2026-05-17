@@ -848,7 +848,14 @@ function ChartRow({
       },
       provenance,
       ceName,
-      { pageType: provenance?.page_type ?? "plan-your-visit" },
+      {
+        pageType: provenance?.page_type ?? "plan-your-visit",
+        overlay: {
+          headline: chart.overlayHeadline ?? null,
+          subhead: chart.overlaySubhead ?? null,
+          insight: chart.overlayInsight ?? null,
+        },
+      },
     );
   }, [
     spec,
@@ -856,6 +863,9 @@ function ChartRow({
     chart.subtitle,
     chart.insight,
     chart.provenance,
+    chart.overlayHeadline,
+    chart.overlaySubhead,
+    chart.overlayInsight,
     ceName,
   ]);
   const status = chart.status ?? "published";
@@ -2730,6 +2740,18 @@ function ChartEditor({
   const [title, setTitle] = useState(chart.title);
   const [subtitle, setSubtitle] = useState(chart.subtitle || "");
   const [insight, setInsight] = useState(chart.insight || "");
+  // Editorial overlay copy — independent of the chart spec. Shown only on
+  // the Studio CE detail page; embeds keep reading spec.title / subtitle /
+  // insight.
+  const [overlayHeadline, setOverlayHeadline] = useState(
+    chart.overlayHeadline ?? "",
+  );
+  const [overlaySubhead, setOverlaySubhead] = useState(
+    chart.overlaySubhead ?? "",
+  );
+  const [overlayInsight, setOverlayInsight] = useState(
+    chart.overlayInsight ?? "",
+  );
   const [writerId, setWriterId] = useState("");
   // `interactive` defaults to true on the server, so legacy rows the API
   // serializes without the field still render with affordances on. Writers
@@ -2759,9 +2781,26 @@ function ChartEditor({
       },
       provenance,
       chart.title || "",
-      { pageType: provenance?.page_type ?? "plan-your-visit" },
+      {
+        pageType: provenance?.page_type ?? "plan-your-visit",
+        overlay: {
+          headline: overlayHeadline,
+          subhead: overlaySubhead,
+          insight: overlayInsight,
+        },
+      },
     );
-  }, [spec.type, title, subtitle, insight, chart.provenance, chart.title]);
+  }, [
+    spec.type,
+    title,
+    subtitle,
+    insight,
+    overlayHeadline,
+    overlaySubhead,
+    overlayInsight,
+    chart.provenance,
+    chart.title,
+  ]);
 
   async function handleSave() {
     setError(null);
@@ -2777,6 +2816,10 @@ function ChartEditor({
           spec: spec as unknown as Record<string, unknown>,
           writerId: writerId || undefined,
           interactive,
+          // Send empty strings as null so the API clears the column.
+          overlayHeadline: overlayHeadline.trim() ? overlayHeadline.trim() : null,
+          overlaySubhead: overlaySubhead.trim() ? overlaySubhead.trim() : null,
+          overlayInsight: overlayInsight.trim() ? overlayInsight.trim() : null,
         },
       });
       setSavedAt(Date.now());
@@ -2859,6 +2902,65 @@ function ChartEditor({
             onChange={setInsight}
             multiline
           />
+          <div
+            style={{
+              marginTop: 6,
+              padding: "12px 12px 10px",
+              borderRadius: 12,
+              border: `1px dashed ${BRAND.slate200}`,
+              background: BRAND.slate50,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: BRAND.purps,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Editorial overlay (Studio page only)
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: BRAND.slate500,
+                }}
+              >
+                Leave blank to use the chart title / subtitle / insight.
+                Embeds ignore these.
+              </span>
+            </div>
+            <EditField
+              label="Overlay headline"
+              value={overlayHeadline}
+              onChange={setOverlayHeadline}
+            />
+            <EditField
+              label="Overlay subhead"
+              value={overlaySubhead}
+              onChange={setOverlaySubhead}
+            />
+            <EditField
+              label="Overlay key insight"
+              value={overlayInsight}
+              onChange={setOverlayInsight}
+              multiline
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <EditField
               label="Writer ID / Name"

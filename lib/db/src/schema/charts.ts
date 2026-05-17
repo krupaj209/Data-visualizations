@@ -68,6 +68,15 @@ export const chartsTable = pgTable("charts", {
    * confidence, tip, warning, personalizationNote. Optional for v1 rows.
    */
   editorial: jsonb("editorial").$type<Record<string, unknown> | null>(),
+  /**
+   * Optional writer-editable editorial overlay copy for the Studio CE detail
+   * page. When set, `assembleHybridOverlay` prefers these over the chart
+   * spec's title/subtitle/insight so writers can sharpen page-level wording
+   * without changing what embeds show. Null = fall back to the chart spec.
+   */
+  overlayHeadline: text("overlay_headline"),
+  overlaySubhead: text("overlay_subhead"),
+  overlayInsight: text("overlay_insight"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
