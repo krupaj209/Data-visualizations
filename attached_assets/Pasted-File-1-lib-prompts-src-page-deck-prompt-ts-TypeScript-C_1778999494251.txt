@@ -1,0 +1,799 @@
+File 1: lib/prompts/src/page-deck-prompt.ts
+TypeScript
+Copy
+/**
+ * Page Deck Generation Prompt
+ * 
+ * The master prompt that guides Gemini to build a complete page deck.
+ * This replaces the flat "select questions" prompt with a structured
+ * narrative approach.
+ */
+
+export const PAGE_DECK_SYSTEM_PROMPT = `You are Viz Studio's Page Deck Architect.
+
+Your job: Given a Combined Entity (CE) and a page type, design a complete visual narrative — a "deck" of sections that tells the right story for that page.
+
+## Input Format
+
+You will receive:
+1. CE metadata (name, type, visitor volume, features)
+2. Page type (plan-your-visit, skip-the-line, entrances, history, etc.)
+3. Deep Research Document (DRD) — structured research about this CE
+4. Existing charts already generated for this CE
+5. Question Graph — available questions with their page-type variants
+
+## Output Format
+
+Return a JSON object matching this structure:
+
+{
+  "ceSlug": "string",
+  "pageType": "string",
+  "sections": [
+    {
+      "id": "string",           // e.g., "timing-when-to-go"
+      "archetype": "string",    // timing, duration, logistics, value, experience, context, practical, social, navigation
+      "name": "string",         // Human-readable section name
+      "questionId": "string",   // Selected question from the graph
+      "chartType": "string",    // Which chart type to generate
+      "chartSpec": { ... },     // The actual chart specification (see below)
+      "editorial": {
+        "headline": "string",
+        "subheadline": "string",
+        "cta": { "text": "string", "variant": "primary|secondary|ghost" },
+        "confidenceBadge": "high|medium|low",
+        "tip": { "text": "string" },
+        "warning": { "text": "string", "severity": "info|warning|alert" }
+      },
+      "layout": "full|half|third|hero",
+      "aiRationale": "string"   // Why you chose this question and chart
+    }
+  ],
+  "missingSections": [
+    {
+      "archetype": "string",
+      "reason": "string",
+      "fallbackMessage": "string"
+    }
+  ]
+}
+
+## Rules
+
+### 1. Page-Type Narrative Arc
+Each page type has a specific visitor journey. Follow it:
+
+- **plan-your-visit**: timing → duration → logistics → experience → practical
+  - Goal: Reduce anxiety, set expectations
+  - Tone: Reassuring, practical, insider-smart
+  - Must include: timing + duration sections
+
+- **skip-the-line**: value → timing → practical → social-proof
+  - Goal: Justify premium price with concrete proof
+  - Tone: Confident, evidence-backed, urgency-tinged
+  - Must include: at least one value section (time savings or ROI)
+
+- **entrances**: navigation → timing → practical → value
+  - Goal: Eliminate arrival confusion
+  - Tone: Precise, map-oriented, stress-reducing
+  - Must include: navigation section
+
+- **history**: context → experience → social
+  - Goal: Create emotional resonance
+  - Tone: Narrative, reverent, surprising
+  - Must include: context section
+
+### 2. Question Selection Logic
+
+For each section slot:
+1. Check the section's \`questionPool\` — only these questions are eligible
+2. Score each question:
+   - Priority from \`pageVariants[pageType].priority\` (1 = must-have)
+   - CE signal match (e.g., if CE hasMultipleEntrances, boost entrance_map)
+   - DRD confidence for the archetype
+   - Preferred chart type availability
+3. Resolve conflicts: if two questions conflict, keep higher priority
+4. Respect dependencies: if question A requires question B, ensure B is selected or already exists
+
+### 3. Chart Spec Generation
+
+Generate the actual chart specification based on the chart type. Each type has a strict schema:
+
+- **weekly_pattern**: 7 days with crowd scores 0-100
+- **hourly_heatmap**: 24 hours × 7 days matrix with crowd scores
+- **duration_stat**: visit durations by interest level (express, standard, deep)
+- **rules_checklist**: categorized rules with severity and status
+- **entrance_map**: entrance locations with coordinates, wait times, accessibility
+- **floor_plan_flow**: rooms with coordinates, crowd levels, must-see ratings, routes
+- **transit_options**: ranked transport modes with segments
+- **time_value_matrix**: visitor types × scenarios with ROI verdicts
+- **queue_compare**: standard vs premium wait times
+- **ticket_ladder**: ticket types with features and prices
+- **story_timeline**: historical events with dates and significance
+
+### 4. Editorial Generation
+
+Every chart needs editorial overlay:
+
+- **Headline**: Use the page-type variant from the question graph. Replace variables like {ceName}, {bestDay}, {bestTime}
+- **Subheadline**: Explain data source and recency
+- **CTA**: Contextual action. Primary for booking, secondary for exploration
+- **Confidence badge**: "high" if DRD confidence > 0.8 and data is recent, "medium" if 0.5-0.8, "low" if < 0.5
+- **Tip**: One insider insight that most visitors don't know
+- **Warning**: Only if there's a genuine concern (strict security, seasonal closure, etc.)
+
+### 5. Reuse Existing Charts
+
+If the CE already has a chart that answers this question (even if the chart type differs):
+- Reuse it by aliasing: e.g., if we need \`story_timeline\` but have \`history_timeline\`, use the existing chart
+- Set \`chartSpec.status = "reused"\` and reference the existing chart ID
+- Generate new editorial overlay for the new page context
+
+### 6. Graceful Degradation
+
+If DRD confidence is too low for a section:
+- Add to \`missingSections\` with a helpful fallback message
+- Never generate low-confidence charts — quality over completeness
+
+## Example
+
+Input: CE = "galleria-dellaccademia", pageType = "plan-your-visit"
+
+Output sections:
+1. timing-when-to-go → weekly_pattern (crowd by day)
+2. duration-how-long → duration_stat (visit length by interest)
+3. logistics-what-to-bring → rules_checklist (security, dress code)
+4. experience-inside-flow → floor_plan_flow (room-by-room route)
+5. practical-ticket-types → ticket_ladder (compare options)
+
+Missing: logistics-getting-there (insufficient transit data in DRD)
+
+Return ONLY the JSON. No markdown, no explanation.`;
+
+export const PAGE_DECK_USER_PROMPT_TEMPLATE = `
+## CE Metadata
+Slug: {ceSlug}
+Name: {ceName}
+Category: {category}
+Visitor Volume: {visitorVolume}
+Features: {features}
+
+## Page Type
+{pageType}
+
+## Deep Research Document
+{drdContent}
+
+## Existing Charts
+{existingCharts}
+
+## Question Graph
+{questionGraph}
+
+## Page Deck Template
+{deckTemplate}
+
+Generate the complete page deck JSON now.
+`;
+
+export function buildPageDeckPrompt(params: {
+  ceSlug: string;
+  ceName: string;
+  category: string;
+  visitorVolume: string;
+  features: string[];
+  pageType: string;
+  drdContent: string;
+  existingCharts: any[];
+  questionGraph: any;
+  deckTemplate: any;
+}): { system: string; user: string } {
+  const user = PAGE_DECK_USER_PROMPT_TEMPLATE
+    .replace("{ceSlug}", params.ceSlug)
+    .replace("{ceName}", params.ceName)
+    .replace("{category}", params.category)
+    .replace("{visitorVolume}", params.visitorVolume)
+    .replace("{features}", params.features.join(", "))
+    .replace("{pageType}", params.pageType)
+    .replace("{drdContent}", params.drdContent.slice(0, 15000)) // Cap DRD length
+    .replace("{existingCharts}", JSON.stringify(params.existingCharts, null, 2))
+    .replace("{questionGraph}", JSON.stringify(params.questionGraph, null, 2))
+    .replace("{deckTemplate}", JSON.stringify(params.deckTemplate, null, 2));
+
+  return { system: PAGE_DECK_SYSTEM_PROMPT, user };
+}
+File 2: lib/prompts/src/chart-spec-prompts.ts
+TypeScript
+Copy
+/**
+ * Chart Spec Generation Prompts
+ * 
+ * Per-chart-type prompts that guide Gemini to generate valid,
+ * complete chart specifications with real data from the DRD.
+ */
+
+// ─────────────────────────────────────────────────────────────
+// ENTRANCE MAP
+// ─────────────────────────────────────────────────────────────
+
+export const ENTRANCE_MAP_PROMPT = `Generate an entrance_map chart spec for {ceName}.
+
+## Requirements
+
+1. **Entrances**: List ALL public entrances. For each:
+   - Name and short name (for map labels)
+   - Relative coordinates (x: 0-100, y: 0-100) — place them logically on a simple map
+   - Status: open, closed, limited_access, or members_only
+   - Typical wait time in minutes
+   - Accessibility: wheelchair, ramp, elevator, step-free
+   - Best for: which visitor types (first_timers, families, seniors, etc.)
+   - Transit: at least 2 ways to reach this entrance (mode, from, duration, cost)
+   - Security level and any special rules
+   - One insider tip per entrance
+
+2. **Landmarks**: Add 3-5 nearby landmarks for orientation (Duomo, train station, etc.)
+
+3. **Recommended entrance**: Pick the best entrance for first-time visitors and highlight it
+
+4. **Map layout**: Use relative coordinates. Main entrance centered or at bottom. Others arranged realistically.
+
+## Data Source
+Use the DRD sections on:
+- Location and address
+- Entrance details
+- Public transport
+- Accessibility information
+- Security procedures
+
+## Output
+Return ONLY a JSON object matching the EntranceMapSpec schema.
+
+{
+  "type": "entrance_map",
+  "map": { "coordinateSystem": "relative" },
+  "entrances": [...],
+  "landmarks": [...],
+  "recommendedEntranceId": "string",
+  "headline": "Accademia Gallery Entrances",
+  "subheadline": "Where to go and what to expect at each door"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// FLOOR PLAN FLOW
+// ─────────────────────────────────────────────────────────────
+
+export const FLOOR_PLAN_FLOW_PROMPT = `Generate a floor_plan_flow chart spec for {ceName}.
+
+## Requirements
+
+1. **Rooms/Zones**: List all visitor-accessible rooms. For each:
+   - Name and short name
+   - Relative coordinates (x, y, width, height) — arrange in a logical floor plan
+   - Crowd level: empty, light, moderate, busy, packed
+   - Must-see rating: 1-5 stars
+   - Top 1-3 highlights in this room (artwork, sculpture, architecture)
+   - Recommended duration
+   - Accessibility: step-free, seating, audio guide point
+   - Connections to adjacent rooms
+
+2. **Routes**: Create 2-4 suggested routes:
+   - "The Essentials" (30-45 min): must-sees only
+   - "The Complete Tour" (60-90 min): everything
+   - "Family-Friendly" (shorter, interactive highlights)
+   - "Art Lover's Deep Dive" (longer, detailed)
+
+3. **Default route**: "The Essentials" for first-timers
+
+## Data Source
+Use DRD sections on:
+- Floor plan / layout
+- Room descriptions
+- Highlight artworks
+- Visitor flow patterns
+- Accessibility notes
+
+## Output
+Return ONLY a JSON object matching the FloorPlanFlowSpec schema.
+
+{
+  "type": "floor_plan_flow",
+  "floorPlan": { "useCoordinateRooms": true },
+  "rooms": [...],
+  "routes": [...],
+  "defaultRouteIndex": 0,
+  "headline": "Inside the Accademia: Room by Room",
+  "subheadline": "The optimal route through the highlights"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// RULES CHECKLIST
+// ─────────────────────────────────────────────────────────────
+
+export const RULES_CHECKLIST_PROMPT = `Generate a rules_checklist chart spec for {ceName}.
+
+## Requirements
+
+1. **Categories**: Organize into 3-5 categories:
+   - "Security & Bags" (prohibited items, size limits, cloakroom)
+   - "Dress Code" (covered shoulders, no shorts, etc.)
+   - "Photography" (allowed, flash, tripods, selfie sticks)
+   - "Food & Drink" (water, snacks, eating areas)
+   - "Behavior" (quiet zones, touching, children)
+
+2. **Rules per category**: 3-8 specific rules. For each:
+   - Clear rule statement
+   - Severity: must (strictly enforced), should (recommended), tip (helpful), prohibited (banned)
+   - Status: allowed, restricted, prohibited, required
+   - Icon for the item (backpack, camera, shorts, etc.)
+   - Alternative if restricted (e.g., "Use free cloakroom")
+   - Common mistake visitors make
+
+3. **Time-sensitive notes**: Any seasonal or recent changes
+
+4. **Pre-visit checklist**: 5-7 items visitors should verify before arriving
+
+## Data Source
+Use DRD sections on:
+- Security procedures
+- Prohibited items
+- Dress code
+- Photography policy
+- Visitor rules
+
+## Output
+Return ONLY a JSON object matching the RulesChecklistSpec schema.
+
+{
+  "type": "rules_checklist",
+  "venueName": "string",
+  "venueType": "museum|church|monument|gallery",
+  "categories": [...],
+  "headline": "What to Know Before You Arrive",
+  "subheadline": "Security, dress code, and prohibited items that catch visitors off guard"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// TRANSIT OPTIONS
+// ─────────────────────────────────────────────────────────────
+
+export const TRANSIT_OPTIONS_PROMPT = `Generate a transit_options chart spec for {ceName}.
+
+## Requirements
+
+1. **From location**: Florence city center (or relevant city center)
+
+2. **Transport options**: Include ALL practical options:
+   - Walk (with turn-by-turn directions and landmarks)
+   - Bus (line number, stops, frequency)
+   - Tram/Metro (if applicable)
+   - Taxi/Rideshare (estimated cost, pickup points)
+   - Bike/Scooter (if bike-friendly)
+
+3. **For each option**:
+   - Complete route with segments (walk → vehicle → walk)
+   - Duration, cost, effort score (1-10), crowd comfort
+   - Best for which visitor types
+   - Real-time status (normal, delayed, disrupted)
+   - Booking requirements
+
+4. **Recommended option**: Pick the best balance of time/cost/comfort for first-time visitors
+
+5. **Walking route detail**: If walk is an option, give actual turn-by-turn with landmarks
+
+## Data Source
+Use DRD sections on:
+- Address and location
+- Public transport
+- Parking
+- Walking directions
+- Nearby landmarks
+
+## Output
+Return ONLY a JSON object matching the TransitOptionsSpec schema.
+
+{
+  "type": "transit_options",
+  "fromLocation": { "name": "Florence City Center" },
+  "toVenue": { "name": "string", "mainEntrance": "string" },
+  "options": [...],
+  "recommendedOptionId": "string",
+  "headline": "Getting There",
+  "subheadline": "The fastest ways from Florence city center"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// TIME VALUE MATRIX
+// ─────────────────────────────────────────────────────────────
+
+export const TIME_VALUE_MATRIX_PROMPT = `Generate a time_value_matrix chart spec for {ceName}.
+
+## Requirements
+
+1. **Comparison**: Standard ticket vs. Skip-the-Line ticket
+   - Standard: price, typical wait
+   - Premium: price, typical wait
+
+2. **Scenarios**: Generate 6-10 realistic scenarios covering:
+   - Visitor types: solo, couple, family with kids, family with teens, seniors, group of friends, business traveler
+   - Contexts: weekday morning, weekday afternoon, weekend morning, weekend afternoon, peak season, shoulder season
+
+3. **For each scenario**:
+   - Standard wait time (realistic, based on DRD)
+   - Premium wait time (near-zero or significantly less)
+   - Time saved
+   - Extra cost
+   - Cost per minute saved
+   - Verdict: essential, strong_value, moderate_value, marginal, not_worth_it
+   - Rationale explaining WHY this verdict
+   - Alternative suggestion if not worth it
+
+4. **Summary stats**: average time saved, median extra cost, best/worst value scenarios
+
+## Data Source
+Use DRD sections on:
+- Ticket prices
+- Queue times by time/day/season
+- Visitor demographics
+- Peak vs off-peak patterns
+
+## Output
+Return ONLY a JSON object matching the TimeValueMatrixSpec schema.
+
+{
+  "type": "time_value_matrix",
+  "comparison": {
+    "standardTicket": { "name": "Standard Entry", "price": 16, "typicalWaitMinutes": 60 },
+    "premiumTicket": { "name": "Skip-the-Line", "price": 30, "typicalWaitMinutes": 5 }
+  },
+  "scenarios": [...],
+  "summary": { ... },
+  "headline": "Is Skip-the-Line Worth It for You?",
+  "subheadline": "The ROI breakdown: time, money, and stress saved"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// ACCESSIBILITY GUIDE
+// ─────────────────────────────────────────────────────────────
+
+export const ACCESSIBILITY_GUIDE_PROMPT = `Generate an accessibility_guide chart spec for {ceName}.
+
+## Requirements
+
+1. **Venue overview**: Overall accessibility score (1-5), facilities, policies
+
+2. **Entrance-by-entrance breakdown**: For EACH entrance:
+   - Accessibility score
+   - Step-free access details (from street, to entry, to main areas)
+   - Number of steps if not step-free
+   - Ramp availability and steepness
+   - Elevators (capacity, assistance required)
+   - Door widths
+   - Surface types
+   - Accessible restroom
+   - Seating
+   - Staff assistance
+   - Suitable for which mobility needs
+
+3. **Recommended accessible route**: Best entrance + path for wheelchair users
+
+4. **Pre-visit contact**: Phone, advance notice requirements, what to mention
+
+## Data Source
+Use DRD sections on:
+- Accessibility information
+- Entrance details
+- Elevator/lift locations
+- Restroom facilities
+- Staff assistance
+- Contact information
+
+## Output
+Return ONLY a JSON object matching the AccessibilityGuideSpec schema.
+
+{
+  "type": "accessibility_guide",
+  "venueOverview": { ... },
+  "entrances": [...],
+  "recommendedRoute": { ... },
+  "preVisitInfo": { ... },
+  "headline": "Accessibility by Entrance",
+  "subheadline": "Wheelchair access, elevators, and step-free routes"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// BEST FOR MATRIX
+// ─────────────────────────────────────────────────────────────
+
+export const BEST_FOR_MATRIX_PROMPT = `Generate a best_for_matrix chart spec for {ceName}.
+
+## Requirements
+
+1. **Decision type**: What are we helping visitors choose?
+   - entrance: which entrance to use
+   - ticket: which ticket to buy
+   - time: which time slot to book
+   - route: which route to take
+
+2. **Options**: 3-5 options to compare. For each:
+   - Name, short description, color
+   - Scores by visitor type (1-5 scale)
+   - Price, duration, wait time
+   - Top reason to choose this
+   - Who should NOT choose this (dealbreakers)
+
+3. **Visitor types**: Define 6-10 traveler personas with icons and descriptions
+
+4. **Recommendations**: Pre-computed best option for each visitor type, with explanation and tip
+
+## Data Source
+Use DRD sections on:
+- Ticket types and features
+- Entrance options
+- Visitor demographics
+- Common complaints and praise
+
+## Output
+Return ONLY a JSON object matching the BestForMatrixSpec schema.
+
+{
+  "type": "best_for_matrix",
+  "decisionType": "entrance|ticket|time|route",
+  "options": [...],
+  "visitorTypes": [...],
+  "recommendations": { ... },
+  "headline": "Which Option Fits You?",
+  "subheadline": "Find your perfect match based on who you're traveling with"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// EDITORIAL OVERLAY
+// ─────────────────────────────────────────────────────────────
+
+export const EDITORIAL_OVERLAY_PROMPT = `Generate an editorial overlay for a {chartType} chart on a {pageType} page for {ceName}.
+
+## Context
+
+Chart data: {chartData}
+CE data: {ceData}
+Visitor context: {visitorContext}
+
+## Requirements
+
+1. **Headline**: Use the page-type variant. Make it specific and compelling.
+   - NOT: "Weekly Pattern"
+   - YES: "Best Day to Visit the Accademia" or "When Skip-the-Line Saves the Most Time"
+
+2. **Subheadline**: Explain the data source and why the visitor should trust it.
+   - Include data point count and date range when available
+   - Example: "Based on 12,000 visitor records from Jan-Jun 2025"
+
+3. **CTA**: Contextual action that drives conversion.
+   - Primary (purple button): Direct booking action
+   - Secondary (outline): Exploration action
+   - Ghost (text link): Alternative option
+
+4. **Confidence badge**: Be honest.
+   - High: DRD confidence > 0.8, recent data, official sources
+   - Medium: DRD confidence 0.5-0.8, some gaps
+   - Low: DRD confidence < 0.5, limited data — explain what's missing
+
+5. **Tip**: One genuine insider insight.
+   - NOT generic advice
+   - YES: something specific to this CE that most visitors miss
+   - Example: "The Tribune room is empty 30 min before closing — perfect for photos"
+
+6. **Warning**: Only if genuinely needed.
+   - Strict security, seasonal closures, recent changes
+   - NOT: generic "book in advance" warnings
+
+7. **Personalization note**: If visitor context is provided.
+   - Example: "Showing March data" or "Accessibility-optimized options"
+
+## Tone Guidelines by Page Type
+
+- plan-your-visit: Reassuring, practical, insider-smart
+- skip-the-line: Confident, evidence-backed, urgency-tinged
+- entrances: Precise, map-oriented, stress-reducing
+- history: Narrative, reverent, surprising
+
+## Output
+Return ONLY a JSON object:
+
+{
+  "headline": "string",
+  "subheadline": "string",
+  "cta": { "text": "string", "variant": "primary|secondary|ghost" },
+  "confidence": { "level": "high|medium|low", "explanation": "string" },
+  "tip": { "text": "string" },
+  "warning": { "text": "string", "severity": "info|warning|alert" },
+  "personalizationNote": "string"
+}`;
+
+// ─────────────────────────────────────────────────────────────
+// Prompt Router
+// ─────────────────────────────────────────────────────────────
+
+export const CHART_PROMPTS: Record<string, string> = {
+  entrance_map: ENTRANCE_MAP_PROMPT,
+  floor_plan_flow: FLOOR_PLAN_FLOW_PROMPT,
+  rules_checklist: RULES_CHECKLIST_PROMPT,
+  transit_options: TRANSIT_OPTIONS_PROMPT,
+  time_value_matrix: TIME_VALUE_MATRIX_PROMPT,
+  accessibility_guide: ACCESSIBILITY_GUIDE_PROMPT,
+  best_for_matrix: BEST_FOR_MATRIX_PROMPT,
+};
+
+export function getChartPrompt(chartType: string): string | undefined {
+  return CHART_PROMPTS[chartType];
+}
+File 3: lib/prompts/src/index.ts
+TypeScript
+Copy
+export { PAGE_DECK_SYSTEM_PROMPT, PAGE_DECK_USER_PROMPT_TEMPLATE, buildPageDeckPrompt } from "./page-deck-prompt";
+export { 
+  ENTRANCE_MAP_PROMPT,
+  FLOOR_PLAN_FLOW_PROMPT,
+  RULES_CHECKLIST_PROMPT,
+  TRANSIT_OPTIONS_PROMPT,
+  TIME_VALUE_MATRIX_PROMPT,
+  ACCESSIBILITY_GUIDE_PROMPT,
+  BEST_FOR_MATRIX_PROMPT,
+  EDITORIAL_OVERLAY_PROMPT,
+  CHART_PROMPTS,
+  getChartPrompt,
+} from "./chart-spec-prompts";
+File 4: lib/prompts/package.json
+JSON
+Copy
+{
+  "name": "@workspace/prompts",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}
+File 5: lib/prompts/tsconfig.json
+JSON
+Copy
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+File 6: Integration — New Pipeline v2
+artifacts/api-server/src/lib/research-pipeline-v2.ts
+TypeScript
+Copy
+/**
+ * Research Pipeline v2
+ * 
+ * Uses buildDeck() + new prompts for page-type-aware generation.
+ * Runs alongside v1 pipeline, can be toggled per-CE.
+ */
+
+import { buildDeck } from "@workspace/page-decks";
+import { buildPageDeckPrompt, getChartPrompt, EDITORIAL_OVERLAY_PROMPT } from "@workspace/prompts";
+import { generateText } from "@workspace/integrations-gemini-ai";
+import { db } from "@workspace/db";
+import { charts, ces, drds } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+
+interface PipelineV2Options {
+  ceSlug: string;
+  pageTypes: string[];
+  useExistingCharts: boolean;
+}
+
+export async function runPipelineV2(options: PipelineV2Options) {
+  const { ceSlug, pageTypes, useExistingCharts = true } = options;
+
+  // Fetch CE
+  const ce = await db.query.ces.findFirst({ where: eq(ces.slug, ceSlug) });
+  if (!ce) throw new Error(`CE not found: ${ceSlug}`);
+
+  // Fetch DRD
+  const drd = await db.query.drds.findFirst({ where: eq(drds.ceSlug, ceSlug) });
+
+  // Fetch existing charts
+  const existingCharts = useExistingCharts 
+    ? await db.query.charts.findMany({ where: eq(charts.ceSlug, ceSlug) })
+    : [];
+
+  const results = [];
+
+  for (const pageType of pageTypes) {
+    // Build deck structure
+    const deck = await buildDeck(
+      {
+        slug: ce.slug,
+        name: ce.name,
+        category: ce.category || "museum",
+        visitorVolume: (ce.visitorVolume as any) || "high",
+        hasSeasonalVariation: true,
+        hasMultipleEntrances: ce.hasMultipleEntrances || false,
+        hasSkipTheLine: ce.hasSkipTheLine || true,
+        hasAudioGuide: ce.hasAudioGuide || false,
+        hasGuidedTours: ce.hasGuidedTours || false,
+        hasRestrictedItems: ce.hasRestrictedItems || true,
+        hasAccessibilityNeeds: ce.hasAccessibilityNeeds || false,
+        typicalVisitDurationMin: ce.typicalVisitDurationMin || 60,
+        typicalVisitDurationMax: ce.typicalVisitDurationMax || 180,
+        subProductCount: ce.subProductCount || 1,
+        drdConfidence: drd?.confidenceScores || {},
+      },
+      pageType as any,
+      drd?.content || "",
+      existingCharts
+    );
+
+    // For each pending section, trigger AI generation
+    for (const section of deck.sections) {
+      if (section.chartSpec.status === "pending-generation") {
+        const chartPrompt = getChartPrompt(section.chartType);
+        
+        if (chartPrompt) {
+          // Generate chart spec with Gemini
+          const prompt = chartPrompt.replace("{ceName}", ce.name);
+          
+          const result = await generateText({
+            prompt,
+            system: "You are a data visualization expert. Generate ONLY valid JSON matching the specified schema. No markdown, no explanation.",
+            temperature: 0.3,
+          });
+
+          // Parse and validate
+          const chartSpec = JSON.parse(result.text);
+          
+          // Generate editorial overlay
+          const editorialPrompt = EDITORIAL_OVERLAY_PROMPT
+            .replace("{chartType}", section.chartType)
+            .replace("{pageType}", pageType)
+            .replace("{ceName}", ce.name)
+            .replace("{chartData}", JSON.stringify(chartSpec))
+            .replace("{ceData}", JSON.stringify(ce))
+            .replace("{visitorContext}", "{}");
+
+          const editorialResult = await generateText({
+            prompt: editorialPrompt,
+            system: "You are a travel content editor. Generate ONLY valid JSON. No markdown.",
+            temperature: 0.5,
+          });
+
+          const editorial = JSON.parse(editorialResult.text);
+
+          // Save to DB
+          await db.insert(charts).values({
+            ceSlug,
+            questionId: section.question.questionId,
+            chartType: section.chartType,
+            spec: chartSpec,
+            editorial,
+            pageType,
+            sectionId: section.id,
+            status: "published",
+            sortOrder: 0,
+          });
+
+          results.push({
+            sectionId: section.id,
+            chartType: section.chartType,
+            status: "generated",
+          });
+        }
+      }
+    }
+  }
+
+  return results;
+}
