@@ -7,11 +7,14 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Code2,
   Copy,
   ExternalLink,
   Eye,
   EyeOff,
+  Flag,
+  Layers,
   Loader2,
   MessageSquare,
   MoreHorizontal,
@@ -217,45 +220,16 @@ export default function CeDetail() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showNewChart, setShowNewChart] = useState(false);
-  const [showIdeation, setShowIdeation] = useState(false);
-  const intelStorageKey = `viz-studio:intel-open:${slug}`;
-  // Rehydrate per CE (not just on mount) so navigating from CE A → CE B
-  // picks up B's stored open/closed preference instead of leaking A's.
-  // `skipNextWriteRef` keeps the write-back effect from clobbering B's key
-  // with A's stale state on the render where `slug` changes but
-  // `setShowIntel` has not yet flushed.
-  const [showIntel, setShowIntel] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(intelStorageKey) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const skipNextWriteRef = useRef(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    skipNextWriteRef.current = true;
-    let next = false;
-    try {
-      next = window.localStorage.getItem(intelStorageKey) === "1";
-    } catch {
-      next = false;
-    }
-    setShowIntel(next);
-  }, [intelStorageKey]);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (skipNextWriteRef.current) {
-      skipNextWriteRef.current = false;
-      return;
-    }
-    try {
-      window.localStorage.setItem(intelStorageKey, showIntel ? "1" : "0");
-    } catch {
-      /* no-op */
-    }
-  }, [intelStorageKey, showIntel]);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"intel" | "ideas" | "questions">(
+    () => {
+      try {
+        const v = window.localStorage.getItem("viz-studio:sidebar-tab");
+        if (v === "intel" || v === "ideas" || v === "questions") return v;
+      } catch { /* ignore */ }
+      return "intel";
+    },
+  );
 
   // Deep-link from triage: `/ce/:slug?edit=<id>` — read once on mount.
   const searchParams = useMemo(
@@ -316,10 +290,13 @@ export default function CeDetail() {
       setStatusFilter={setStatusFilter}
       showNewChart={showNewChart}
       setShowNewChart={setShowNewChart}
-      showIdeation={showIdeation}
-      setShowIdeation={setShowIdeation}
-      showIntel={showIntel}
-      setShowIntel={setShowIntel}
+      showSidebar={showSidebar}
+      setShowSidebar={setShowSidebar}
+      sidebarTab={sidebarTab}
+      setSidebarTab={(v) => {
+        setSidebarTab(v);
+        try { window.localStorage.setItem("viz-studio:sidebar-tab", v); } catch { /* ignore */ }
+      }}
       editId={editId}
     />
   );
@@ -338,10 +315,10 @@ type CeDetailInnerProps = {
   setStatusFilter: (s: StatusFilter) => void;
   showNewChart: boolean;
   setShowNewChart: (v: boolean | ((prev: boolean) => boolean)) => void;
-  showIdeation: boolean;
-  setShowIdeation: (v: boolean | ((prev: boolean) => boolean)) => void;
-  showIntel: boolean;
-  setShowIntel: (v: boolean | ((prev: boolean) => boolean)) => void;
+  showSidebar: boolean;
+  setShowSidebar: (v: boolean | ((prev: boolean) => boolean)) => void;
+  sidebarTab: "intel" | "ideas" | "questions";
+  setSidebarTab: (v: "intel" | "ideas" | "questions") => void;
   editId: number | null;
 };
 
@@ -358,10 +335,10 @@ function CeDetailInner({
   setStatusFilter,
   showNewChart,
   setShowNewChart,
-  showIdeation,
-  setShowIdeation,
-  showIntel,
-  setShowIntel,
+  showSidebar,
+  setShowSidebar,
+  sidebarTab,
+  setSidebarTab,
   editId,
 }: CeDetailInnerProps) {
   const publishAllMut = usePublishAllDrafts();
@@ -423,16 +400,43 @@ function CeDetailInner({
     setRegenStats(null);
   }
 
+  const [showPublishDrawer, setShowPublishDrawer] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [activeChartId, setActiveChartId] = useState<number | null>(null);
+  const [kbHintDismissed, setKbHintDismissed] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("viz-studio:kb-hint-dismissed") === "1"; } catch { return false; }
+  });
+
+  const publishChartMut = usePublishChart();
+  const [publishingSelected, setPublishingSelected] = useState(false);
+
+  async function handlePublishSelected(selectedIds: number[]) {
+    setPublishingSelected(true);
+    try {
+      await Promise.all(
+        selectedIds.map((id) => publishChartMut.mutateAsync({ id, data: { status: "published" } })),
+      );
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      await qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+      setShowPublishDrawer(false);
+      // Confetti only when deck is now fully published (selectedIds covers all remaining drafts)
+      const totalDrafts = charts.filter((c) => (c.status ?? "published") === "draft").length;
+      if (selectedIds.length >= totalDrafts) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3500);
+      }
+    } finally {
+      setPublishingSelected(false);
+    }
+  }
+
   async function handlePublishAll() {
-    if (
-      !confirm(
-        `Publish all ${draftCount} draft chart${draftCount === 1 ? "" : "s"} for this CE?`,
-      )
-    )
-      return;
     await publishAllMut.mutateAsync({ slug, data: {} });
-    qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
-    qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    await qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+    await qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+    setShowPublishDrawer(false);
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3500);
   }
 
   const pageFilteredCharts =
@@ -451,6 +455,72 @@ function CeDetailInner({
   });
   const isPageFiltered = pageType !== "all";
   const hasAnyChartsForCe = charts.length > 0;
+
+  // Keyboard navigation — J/K navigate; P publishes current; E expands/collapses; F opens feedback
+  const activeIndexRef = useRef(0);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "j") {
+        e.preventDefault();
+        const next = Math.min(activeIndexRef.current + 1, visibleCharts.length - 1);
+        activeIndexRef.current = next;
+        const chart = visibleCharts[next];
+        if (chart) {
+          document.getElementById(`chart-${chart.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          setActiveChartId(chart.id);
+        }
+      } else if (key === "k") {
+        e.preventDefault();
+        const prev = Math.max(activeIndexRef.current - 1, 0);
+        activeIndexRef.current = prev;
+        const chart = visibleCharts[prev];
+        if (chart) {
+          document.getElementById(`chart-${chart.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          setActiveChartId(chart.id);
+        }
+      } else if (key === "p") {
+        e.preventDefault();
+        const chart = visibleCharts[activeIndexRef.current];
+        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "publish" } }));
+      } else if (key === "e") {
+        e.preventDefault();
+        const chart = visibleCharts[activeIndexRef.current];
+        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "expand" } }));
+      } else if (key === "f") {
+        e.preventDefault();
+        const chart = visibleCharts[activeIndexRef.current];
+        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "feedback" } }));
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [visibleCharts]);
+
+  // Track active chart via IntersectionObserver (for mini-map highlight)
+  useEffect(() => {
+    if (visibleCharts.length === 0) return;
+    const mapVisible = new Map<number, boolean>();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          const id = parseInt((e.target as HTMLElement).dataset.chartId ?? "0", 10);
+          if (id) mapVisible.set(id, e.isIntersecting);
+        });
+        const first = visibleCharts.find((c) => mapVisible.get(c.id));
+        if (first) setActiveChartId(first.id);
+      },
+      { rootMargin: "-15% 0px -65% 0px" },
+    );
+    visibleCharts.forEach((c) => {
+      const el = document.getElementById(`chart-${c.id}`);
+      if (el) { (el as HTMLElement).dataset.chartId = String(c.id); obs.observe(el); }
+    });
+    return () => obs.disconnect();
+  }, [visibleCharts]);
 
   return (
     <div className="min-h-screen" style={{ background: BRAND.bgShell }}>
@@ -519,67 +589,53 @@ function CeDetailInner({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setShowIntel((v) => !v);
-              if (!showIntel) setShowIdeation(false);
-            }}
-            style={{
-              background: showIntel ? BRAND.purps : "white",
-              color: showIntel ? "white" : BRAND.slate950,
-              border: `1px solid ${showIntel ? BRAND.purps : BRAND.slate200}`,
-              padding: "8px 12px",
-              borderRadius: 12,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Sparkles size={14} />
-            CE Intel
-            <ChevronDown
-              size={12}
-              style={{
-                transform: showIntel ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 140ms ease",
-              }}
-            />
-          </button>
+          <DeckProgressBar publishedCount={publishedCount} totalCount={charts.length} />
 
-          <button
-            type="button"
-            onClick={() => {
-              setShowIdeation((v) => !v);
-              if (!showIdeation) setShowIntel(false);
-            }}
-            style={{
-              background: showIdeation ? BRAND.purps : "white",
-              color: showIdeation ? "white" : BRAND.slate950,
-              border: `1px solid ${showIdeation ? BRAND.purps : BRAND.slate200}`,
-              padding: "8px 12px",
-              borderRadius: 12,
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <MessageSquare size={14} />
-            Ideate
-          </button>
+          <div className="flex items-center" style={{ gap: 0 }}>
+            {(["intel", "ideas", "questions"] as const).map((tab, i) => {
+              const icon = tab === "intel" ? <Sparkles size={12} /> : tab === "ideas" ? <MessageSquare size={12} /> : <Layers size={12} />;
+              const label = tab === "intel" ? "Intel" : tab === "ideas" ? "Ideas" : "Questions";
+              const isActive = showSidebar && sidebarTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    if (isActive) { setShowSidebar(false); }
+                    else { setSidebarTab(tab); setShowSidebar(true); }
+                  }}
+                  style={{
+                    background: isActive ? BRAND.purps : "white",
+                    color: isActive ? "white" : BRAND.slate700,
+                    border: `1px solid ${isActive ? BRAND.purps : BRAND.slate200}`,
+                    borderLeft: i > 0 ? "none" : undefined,
+                    padding: "7px 11px",
+                    borderRadius: i === 0 ? "10px 0 0 10px" : i === 2 ? "0 10px 10px 0" : "0",
+                    fontWeight: 800,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    letterSpacing: "0.01em",
+                    transition: "background 120ms, color 120ms",
+                    position: "relative",
+                    zIndex: isActive ? 1 : 0,
+                  }}
+                >
+                  {icon}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
           {draftCount > 0 && (
             <button
               type="button"
-              onClick={handlePublishAll}
+              onClick={() => setShowPublishDrawer(true)}
               disabled={publishAllMut.isPending}
-              title={`Move all ${draftCount} draft chart(s) to published in one go`}
+              title={`Publish all ${draftCount} draft chart(s) in one go`}
               style={{
                 background: publishAllMut.isPending ? BRAND.slate100 : BRAND.bgMint,
                 color: "#0E8F4E",
@@ -599,7 +655,7 @@ function CeDetailInner({
               ) : (
                 <Eye size={14} />
               )}
-              Publish all drafts ({draftCount})
+              Publish {draftCount}
             </button>
           )}
 
@@ -713,9 +769,9 @@ function CeDetailInner({
         className="max-w-[1500px] mx-auto px-6 py-8"
         style={{
           display: "grid",
-          gridTemplateColumns:
-            showIdeation || showIntel ? "minmax(0, 1fr) 440px" : "1fr",
+          gridTemplateColumns: showSidebar ? "minmax(0, 1fr) 420px" : "1fr",
           gap: 24,
+          paddingRight: showSidebar ? 24 : 48,
         }}
       >
         <div>
@@ -780,7 +836,7 @@ function CeDetailInner({
             />
           )}
 
-          <div className="flex flex-col gap-12">
+          <div className="flex flex-col gap-6">
             {visibleCharts.map((chart) => (
               <ChartRow
                 key={chart.id}
@@ -788,96 +844,100 @@ function CeDetailInner({
                 ceSlug={slug}
                 ceName={ce.name}
                 autoEdit={editId === chart.id}
-                sidePanelOpen={showIdeation || showIntel}
+                sidePanelOpen={showSidebar}
                 flash={flashChartId === chart.id}
               />
             ))}
             {visibleCharts.length === 0 && (
-              <div
-                className="rounded-2xl p-8 text-center"
-                style={{
-                  background: "white",
-                  border: `1px dashed ${BRAND.slate200}`,
-                  color: BRAND.slate700,
-                  fontWeight: 600,
-                }}
-              >
-                {!hasAnyChartsForCe ? (
-                  <span>This CE has no charts yet.</span>
-                ) : isPageFiltered && pageFilteredCharts.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <span>
-                      No charts are tagged for{" "}
-                      <strong>
-                        {PAGE_TYPE_LABELS[pageType as PageTypeValue]}
-                      </strong>
-                      . Charts generated before page tagging was added only
-                      appear under “All pages.”
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPageType("all")}
-                      style={{
-                        background: BRAND.purps,
-                        color: "white",
-                        border: `1px solid ${BRAND.purps}`,
-                        padding: "6px 12px",
-                        borderRadius: 10,
-                        fontWeight: 800,
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Show all pages
-                    </button>
-                  </div>
-                ) : (
-                  <span>No charts match this filter.</span>
-                )}
-              </div>
+              <EmptyStateIllustration
+                hasAnyCharts={hasAnyChartsForCe}
+                isPageFiltered={isPageFiltered && pageFilteredCharts.length === 0}
+                pageLabel={PAGE_TYPE_LABELS[pageType as PageTypeValue] ?? ""}
+                onShowAll={() => setPageType("all")}
+              />
             )}
           </div>
-
-          <QuestionsPanel ceSlug={slug} ceName={ce.name} />
         </div>
-
-        {showIntel && (
-          <IntelPanel
-            slug={slug}
-            onClose={() => setShowIntel(false)}
-            charts={charts}
-            onViewChart={(chartId) => {
-              const el = document.getElementById(`chart-${chartId}`);
-              if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }
-              setFlashChartId(chartId);
-              window.setTimeout(() => {
-                setFlashChartId((current) =>
-                  current === chartId ? null : current,
-                );
-              }, 1300);
+        {showSidebar && (
+          <aside
+            className="sticky"
+            style={{
+              top: 80,
+              height: "calc(100vh - 100px)",
+              display: "flex",
+              flexDirection: "column",
+              background: "white",
+              border: `1px solid ${BRAND.slate100}`,
+              borderRadius: 16,
+              overflow: "hidden",
+              boxShadow: "0 4px 20px rgba(15,23,42,0.08)",
             }}
-            onChartCreated={() => {
-              qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
-              qc.invalidateQueries({ queryKey: getListCesQueryKey() });
-              setStatusFilter("draft");
-            }}
-          />
-        )}
-
-        {showIdeation && !showIntel && (
-          <IdeationPanel
-            slug={slug}
-            onClose={() => setShowIdeation(false)}
-            onUseProposal={(p) => {
-              setTopicSeed({ topic: p.topic, archetype: p.archetype });
-              setShowNewChart(true);
-              setShowIdeation(false);
-            }}
-          />
+          >
+            {sidebarTab === "intel" && (
+              <IntelPanel
+                slug={slug}
+                onClose={() => setShowSidebar(false)}
+                charts={charts}
+                onViewChart={(chartId) => {
+                  const el = document.getElementById(`chart-${chartId}`);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                  setFlashChartId(chartId);
+                  window.setTimeout(() => {
+                    setFlashChartId((current) =>
+                      current === chartId ? null : current,
+                    );
+                  }, 1300);
+                }}
+                onChartCreated={() => {
+                  qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+                  qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+                  setStatusFilter("draft");
+                }}
+              />
+            )}
+            {sidebarTab === "ideas" && (
+              <IdeationPanel
+                slug={slug}
+                onClose={() => setShowSidebar(false)}
+                onUseProposal={(p) => {
+                  setTopicSeed({ topic: p.topic, archetype: p.archetype });
+                  setShowNewChart(true);
+                  setShowSidebar(false);
+                }}
+              />
+            )}
+            {sidebarTab === "questions" && (
+              <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+                <QuestionsPanel ceSlug={slug} ceName={ce.name} />
+              </div>
+            )}
+          </aside>
         )}
       </main>
+
+      {showConfetti && <ConfettiEffect />}
+
+      {showPublishDrawer && (
+        <PublishDrawer
+          draftCharts={charts.filter((c) => (c.status ?? "published") === "draft")}
+          isPending={publishingSelected}
+          onConfirmSelected={handlePublishSelected}
+          onClose={() => setShowPublishDrawer(false)}
+        />
+      )}
+
+      {!kbHintDismissed && visibleCharts.length > 1 && (
+        <KeyboardHintTooltip
+          onDismiss={() => {
+            setKbHintDismissed(true);
+            try { window.localStorage.setItem("viz-studio:kb-hint-dismissed", "1"); } catch { /* ignore */ }
+          }}
+        />
+      )}
+
+      <MiniMapRail charts={visibleCharts} activeChartId={activeChartId} />
     </div>
   );
 }
@@ -933,12 +993,29 @@ function ChartRow({
   flash?: boolean;
 }) {
   const [mode, setMode] = useState<"view" | "edit">(autoEdit ? "edit" : "view");
+  const [expanded, setExpanded] = useState(autoEdit ?? false);
+  const [hovered, setHovered] = useState(false);
+  const [showFeedbackFromKey, setShowFeedbackFromKey] = useState(false);
   const [verification, setVerification] = useState<ChartVerification | null>(
     null,
   );
   useEffect(() => {
-    if (autoEdit) setMode("edit");
+    if (autoEdit) { setMode("edit"); setExpanded(true); }
   }, [autoEdit]);
+
+  // Custom keyboard-action events dispatched by the global J/K/P/E/F handler
+  useEffect(() => {
+    function onChartAction(e: Event) {
+      const { chartId, action } = (e as CustomEvent<{ chartId: number; action: string }>).detail;
+      if (chartId !== chart.id) return;
+      if (action === "expand") setExpanded((v) => !v);
+      if (action === "publish") void handlePublishToggle();
+      if (action === "feedback") { setExpanded(true); setShowFeedbackFromKey(true); }
+    }
+    window.addEventListener("viz-chart-action", onChartAction);
+    return () => window.removeEventListener("viz-chart-action", onChartAction);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart.id]);
 
   // When the writer clicks "Apply suggested edits" on the verifier panel we
   // open the editor pre-loaded with the verifier's suggested spec instead of
@@ -1050,14 +1127,140 @@ function ChartRow({
   return (
     <section
       id={`chart-${chart.id}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         scrollMarginTop: 80,
         borderRadius: 16,
+        background: "white",
+        border: `1px solid ${flash ? BRAND.purps : hovered ? BRAND.slate200 : BRAND.slate100}`,
         outline: flash ? `2px solid ${BRAND.purps}` : "2px solid transparent",
-        boxShadow: flash ? `0 0 0 6px ${BRAND.purpsSoft}` : "none",
-        transition: "outline-color 200ms ease, box-shadow 200ms ease",
+        boxShadow: flash
+          ? `0 0 0 6px ${BRAND.purpsSoft}`
+          : hovered
+            ? "0 8px 24px rgba(15,23,42,0.10)"
+            : "0 1px 4px rgba(15,23,42,0.04)",
+        transform: hovered && !flash ? "translateY(-2px)" : "translateY(0)",
+        transition: "border-color 150ms, box-shadow 180ms, transform 180ms, outline-color 200ms",
+        overflow: "hidden",
       }}
     >
+      {/* Compact two-column review state — chart preview left (~60%), metadata+actions right */}
+      <div
+        style={{ display: "flex", alignItems: "stretch", cursor: "pointer", userSelect: "none", minHeight: 120 }}
+        onClick={() => setExpanded((e) => !e)}
+        role="button"
+        aria-expanded={expanded}
+      >
+        {/* Left: chart thumbnail preview */}
+        <div
+          style={{
+            width: "58%",
+            flexShrink: 0,
+            background: BRAND.slate50,
+            borderRight: `1px solid ${BRAND.slate100}`,
+            overflow: "hidden",
+            position: "relative",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ width: "100%", height: 160, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, transform: "scale(0.42)", transformOrigin: "top left", width: "238%", height: "238%" }}>
+              <ChartRenderer
+                spec={spec}
+                preserve={ceName}
+                provenance={chart.provenance as ChartProvenanceLite | null}
+                header={{
+                  title: chart.title,
+                  subtitle: chart.subtitle || undefined,
+                  question: chart.question,
+                  insight: chart.insight || undefined,
+                }}
+                presentation={normalizePresentation(
+                  (chart as unknown as { presentation?: unknown }).presentation,
+                )}
+                compact={false}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Right: metadata + actions */}
+        <div style={{ flex: 1, minWidth: 0, padding: "12px 14px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: BRAND.purps, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                {meta.emoji} {meta.label}
+              </span>
+              <StatusBadge status={status} />
+              {chart.lastEditedByWriterAt && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: BRAND.slate500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  · Edited
+                </span>
+              )}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: BRAND.slate950, letterSpacing: "-0.01em", lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+              {headline}
+            </div>
+            {insightText && (
+              <div style={{ fontSize: 11, color: BRAND.slate700, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {insightText}
+              </div>
+            )}
+          </div>
+
+          {/* Three primary actions */}
+          <div
+            className="flex items-center gap-2 flex-wrap"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handlePublishToggle}
+              disabled={publishMut.isPending}
+              style={{
+                ...ghostBtn(false),
+                background: isDraft ? BRAND.purps : "white",
+                color: isDraft ? "white" : BRAND.slate950,
+                borderColor: isDraft ? BRAND.purps : BRAND.slate200,
+                fontSize: 11,
+                padding: "5px 9px",
+              }}
+            >
+              {publishMut.isPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : isDraft ? (
+                <Eye size={12} />
+              ) : (
+                <EyeOff size={12} />
+              )}
+              {isDraft ? "Approve" : "Unpublish"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setExpanded(true); setMode("edit"); }}
+              style={{ ...ghostBtn(false), fontSize: 11, padding: "5px 9px" }}
+              title="Edit chart (E)"
+            >
+              <Pencil size={12} />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              style={{ ...ghostBtn(false), fontSize: 11, padding: "5px 9px" }}
+              title={expanded ? "Collapse (E)" : "Expand (E)"}
+            >
+              <ChevronDown size={12} style={{ transition: "transform 200ms", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }} />
+              {expanded ? "Less" : "More"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded detail — only rendered when open */}
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${BRAND.slate100}`, padding: "16px 16px 20px" }}>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1175,6 +1378,8 @@ function ChartRow({
             verifyPending={verifyMut.isPending}
             onDelete={handleDeleteChart}
             deletePending={isDeleting}
+            openFeedback={showFeedbackFromKey}
+            onFeedbackOpened={() => setShowFeedbackFromKey(false)}
           />
 
           <button
@@ -1349,6 +1554,8 @@ function ChartRow({
         spec={spec}
         isLocked={LOCKED_CE_SLUGS_CLIENT.has(ceSlug)}
       />
+        </div>
+      )}
 
       <DialogPrimitive.Root
         open={mode === "edit"}
@@ -6246,6 +6453,8 @@ function ChartActionsMenu({
   verifyPending,
   onDelete,
   deletePending,
+  openFeedback,
+  onFeedbackOpened,
 }: {
   chartId: number;
   ceSlug: string;
@@ -6257,9 +6466,21 @@ function ChartActionsMenu({
   verifyPending: boolean;
   onDelete: () => void;
   deletePending: boolean;
+  openFeedback?: boolean;
+  onFeedbackOpened?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+
+  // F keyboard shortcut → open feedback panel
+  useEffect(() => {
+    if (openFeedback) {
+      setOpen(true);
+      setShowFeedback(true);
+      onFeedbackOpened?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFeedback]);
   const [copied, setCopied] = useState<"url" | "iframe" | null>(null);
   const { fullUrl, iframe } = embedUrls(chartId);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -7126,4 +7347,562 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// ─── Helper UI Components ──────────────────────────────────────────────────
+
+function DeckProgressBar({
+  publishedCount,
+  totalCount,
+}: {
+  publishedCount: number;
+  totalCount: number;
+}) {
+  if (totalCount === 0) return null;
+  const pct = Math.round((publishedCount / totalCount) * 100);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        minWidth: 140,
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          height: 6,
+          borderRadius: 4,
+          background: BRAND.slate100,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background:
+              pct === 100
+                ? "#0E8F4E"
+                : pct > 60
+                  ? BRAND.purps
+                  : BRAND.candy,
+            borderRadius: 4,
+            transition: "width 400ms ease",
+          }}
+        />
+      </div>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: BRAND.slate700,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {publishedCount}/{totalCount}
+      </span>
+    </div>
+  );
+}
+
+function EmptyStateIllustration({
+  hasAnyCharts,
+  isPageFiltered,
+  pageLabel,
+  onShowAll,
+}: {
+  hasAnyCharts: boolean;
+  isPageFiltered: boolean;
+  pageLabel: string;
+  onShowAll: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        padding: "64px 32px",
+        background: "white",
+        border: `1px dashed ${BRAND.slate200}`,
+        borderRadius: 20,
+        textAlign: "center",
+      }}
+    >
+      <svg
+        width="64"
+        height="64"
+        viewBox="0 0 64 64"
+        fill="none"
+        aria-hidden="true"
+      >
+        <rect
+          x="8"
+          y="32"
+          width="8"
+          height="20"
+          rx="2"
+          fill={BRAND.slate100}
+        />
+        <rect
+          x="20"
+          y="20"
+          width="8"
+          height="32"
+          rx="2"
+          fill={BRAND.slate200}
+        />
+        <rect
+          x="32"
+          y="12"
+          width="8"
+          height="40"
+          rx="2"
+          fill={BRAND.slate100}
+        />
+        <rect
+          x="44"
+          y="24"
+          width="8"
+          height="28"
+          rx="2"
+          fill={BRAND.slate200}
+        />
+        <circle cx="48" cy="16" r="10" fill={BRAND.purps} opacity="0.12" />
+        <path
+          d="M44 16l3 3 5-6"
+          stroke={BRAND.purps}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div>
+        <div
+          style={{
+            fontWeight: 800,
+            fontSize: 16,
+            color: BRAND.slate950,
+            marginBottom: 6,
+          }}
+        >
+          {!hasAnyCharts
+            ? "No charts yet"
+            : isPageFiltered
+              ? `No charts for "${pageLabel}"`
+              : "No charts match this filter"}
+        </div>
+        <div
+          style={{ fontSize: 13, color: BRAND.slate700, maxWidth: 320 }}
+        >
+          {!hasAnyCharts
+            ? "Generate a chart deck to get started."
+            : isPageFiltered
+              ? 'Charts generated before page tagging only appear under \u201cAll pages\u201d.'
+              : "Try adjusting your status filter."}
+        </div>
+      </div>
+      {isPageFiltered && (
+        <button
+          type="button"
+          onClick={onShowAll}
+          style={{
+            background: BRAND.purps,
+            color: "white",
+            border: `1px solid ${BRAND.purps}`,
+            padding: "8px 16px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Show all pages
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MiniMapRail({
+  charts,
+  activeChartId,
+}: {
+  charts: Array<{ id: number; status?: string | null; flagged?: boolean | null }>;
+  activeChartId: number | null;
+}) {
+  // Track which dots are pulsing (just transitioned state)
+  const prevStatusRef = useRef<Map<number, string>>(new Map());
+  const [pulsingIds, setPulsingIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const newPulsing = new Set<number>();
+    charts.forEach((c) => {
+      const prev = prevStatusRef.current.get(c.id);
+      const curr = c.status ?? "published";
+      if (prev !== undefined && prev !== curr) newPulsing.add(c.id);
+      prevStatusRef.current.set(c.id, curr);
+    });
+    if (newPulsing.size === 0) return;
+    setPulsingIds((existing) => new Set([...existing, ...newPulsing]));
+    const t = window.setTimeout(() => {
+      setPulsingIds((existing) => {
+        const next = new Set(existing);
+        newPulsing.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 900);
+    return () => clearTimeout(t);
+  }, [charts]);
+
+  if (charts.length < 3) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        right: 12,
+        top: "50%",
+        transform: "translateY(-50%)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        zIndex: 40,
+        padding: "6px 4px",
+        background: "rgba(255,255,255,0.85)",
+        backdropFilter: "blur(6px)",
+        borderRadius: 8,
+        border: `1px solid ${BRAND.slate100}`,
+        boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+      }}
+    >
+      <style>{`
+        @keyframes dot-pulse {
+          0%   { transform: scale(1); }
+          40%  { transform: scale(1.9); opacity: 0.7; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+      {charts.map((c) => {
+        const isActive = c.id === activeChartId;
+        const isDraft = (c.status ?? "published") === "draft";
+        const isFlagged = Boolean(c.flagged);
+        const isPulsing = pulsingIds.has(c.id);
+        return (
+          <button
+            key={c.id}
+            type="button"
+            title={`Chart ${c.id}`}
+            onClick={() => {
+              const el = document.getElementById(`chart-${c.id}`);
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            style={{
+              width: isActive ? 10 : 7,
+              height: isActive ? 10 : 7,
+              borderRadius: "50%",
+              background: isFlagged
+                ? BRAND.candy
+                : isDraft
+                  ? BRAND.slate300
+                  : BRAND.purps,
+              border: isActive
+                ? `2px solid ${BRAND.slate950}`
+                : "none",
+              cursor: "pointer",
+              padding: 0,
+              flexShrink: 0,
+              transition: "width 150ms, height 150ms, background 300ms",
+              animation: isPulsing ? "dot-pulse 0.7s ease-out" : undefined,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ConfettiEffect() {
+  const colors = [BRAND.purps, BRAND.candy, "#FFD600", "#00C2FF", "#0E8F4E"];
+  const particles = Array.from({ length: 40 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    color: colors[i % colors.length],
+    delay: Math.random() * 0.6,
+    size: 6 + Math.random() * 6,
+  }));
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 9999,
+        overflow: "hidden",
+      }}
+    >
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            position: "absolute",
+            left: `${p.x}%`,
+            top: "-20px",
+            width: p.size,
+            height: p.size,
+            borderRadius: p.id % 3 === 0 ? "50%" : 2,
+            background: p.color,
+            animation: `confetti-fall 2.5s ${p.delay}s ease-in forwards`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes confetti-fall {
+          0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+          80%  { opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function PublishDrawer({
+  draftCharts,
+  isPending,
+  onConfirmSelected,
+  onClose,
+}: {
+  draftCharts: Array<{ id: number; title?: string | null; spec?: unknown }>;
+  isPending: boolean;
+  onConfirmSelected: (ids: number[]) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = React.useState<Set<number>>(
+    () => new Set(draftCharts.map((c) => c.id)),
+  );
+
+  function toggle(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedArray = draftCharts.filter((c) => selected.has(c.id)).map((c) => c.id);
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(15,23,42,0.4)",
+          zIndex: 200,
+          backdropFilter: "blur(2px)",
+        }}
+      />
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "min(560px, 94vw)",
+          background: "white",
+          borderRadius: "20px 20px 0 0",
+          boxShadow: "0 -8px 40px rgba(15,23,42,0.18)",
+          zIndex: 201,
+          padding: "24px 28px 32px",
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 4,
+            borderRadius: 2,
+            background: BRAND.slate200,
+            margin: "0 auto 20px",
+          }}
+        />
+        <div style={{ fontWeight: 900, fontSize: 18, color: BRAND.slate950, marginBottom: 4 }}>
+          Publish {draftCharts.length} draft{draftCharts.length !== 1 ? "s" : ""}
+        </div>
+        <div style={{ fontSize: 13, color: BRAND.slate700, marginBottom: 16 }}>
+          Uncheck any charts you're not ready to publish yet.
+        </div>
+
+        {/* Chart checklist */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            maxHeight: 240,
+            overflow: "auto",
+            marginBottom: 20,
+            padding: "2px 0",
+          }}
+        >
+          {draftCharts.map((c) => {
+            const checked = selected.has(c.id);
+            const specTyped = c.spec as { type?: string } | null;
+            const chartMeta = specTyped?.type ? (CHART_TYPE_META[specTyped.type as keyof typeof CHART_TYPE_META] ?? { emoji: "📈" }) : { emoji: "📈" };
+            return (
+              <label
+                key={c.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "9px 12px",
+                  background: checked ? BRAND.purpsSoft : BRAND.slate50,
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  border: `1px solid ${checked ? BRAND.purps + "33" : BRAND.slate100}`,
+                  transition: "background 120ms, border-color 120ms",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(c.id)}
+                  style={{ accentColor: BRAND.purps, width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+                />
+                <span style={{ fontSize: 14 }}>{chartMeta.emoji}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: BRAND.slate950, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.title ?? `Chart ${c.id}`}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        {/* Selection count hint */}
+        <div style={{ fontSize: 12, color: BRAND.slate700, marginBottom: 14, fontWeight: 600 }}>
+          {selected.size} of {draftCharts.length} selected
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: "12px 0",
+              borderRadius: 12,
+              border: `1px solid ${BRAND.slate200}`,
+              background: "white",
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: "pointer",
+              color: BRAND.slate700,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirmSelected(selectedArray)}
+            disabled={isPending || selected.size === 0}
+            style={{
+              flex: 2,
+              padding: "12px 0",
+              borderRadius: 12,
+              border: "none",
+              background: isPending || selected.size === 0 ? BRAND.slate200 : BRAND.bgMint,
+              color: isPending || selected.size === 0 ? BRAND.slate700 : "#0E8F4E",
+              fontWeight: 900,
+              fontSize: 14,
+              cursor: isPending || selected.size === 0 ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {isPending ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M21 12a9 9 0 11-6.219-8.56" />
+                </svg>
+                Publishing…
+              </>
+            ) : (
+              <>✓ Publish {selected.size}</>
+            )}
+          </button>
+        </div>
+        <style>{"@keyframes spin { to { transform: rotate(360deg); } }"}</style>
+      </div>
+    </>
+  );
+}
+
+function KeyboardHintTooltip({ onDismiss }: { onDismiss: () => void }) {
+  const kbdStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.18)",
+    borderRadius: 4,
+    padding: "1px 6px",
+    fontFamily: "monospace",
+    fontWeight: 800,
+    fontSize: 12,
+  };
+  const shortcuts: Array<[string, string]> = [
+    ["J / K", "navigate"],
+    ["P", "publish"],
+    ["E", "expand"],
+    ["F", "feedback"],
+  ];
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: BRAND.slate950,
+        color: "white",
+        borderRadius: 12,
+        padding: "10px 18px",
+        fontSize: 12,
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        zIndex: 100,
+        boxShadow: "0 4px 20px rgba(15,23,42,0.25)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {shortcuts.map(([key, label]) => (
+        <span key={key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <kbd style={kbdStyle}>{key}</kbd>
+          <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{label}</span>
+        </span>
+      ))}
+      <button
+        type="button"
+        onClick={onDismiss}
+        style={{
+          background: "none",
+          border: "none",
+          color: "rgba(255,255,255,0.5)",
+          cursor: "pointer",
+          padding: 0,
+          fontSize: 14,
+          lineHeight: 1,
+          marginLeft: 4,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
