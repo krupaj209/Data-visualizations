@@ -19,6 +19,7 @@ import {
   Layers,
   Loader2,
   MessageSquare,
+  Monitor,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -1190,14 +1191,6 @@ function CeDetailInner({
         />
       )}
 
-      {!kbHintDismissed && visibleCharts.length > 1 && (
-        <KeyboardHintTooltip
-          onDismiss={() => {
-            setKbHintDismissed(true);
-            try { window.localStorage.setItem("viz-studio:kb-hint-dismissed", "1"); } catch { /* ignore */ }
-          }}
-        />
-      )}
 
 
       <MiniMapRail charts={visibleCharts} activeChartId={activeChartId} />
@@ -3422,6 +3415,244 @@ function relativeTime(iso: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Embed size preview sandbox                                                 */
+/* -------------------------------------------------------------------------- */
+
+const EMBED_SIZE_PRESETS = [
+  { label: "Mobile sidebar", width: 320, height: 240 },
+  { label: "Article inline", width: 640, height: 360 },
+  { label: "Full-width", width: 960, height: 400 },
+  { label: "Compact strip", width: 480, height: 180 },
+] as const;
+
+function EmbedPreviewSandbox({
+  previewUrl,
+  onClose,
+}: {
+  previewUrl: string;
+  onClose: () => void;
+}) {
+  const [presetIdx, setPresetIdx] = useState<number>(1);
+  const [isCustom, setIsCustom] = useState(false);
+  const [customW, setCustomW] = useState("640");
+  const [customH, setCustomH] = useState("360");
+  const [copied, setCopied] = useState(false);
+  const sandboxRef = useRef<HTMLDivElement>(null);
+
+  const frameW = isCustom
+    ? Math.max(100, parseInt(customW) || 640)
+    : EMBED_SIZE_PRESETS[presetIdx].width;
+  const frameH = isCustom
+    ? Math.max(60, parseInt(customH) || 360)
+    : EMBED_SIZE_PRESETS[presetIdx].height;
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    const tid = setTimeout(() => {
+      function onPtrDown(e: PointerEvent) {
+        if (sandboxRef.current && !sandboxRef.current.contains(e.target as Node)) {
+          onClose();
+        }
+      }
+      document.addEventListener("pointerdown", onPtrDown);
+      cleanup = () => document.removeEventListener("pointerdown", onPtrDown);
+    }, 80);
+    return () => {
+      clearTimeout(tid);
+      cleanup?.();
+    };
+  }, [onClose]);
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(previewUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* no-op */
+    }
+  }
+
+  const presetBtnBase: React.CSSProperties = {
+    padding: "4px 8px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    border: "1px solid transparent",
+    whiteSpace: "nowrap",
+  };
+
+  return (
+    <div
+      ref={sandboxRef}
+      style={{
+        border: `1px solid ${BRAND.purpsSoft}`,
+        borderRadius: 10,
+        background: "#F9F5FF",
+        padding: "10px 12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: BRAND.purps, display: "flex", alignItems: "center", gap: 5 }}>
+          <Monitor size={13} />
+          Preview at size
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            onClick={copyUrl}
+            style={{
+              ...presetBtnBase,
+              background: "white",
+              color: BRAND.slate700,
+              border: `1px solid ${BRAND.slate200}`,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {copied ? <Check size={10} /> : <Copy size={10} />}
+            {copied ? "Copied" : "Copy this URL"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close size preview"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: BRAND.slate500,
+              display: "flex",
+              alignItems: "center",
+              padding: 2,
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+        {EMBED_SIZE_PRESETS.map((preset, i) => {
+          const active = !isCustom && presetIdx === i;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => { setIsCustom(false); setPresetIdx(i); }}
+              style={{
+                ...presetBtnBase,
+                background: active ? BRAND.purps : "white",
+                color: active ? "white" : BRAND.slate700,
+                border: `1px solid ${active ? BRAND.purps : BRAND.slate200}`,
+              }}
+            >
+              {preset.label}
+              <span style={{ fontWeight: 500, opacity: 0.75, marginLeft: 3 }}>
+                {preset.width}×{preset.height}
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setIsCustom(true)}
+          style={{
+            ...presetBtnBase,
+            background: isCustom ? BRAND.purps : "white",
+            color: isCustom ? "white" : BRAND.slate700,
+            border: `1px solid ${isCustom ? BRAND.purps : BRAND.slate200}`,
+          }}
+        >
+          Custom
+        </button>
+      </div>
+
+      {isCustom && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: BRAND.slate500 }}>W</span>
+          <input
+            type="number"
+            min={100}
+            max={2000}
+            value={customW}
+            onChange={(e) => setCustomW(e.target.value)}
+            style={{
+              width: 68,
+              padding: "4px 6px",
+              borderRadius: 6,
+              border: `1px solid ${BRAND.slate200}`,
+              fontSize: 12,
+              fontWeight: 700,
+              color: BRAND.slate900,
+            }}
+          />
+          <span style={{ fontSize: 11, fontWeight: 700, color: BRAND.slate500 }}>H</span>
+          <input
+            type="number"
+            min={60}
+            max={2000}
+            value={customH}
+            onChange={(e) => setCustomH(e.target.value)}
+            style={{
+              width: 68,
+              padding: "4px 6px",
+              borderRadius: 6,
+              border: `1px solid ${BRAND.slate200}`,
+              fontSize: 12,
+              fontWeight: 700,
+              color: BRAND.slate900,
+            }}
+          />
+          <span style={{ fontSize: 11, color: BRAND.slate500, fontWeight: 600 }}>px</span>
+        </div>
+      )}
+
+      <div
+        style={{
+          overflowX: "auto",
+          overflowY: "hidden",
+          borderRadius: 8,
+          border: `1px solid ${BRAND.slate200}`,
+          background: "#fff",
+        }}
+      >
+        <div style={{ width: frameW, flexShrink: 0 }}>
+          <iframe
+            key={`${previewUrl}__${frameW}x${frameH}`}
+            src={previewUrl}
+            title={`Embed preview ${frameW}×${frameH}`}
+            style={{
+              display: "block",
+              width: frameW,
+              height: frameH,
+              border: "none",
+            }}
+          />
+        </div>
+      </div>
+
+      <p style={{ fontSize: 10, color: BRAND.slate500, fontWeight: 600, margin: 0 }}>
+        Rendering at {frameW}×{frameH}px · Press Esc or click outside to close
+      </p>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Presentation panel — render-time overrides (Task #151)                     */
 /* -------------------------------------------------------------------------- */
 
@@ -3441,6 +3672,7 @@ function PresentationPanel({
   const qc = useQueryClient();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showSandbox, setShowSandbox] = useState(false);
   // Writers stage changes locally so they can preview the result inline
   // before committing. The chart on the main page only re-renders once
   // `save()` succeeds and `getCe` invalidates.
@@ -3726,6 +3958,15 @@ function PresentationPanel({
         </div>
       </div>
 
+      {showSandbox && (
+        <div className="mt-3">
+          <EmbedPreviewSandbox
+            previewUrl={previewUrl}
+            onClose={() => setShowSandbox(false)}
+          />
+        </div>
+      )}
+
       <div
         className="mt-3 flex items-center justify-between gap-2 flex-wrap"
       >
@@ -3755,6 +3996,26 @@ function PresentationPanel({
           Discard
         </button>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setShowSandbox((v) => !v)}
+            style={{
+              background: showSandbox ? BRAND.purpsSoft : "white",
+              color: showSandbox ? BRAND.purps : BRAND.slate700,
+              border: `1px solid ${showSandbox ? BRAND.purps : BRAND.slate200}`,
+              padding: "5px 10px",
+              borderRadius: 8,
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Monitor size={11} />
+            Preview embed
+          </button>
           <button
             type="button"
             onClick={copyPreviewUrl}
