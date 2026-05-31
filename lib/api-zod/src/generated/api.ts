@@ -1101,6 +1101,18 @@ export const DeleteCeParams = zod.object({
 });
 
 /**
+ * Hard-deletes an archived CE and all associated data (charts, DRDs,
+intelligence). The slug is freed immediately and can be reused.
+Only archived CEs may be permanently deleted — live CEs must be
+archived first. Locked curated CEs refuse the operation with 409.
+
+ * @summary Permanently delete an archived CE
+ */
+export const PermanentDeleteCeParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+/**
  * Clears `archivedAt` on a previously archived CE so it
 reappears in the default library list. Charts/DRDs/feedback
 survive archival untouched, so they come back as-is.

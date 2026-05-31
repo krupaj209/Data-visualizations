@@ -21,6 +21,7 @@ import {
   chartEditsTable,
   drdsTable,
   ideationMessagesTable,
+  ceIntelligenceTable,
   type Ce,
   type Chart,
   type IdeationMessage,
@@ -454,6 +455,54 @@ router.delete("/ces/:slug", async (req, res): Promise<void> => {
     res.status(404).json({ error: "CE not found" });
     return;
   }
+
+  res.sendStatus(204);
+});
+
+router.delete("/ces/:slug/permanent", async (req, res): Promise<void> => {
+  const params = GetCeParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  if (LOCKED_CE_SLUGS.has(params.data.slug)) {
+    res.status(409).json({
+      error:
+        "This CE has a hand-curated chart set and cannot be permanently deleted.",
+    });
+    return;
+  }
+
+  const [ce] = await db
+    .select()
+    .from(cesTable)
+    .where(eq(cesTable.slug, params.data.slug));
+
+  if (!ce) {
+    res.status(404).json({ error: "CE not found" });
+    return;
+  }
+
+  if (!ce.archivedAt) {
+    res.status(409).json({
+      error:
+        "Archive the CE first before permanently deleting it.",
+    });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(drdsTable)
+      .where(eq(drdsTable.ceSlug, params.data.slug));
+    await tx
+      .delete(ceIntelligenceTable)
+      .where(eq(ceIntelligenceTable.ceSlug, params.data.slug));
+    await tx
+      .delete(cesTable)
+      .where(eq(cesTable.slug, params.data.slug));
+  });
 
   res.sendStatus(204);
 });

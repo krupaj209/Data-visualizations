@@ -1328,6 +1328,95 @@ export const useDeleteCe = <
 };
 
 /**
+ * Hard-deletes an archived CE and all associated data (charts, DRDs,
+intelligence). The slug is freed immediately and can be reused.
+Only archived CEs may be permanently deleted — live CEs must be
+archived first. Locked curated CEs refuse the operation with 409.
+
+ * @summary Permanently delete an archived CE
+ */
+export const getPermanentDeleteCeUrl = (slug: string) => {
+  return `/api/ces/${slug}/permanent`;
+};
+
+export const permanentDeleteCe = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getPermanentDeleteCeUrl(slug), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getPermanentDeleteCeMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof permanentDeleteCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof permanentDeleteCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["permanentDeleteCe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof permanentDeleteCe>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return permanentDeleteCe(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PermanentDeleteCeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof permanentDeleteCe>>
+>;
+
+export type PermanentDeleteCeMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Permanently delete an archived CE
+ */
+export const usePermanentDeleteCe = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof permanentDeleteCe>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof permanentDeleteCe>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getPermanentDeleteCeMutationOptions(options));
+};
+
+/**
  * Clears `archivedAt` on a previously archived CE so it
 reappears in the default library list. Charts/DRDs/feedback
 survive archival untouched, so they come back as-is.

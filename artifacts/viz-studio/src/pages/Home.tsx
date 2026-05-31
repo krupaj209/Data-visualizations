@@ -23,6 +23,7 @@ import {
   useCreateCe,
   useDeleteCe,
   useRestoreCe,
+  usePermanentDeleteCe,
   getListCesQueryKey,
   type Ce,
 } from "@workspace/api-client-react";
@@ -154,6 +155,7 @@ export default function Home() {
 
   const createMut = useCreateCe();
   const deleteMut = useDeleteCe();
+  const permanentDeleteMut = usePermanentDeleteCe();
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
@@ -1057,6 +1059,19 @@ export default function Home() {
                       queryKey: getListCesQueryKey({ archived: true }),
                     });
                   }}
+                  onPermanentDelete={async () => {
+                    if (
+                      !confirm(
+                        `Permanently delete "${ce.name}"? This cannot be undone — the slug will be freed and all charts, DRDs, and intelligence data will be erased.`,
+                      )
+                    )
+                      return;
+                    await permanentDeleteMut.mutateAsync({ slug: ce.slug });
+                    qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+                    qc.invalidateQueries({
+                      queryKey: getListCesQueryKey({ archived: true }),
+                    });
+                  }}
                   onDelete={async () => {
                     if (!confirm(`Archive "${ce.name}"? You can restore it from the Archive tab.`)) return;
                     await deleteMut.mutateAsync({ slug: ce.slug });
@@ -1240,12 +1255,14 @@ function CeCard({
   ce,
   onDelete,
   onRestore,
+  onPermanentDelete,
   onCopyLink,
   isArchived = false,
 }: {
   ce: Ce;
   onDelete: () => void;
   onRestore?: () => void;
+  onPermanentDelete?: () => void;
   onCopyLink: () => void;
   /**
    * When true the card represents a soft-deleted CE in the Archive
@@ -1352,31 +1369,60 @@ function CeCard({
             </span>
           )}
           {isArchived && onRestore ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRestore();
-              }}
-              style={{
-                background: BRAND.purpsSoft,
-                border: `1px solid ${BRAND.purpsSoft}`,
-                color: BRAND.purps,
-                cursor: "pointer",
-                padding: "4px 10px",
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 800,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-              title="Restore this CE"
-            >
-              <RotateCcw size={12} />
-              Restore
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRestore();
+                }}
+                style={{
+                  background: BRAND.purpsSoft,
+                  border: `1px solid ${BRAND.purpsSoft}`,
+                  color: BRAND.purps,
+                  cursor: "pointer",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title="Restore this CE"
+              >
+                <RotateCcw size={12} />
+                Restore
+              </button>
+              {onPermanentDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onPermanentDelete();
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: `1px solid #FFCDD4`,
+                    color: "#B3001F",
+                    cursor: "pointer",
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  title="Permanently delete — frees the slug"
+                >
+                  <Trash2 size={12} />
+                  Delete forever
+                </button>
+              )}
+            </>
           ) : (
             // Locked / curated CEs are guarded server-side (409). Hiding
             // the Delete button here keeps the UI consistent with that

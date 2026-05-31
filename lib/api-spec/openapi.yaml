@@ -414,6 +414,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/permanent:
+    delete:
+      operationId: permanentDeleteCe
+      tags: [ces]
+      summary: Permanently delete an archived CE
+      description: |
+        Hard-deletes an archived CE and all associated data (charts, DRDs,
+        intelligence). The slug is freed immediately and can be reused.
+        Only archived CEs may be permanently deleted — live CEs must be
+        archived first. Locked curated CEs refuse the operation with 409.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Permanently deleted
+        "404":
+          description: CE not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: CE is locked or must be archived before permanent deletion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /ces/{slug}/restore:
     post:
       operationId: restoreCe
