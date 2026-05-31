@@ -52,7 +52,12 @@ import {
   useClearChartFactReview,
   useGetCeIntelligence,
   getGetCeIntelligenceQueryKey,
+  useCreateChartFeedback,
+  useListChartFeedback,
+  useRegenerateChart,
+  getListChartFeedbackQueryKey,
   type CeIntelligence,
+  type ChartFeedback,
   getGetCeQueryKey,
   getListCesQueryKey,
   getGetIdeationQueryKey,
@@ -1514,6 +1519,377 @@ function FilterPill({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Inline feedback section — always visible in expanded chart row             */
+/* -------------------------------------------------------------------------- */
+
+const ISSUE_OPTIONS_INLINE: { value: string; label: string }[] = [
+  { value: "wrong_data", label: "Wrong data" },
+  { value: "misleading", label: "Misleading framing" },
+  { value: "doesnt_answer", label: "Doesn't answer the question" },
+  { value: "ugly", label: "Looks ugly / cramped" },
+  { value: "other", label: "Other" },
+];
+
+function InlineFeedbackSection({
+  chartId,
+  ceSlug,
+  openCount,
+  topSeverity,
+  scrollToOnOpen,
+  onScrolled,
+}: {
+  chartId: number;
+  ceSlug?: string;
+  openCount: number;
+  topSeverity: "high" | "medium" | "low" | null;
+  scrollToOnOpen?: boolean;
+  onScrolled?: () => void;
+}) {
+  const [rating, setRating] = useState<number | null>(null);
+  const [category, setCategory] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [reporter, setReporter] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [regenState, setRegenState] = useState<"idle" | "pending" | "success" | "error">("idle");
+  const [regenError, setRegenError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const qc = useQueryClient();
+
+  const createMut = useCreateChartFeedback();
+  const regenMut = useRegenerateChart();
+  const { data: feedbackItems } = useListChartFeedback(chartId, {
+    query: { queryKey: getListChartFeedbackQueryKey(chartId) },
+  });
+
+  // Scroll into view when F key activates feedback
+  useEffect(() => {
+    if (scrollToOnOpen && containerRef.current) {
+      containerRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      onScrolled?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToOnOpen]);
+
+  const meaningful = rating != null || Boolean(category) || note.trim().length > 0;
+  const busy = createMut.isPending || regenState === "pending";
+
+  const badgeColor =
+    topSeverity === "high" ? BRAND.candy
+      : topSeverity === "medium" ? "#D97706"
+        : topSeverity === "low" ? BRAND.purps
+          : BRAND.slate500;
+
+  async function persistFeedback() {
+    return createMut.mutateAsync({
+      id: chartId,
+      data: {
+        rating,
+        issueCategory: category || null,
+        note: note.trim(),
+        reporterName: reporter.trim(),
+      },
+    });
+  }
+
+  function resetForm() {
+    setRating(null);
+    setCategory("");
+    setNote("");
+  }
+
+  async function submit() {
+    if (!meaningful) return;
+    await persistFeedback();
+    setSubmitted(true);
+    resetForm();
+    qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
+    if (ceSlug) qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+    setTimeout(() => setSubmitted(false), 1800);
+  }
+
+  async function submitAndRegenerate() {
+    if (!meaningful) return;
+    setRegenError(null);
+    let feedbackRow: ChartFeedback;
+    try {
+      feedbackRow = await persistFeedback();
+    } catch (err) {
+      setRegenError(err instanceof Error ? err.message : "Could not save feedback.");
+      setRegenState("error");
+      return;
+    }
+    qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
+    setRegenState("pending");
+    try {
+      await regenMut.mutateAsync({
+        id: chartId,
+        data: {
+          feedbackContext: {
+            chartFeedbackId: feedbackRow.id,
+            note: feedbackRow.note || undefined,
+            issueCategory: feedbackRow.issueCategory ?? undefined,
+          },
+        },
+      });
+      qc.invalidateQueries({ queryKey: getListChartFeedbackQueryKey(chartId) });
+      if (ceSlug) qc.invalidateQueries({ queryKey: getGetCeQueryKey(ceSlug) });
+      setRegenState("success");
+      resetForm();
+      setTimeout(() => setRegenState("idle"), 2000);
+    } catch (err) {
+      const rawMessage =
+        err && typeof err === "object" && "data" in err
+          ? (err as { data?: { error?: string } }).data?.error ?? (err instanceof Error ? err.message : null)
+          : err instanceof Error ? err.message : null;
+      const isMissingDrd = typeof rawMessage === "string" && /no drd uploaded/i.test(rawMessage);
+      setRegenError(
+        isMissingDrd
+          ? 'No research doc (DRD) yet — open the "Intel & sources" panel and add one first. Your feedback was saved.'
+          : rawMessage ?? "Regeneration failed. Feedback was saved.",
+      );
+      setRegenState("error");
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        marginTop: 16,
+        borderTop: `1px solid ${BRAND.slate100}`,
+        paddingTop: 14,
+        paddingLeft: 2,
+        paddingRight: 2,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <Flag size={13} color={BRAND.slate700} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: BRAND.slate900 }}>
+          Feedback
+        </span>
+        {openCount > 0 && (
+          <span
+            style={{
+              background: badgeColor,
+              color: "white",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 800,
+              padding: "1px 7px",
+              minWidth: 18,
+              textAlign: "center",
+              lineHeight: "16px",
+            }}
+          >
+            {openCount} open
+          </span>
+        )}
+        <span style={{ fontSize: 11, fontWeight: 600, color: BRAND.slate500, marginLeft: "auto" }}>
+          Flag what&apos;s wrong so it drives the next regeneration
+        </span>
+      </div>
+
+      {/* Rating row */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setRating(rating === n ? null : n)}
+            style={{
+              width: 36,
+              padding: "5px 0",
+              borderRadius: 8,
+              border: `1px solid ${rating === n ? BRAND.purps : BRAND.slate200}`,
+              background: rating === n ? BRAND.purpsSoft : "white",
+              color: rating === n ? BRAND.purps : BRAND.slate700,
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            {n}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          style={{
+            padding: "5px 8px",
+            borderRadius: 8,
+            border: `1px solid ${BRAND.slate200}`,
+            fontSize: 12,
+            fontWeight: 600,
+            background: "white",
+            minWidth: 180,
+          }}
+        >
+          <option value="">Issue category…</option>
+          {ISSUE_OPTIONS_INLINE.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="What's wrong, in one sentence?"
+          rows={2}
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${BRAND.slate200}`,
+            fontSize: 12,
+            fontFamily: "inherit",
+            resize: "vertical",
+          }}
+        />
+        <input
+          value={reporter}
+          onChange={(e) => setReporter(e.target.value)}
+          placeholder="Your name (optional)"
+          style={{
+            width: 160,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${BRAND.slate200}`,
+            fontSize: 12,
+            fontFamily: "inherit",
+          }}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={busy || !meaningful}
+          style={{
+            background: submitted ? BRAND.bgMint : "white",
+            color: submitted ? "#0E8F4E" : BRAND.purps,
+            border: `1px solid ${submitted ? BRAND.bgMint : BRAND.purpsSoft}`,
+            padding: "8px 14px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: busy || !meaningful ? "not-allowed" : "pointer",
+            opacity: !meaningful && !busy ? 0.55 : 1,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          {createMut.isPending && regenState !== "pending" ? <Loader2 size={13} className="animate-spin" /> : submitted ? <Check size={13} /> : null}
+          {submitted ? "Sent" : "Send"}
+        </button>
+        <button
+          type="button"
+          onClick={submitAndRegenerate}
+          disabled={busy || !meaningful}
+          style={{
+            background: regenState === "success" ? BRAND.bgMint : BRAND.purps,
+            color: regenState === "success" ? "#0E8F4E" : "white",
+            border: "none",
+            padding: "8px 16px",
+            borderRadius: 10,
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: busy || !meaningful ? "not-allowed" : "pointer",
+            opacity: !meaningful && !busy ? 0.55 : 1,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+          title="Save the feedback and regenerate this chart with it as guidance"
+        >
+          {regenState === "pending" ? (
+            <><Loader2 size={13} className="animate-spin" />Regenerating chart…</>
+          ) : regenState === "success" ? (
+            <><Check size={13} />Regenerated</>
+          ) : (
+            <><RefreshCw size={13} />Send &amp; regenerate</>
+          )}
+        </button>
+      </div>
+
+      {regenState === "error" && regenError && (
+        <div
+          role="alert"
+          style={{
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: BRAND.candySoft,
+            color: BRAND.candy,
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: 1.4,
+            marginBottom: 10,
+          }}
+        >
+          {regenError}
+        </div>
+      )}
+
+      {feedbackItems && feedbackItems.length > 0 && (
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              color: BRAND.slate500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 6,
+            }}
+          >
+            Recent feedback
+          </div>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 5,
+              maxHeight: 140,
+              overflowY: "auto",
+            }}
+          >
+            {feedbackItems.slice(0, 6).map((f: ChartFeedback) => (
+              <li
+                key={f.id}
+                style={{
+                  fontSize: 11,
+                  color: BRAND.slate700,
+                  borderLeft: `3px solid ${
+                    f.severity === "high" ? BRAND.candy
+                      : f.severity === "medium" ? "#D97706"
+                        : BRAND.slate200
+                  }`,
+                  paddingLeft: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                <strong style={{ color: BRAND.slate950 }}>
+                  {f.issueCategory ?? (f.rating ? `${f.rating}/5` : "note")}
+                </strong>
+                {f.note ? ` — ${f.note}` : ""}
+                <span style={{ marginLeft: 6, color: BRAND.slate500 }}>· {f.status}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Chart row + edit mode                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -1538,6 +1914,7 @@ function ChartRow({
   const [expanded, setExpanded] = useState(autoEdit ?? false);
   const [hovered, setHovered] = useState(false);
   const [showFeedbackFromKey, setShowFeedbackFromKey] = useState(false);
+  const [showChangeType, setShowChangeType] = useState(false);
   const [verification, setVerification] = useState<ChartVerification | null>(
     null,
   );
@@ -1794,6 +2171,15 @@ function ChartRow({
             </button>
             <button
               type="button"
+              onClick={() => setShowChangeType(true)}
+              style={{ ...ghostBtn(false), fontSize: 11, padding: "5px 9px" }}
+              title="Browse chart types and switch"
+            >
+              <Layers size={12} />
+              Change type
+            </button>
+            <button
+              type="button"
               onClick={() => setExpanded((e) => !e)}
               style={{ ...ghostBtn(false), fontSize: 11, padding: "5px 9px" }}
               title={expanded ? "Collapse (E)" : "Expand (E)"}
@@ -1930,6 +2316,10 @@ function ChartRow({
             deletePending={isDeleting}
             openFeedback={showFeedbackFromKey}
             onFeedbackOpened={() => setShowFeedbackFromKey(false)}
+            onScrollToFeedback={() => {
+              setExpanded(true);
+              setShowFeedbackFromKey(true);
+            }}
           />
 
           <button
@@ -2104,8 +2494,37 @@ function ChartRow({
         spec={spec}
         isLocked={LOCKED_CE_SLUGS_CLIENT.has(ceSlug)}
       />
+
+      <InlineFeedbackSection
+        chartId={chart.id}
+        ceSlug={ceSlug}
+        openCount={chart.openFeedbackCount ?? 0}
+        topSeverity={(chart.topFeedbackSeverity as "high" | "medium" | "low" | null | undefined) ?? null}
+        scrollToOnOpen={showFeedbackFromKey}
+        onScrolled={() => setShowFeedbackFromKey(false)}
+      />
         </div>
       )}
+
+      <ArchetypeGalleryModal
+        open={showChangeType}
+        onClose={() => setShowChangeType(false)}
+        onPick={(archetype) => {
+          setShowChangeType(false);
+          setExpanded(true);
+          setMode("edit");
+          if (archetype !== spec.type) {
+            // Carry the current spec data into the editor with the new type
+            // pre-applied so the writer can see the target type and edit from
+            // there. The cast is intentional — the editor treats the spec as
+            // unknown JSON and the writer adjusts the shape before saving.
+            setEditorSeed(
+              { ...(spec as unknown as Record<string, unknown>), type: archetype } as unknown as ChartSpec,
+            );
+          }
+        }}
+        options={ARCHETYPE_OPTIONS}
+      />
 
       <DialogPrimitive.Root
         open={mode === "edit"}
@@ -3097,6 +3516,7 @@ function PresentationPanel({
 
   return (
     <details
+      open
       style={{
         border: `1px solid ${BRAND.slate200}`,
         borderRadius: 12,
@@ -3139,17 +3559,15 @@ function PresentationPanel({
           <select
             style={selectStyle}
             disabled={updateMut.isPending}
-            value={draft.palette ?? ""}
-            onChange={(e) =>
-              patch({
-                palette: (e.target.value || undefined) as PaletteId | undefined,
-              })
-            }
+            value={draft.palette ?? "brand"}
+            onChange={(e) => {
+              const val = e.target.value as PaletteId;
+              patch({ palette: val === "brand" ? undefined : val });
+            }}
           >
-            <option value="">Default (brand)</option>
             {opts.palettes.map((p) => (
               <option key={p} value={p}>
-                {PALETTE_LABELS[p]}
+                {PALETTE_LABELS[p]}{p === "brand" ? " (default)" : ""}
               </option>
             ))}
           </select>
@@ -3170,7 +3588,7 @@ function PresentationPanel({
                 })
               }
             >
-              <option value="">Default</option>
+              <option value="">Automatic (default)</option>
               {(["low_good", "low_bad"] as DirectionId[]).map((d) => (
                 <option key={d} value={d}>
                   {DIRECTION_LABELS[d]}
@@ -3186,15 +3604,14 @@ function PresentationPanel({
             <select
               style={selectStyle}
               disabled={updateMut.isPending}
-              value={draft.view ?? ""}
+              value={draft.view ?? (opts.views[0]?.id ?? "")}
               onChange={(e) =>
-                patch({ view: e.target.value || undefined })
+                patch({ view: e.target.value === opts.views[0]?.id ? undefined : e.target.value || undefined })
               }
             >
-              <option value="">Default</option>
-              {opts.views.map((v) => (
+              {opts.views.map((v, i) => (
                 <option key={v.id} value={v.id}>
-                  {v.label}
+                  {v.label}{i === 0 && !v.label.includes("(default)") ? " (default)" : ""}
                 </option>
               ))}
             </select>
@@ -7035,6 +7452,7 @@ function ChartActionsMenu({
   deletePending,
   openFeedback,
   onFeedbackOpened,
+  onScrollToFeedback,
 }: {
   chartId: number;
   ceSlug: string;
@@ -7048,15 +7466,13 @@ function ChartActionsMenu({
   deletePending: boolean;
   openFeedback?: boolean;
   onFeedbackOpened?: () => void;
+  onScrollToFeedback?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
 
-  // F keyboard shortcut → open feedback panel
+  // F keyboard shortcut → just signal the parent; feedback is now inline
   useEffect(() => {
     if (openFeedback) {
-      setOpen(true);
-      setShowFeedback(true);
       onFeedbackOpened?.();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7071,13 +7487,11 @@ function ChartActionsMenu({
       if (!containerRef.current) return;
       if (!containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setShowFeedback(false);
       }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setOpen(false);
-        setShowFeedback(false);
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -7205,7 +7619,11 @@ function ChartActionsMenu({
             type="button"
             role="menuitem"
             style={itemStyle}
-            onClick={() => setShowFeedback((v) => !v)}
+            onClick={() => {
+              setOpen(false);
+              onScrollToFeedback?.();
+            }}
+            title="Scroll to the feedback section for this chart"
           >
             <MessageSquare size={14} />
             Feedback
@@ -7221,7 +7639,7 @@ function ChartActionsMenu({
                   padding: "1px 6px",
                 }}
               >
-                {openFeedbackCount}
+                {openFeedbackCount} open
               </span>
             )}
           </button>
@@ -7290,22 +7708,6 @@ function ChartActionsMenu({
             )}
             Delete chart
           </button>
-          {showFeedback && (
-            <div
-              style={{
-                marginTop: 6,
-                borderTop: `1px solid ${BRAND.slate100}`,
-                paddingTop: 6,
-              }}
-            >
-              <FeedbackButton
-                chartId={chartId}
-                ceSlug={ceSlug}
-                openCount={openFeedbackCount}
-                topSeverity={topFeedbackSeverity}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
