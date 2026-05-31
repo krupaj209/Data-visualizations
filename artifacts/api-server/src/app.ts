@@ -31,4 +31,8 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+app.get("/", (_req, res) => {
+  res.redirect(302, "/studio/");
+});
+
 export default app;
