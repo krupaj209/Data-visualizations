@@ -1,5 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X, Check, Search } from "lucide-react";
+import { X, Check, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChartArchetypeId } from "@workspace/question-bank";
 import { ChartRenderer } from "@/components/charts";
@@ -7,6 +7,7 @@ import { CHART_TYPE_META } from "@/components/charts/meta";
 import { ARCHETYPE_SAMPLES } from "@/lib/archetype-samples";
 import { BRAND } from "@/lib/brand";
 import type { ChartSpec } from "@/lib/chart-spec";
+import { getBestFits } from "@/lib/archetype-compat";
 
 /**
  * One-line "what this archetype answers" copy keyed by the picker option.
@@ -43,6 +44,12 @@ interface Props {
   onClose: () => void;
   onPick: (archetype: string) => void;
   options: string[];
+  /**
+   * When provided (i.e. the gallery was opened from a "Change type" button on
+   * an existing chart), compatible archetypes are surfaced in a "Best fits"
+   * section and incompatible ones are visually de-emphasised.
+   */
+  sourceArchetype?: string;
 }
 
 export function ArchetypeGalleryModal({
@@ -50,18 +57,212 @@ export function ArchetypeGalleryModal({
   onClose,
   onPick,
   options,
+  sourceArchetype,
 }: Props) {
   const [filter, setFilter] = useState("");
+
+  const bestFits = useMemo(() => {
+    if (!sourceArchetype) return [];
+    return getBestFits(sourceArchetype, options, 3);
+  }, [sourceArchetype, options]);
+
+  const bestFitTargets = useMemo(
+    () => new Set(bestFits.map((f) => f.target)),
+    [bestFits],
+  );
+
+  // When a sourceArchetype is provided, we know which archetypes are compatible
+  // (best fits) vs incompatible. Non-best-fit archetypes are still shown but
+  // de-emphasised. The source archetype itself is excluded entirely.
+  const isChangingType = Boolean(sourceArchetype);
+
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((a) => {
+    const base = options.filter((a) => a !== sourceArchetype);
+    if (!q) return base;
+    return base.filter((a) => {
       const meta = CHART_TYPE_META[a as ChartSpec["type"]];
       const label = meta?.label.toLowerCase() ?? a;
       const desc = (ARCHETYPE_DESCRIPTIONS[a] ?? "").toLowerCase();
       return a.includes(q) || label.includes(q) || desc.includes(q);
     });
-  }, [filter, options]);
+  }, [filter, options, sourceArchetype]);
+
+  // Best fits that also match the current filter query
+  const visibleBestFits = useMemo(() => {
+    if (!filter.trim()) return bestFits;
+    const q = filter.trim().toLowerCase();
+    return bestFits.filter((f) => {
+      const meta = CHART_TYPE_META[f.target as ChartSpec["type"]];
+      const label = meta?.label.toLowerCase() ?? f.target;
+      const desc = (ARCHETYPE_DESCRIPTIONS[f.target] ?? "").toLowerCase();
+      return (
+        f.target.includes(q) ||
+        label.includes(q) ||
+        desc.includes(q) ||
+        f.reason.toLowerCase().includes(q)
+      );
+    });
+  }, [filter, bestFits]);
+
+  // All archetypes minus best-fits, for the main grid
+  const visibleRest = useMemo(
+    () => visible.filter((a) => !bestFitTargets.has(a)),
+    [visible, bestFitTargets],
+  );
+
+  function renderCard(
+    a: string,
+    opts: { compatReason?: string; dimmed?: boolean } = {},
+  ) {
+    const { compatReason, dimmed = false } = opts;
+    const meta = CHART_TYPE_META[a as ChartSpec["type"]] ?? {
+      label: a,
+      emoji: "📈",
+    };
+    const sample = ARCHETYPE_SAMPLES[a as ChartArchetypeId] ?? null;
+    const desc =
+      ARCHETYPE_DESCRIPTIONS[a] ?? "One of the available chart types.";
+
+    return (
+      <div
+        key={a}
+        style={{
+          border: compatReason
+            ? `1.5px solid ${BRAND.purps}`
+            : `1px solid ${BRAND.slate200}`,
+          borderRadius: 14,
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          background: "white",
+          opacity: dimmed ? 0.45 : 1,
+          transition: "opacity 150ms",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: BRAND.slate950,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span aria-hidden>{meta.emoji}</span>
+              {meta.label}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: BRAND.slate500,
+                fontWeight: 600,
+                marginTop: 2,
+                lineHeight: 1.4,
+              }}
+            >
+              {desc}
+            </div>
+            {compatReason && (
+              <div
+                style={{
+                  marginTop: 6,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: BRAND.purpsSoft,
+                  color: BRAND.purps,
+                  borderRadius: 6,
+                  padding: "3px 7px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  lineHeight: 1.35,
+                }}
+              >
+                <Sparkles size={10} />
+                {compatReason}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onPick(a);
+              onClose();
+            }}
+            style={{
+              background: BRAND.purps,
+              color: "white",
+              border: "none",
+              padding: "6px 10px",
+              borderRadius: 8,
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              flexShrink: 0,
+            }}
+          >
+            <Check size={12} />
+            Use this
+          </button>
+        </div>
+        <div
+          style={{
+            border: `1px solid ${BRAND.slate200}`,
+            borderRadius: 10,
+            padding: 8,
+            background: BRAND.slate50,
+            minHeight: 200,
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "stretch",
+          }}
+        >
+          {sample ? (
+            <div style={{ width: "100%" }}>
+              <ChartRenderer
+                spec={sample}
+                header={{
+                  title: meta.label,
+                  subtitle: "Example",
+                  question: meta.label,
+                }}
+                compact
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                margin: "auto",
+                textAlign: "center",
+                color: BRAND.slate500,
+                fontSize: 11,
+                fontWeight: 600,
+                padding: 12,
+              }}
+            >
+              Preview coming soon — pick this archetype and the AI will draft a
+              chart for your CE.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(v) => !v && onClose()}>
@@ -93,6 +294,7 @@ export function ArchetypeGalleryModal({
             overflow: "hidden",
           }}
         >
+          {/* Header */}
           <div
             style={{
               display: "flex",
@@ -123,8 +325,9 @@ export function ArchetypeGalleryModal({
                   marginTop: 2,
                 }}
               >
-                Browse what each chart type looks like and what question it
-                answers. Click "Use this" to drop it into the form.
+                {isChangingType
+                  ? "Showing alternatives compatible with your current data. Click \u201cUse this\u201d to switch type."
+                  : "Browse what each chart type looks like and what question it answers. Click \u201cUse this\u201d to drop it into the form."}
               </DialogPrimitive.Description>
             </div>
             <div
@@ -178,154 +381,129 @@ export function ArchetypeGalleryModal({
             </div>
           </div>
 
-          <div
-            style={{
-              padding: 20,
-              overflowY: "auto",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: 14,
-            }}
-          >
-            {visible.length === 0 && (
+          {/* Body */}
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {/* Best fits section — only when changing type and there are matches */}
+            {isChangingType && visibleBestFits.length > 0 && (
               <div
                 style={{
-                  gridColumn: "1 / -1",
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: BRAND.slate500,
-                  fontSize: 13,
-                  fontWeight: 600,
+                  padding: "16px 20px 0",
                 }}
               >
-                No archetypes match "{filter}".
-              </div>
-            )}
-            {visible.map((a) => {
-              const meta = CHART_TYPE_META[a as ChartSpec["type"]] ?? {
-                label: a,
-                emoji: "📈",
-              };
-              const sample =
-                ARCHETYPE_SAMPLES[a as ChartArchetypeId] ?? null;
-              const desc =
-                ARCHETYPE_DESCRIPTIONS[a] ??
-                "One of the available chart types.";
-              return (
                 <div
-                  key={a}
                   style={{
-                    border: `1px solid ${BRAND.slate200}`,
-                    borderRadius: 14,
-                    padding: 12,
                     display: "flex",
-                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Sparkles size={13} color={BRAND.purps} />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: BRAND.purps,
+                      letterSpacing: "0.07em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Best fits
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: BRAND.slate500,
+                    }}
+                  >
+                    — compatible with your existing data
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(320px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  {visibleBestFits.map((f) =>
+                    renderCard(f.target, { compatReason: f.reason }),
+                  )}
+                </div>
+
+                {/* Divider before the full gallery */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
                     gap: 10,
-                    background: "white",
+                    marginTop: 20,
+                    marginBottom: 4,
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: 8,
+                      flex: 1,
+                      height: 1,
+                      background: BRAND.slate200,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: BRAND.slate500,
+                      letterSpacing: "0.07em",
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: BRAND.slate950,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <span aria-hidden>{meta.emoji}</span>
-                        {meta.label}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: BRAND.slate500,
-                          fontWeight: 600,
-                          marginTop: 2,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {desc}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onPick(a);
-                        onClose();
-                      }}
-                      style={{
-                        background: BRAND.purps,
-                        color: "white",
-                        border: "none",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        fontWeight: 800,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Check size={12} />
-                      Use this
-                    </button>
-                  </div>
+                    All archetypes
+                  </span>
                   <div
                     style={{
-                      border: `1px solid ${BRAND.slate200}`,
-                      borderRadius: 10,
-                      padding: 8,
-                      background: BRAND.slate50,
-                      minHeight: 200,
-                      display: "flex",
-                      alignItems: "stretch",
-                      justifyContent: "stretch",
+                      flex: 1,
+                      height: 1,
+                      background: BRAND.slate200,
                     }}
-                  >
-                    {sample ? (
-                      <div style={{ width: "100%" }}>
-                        <ChartRenderer
-                          spec={sample}
-                          header={{
-                            title: meta.label,
-                            subtitle: "Example",
-                            question: meta.label,
-                          }}
-                          compact
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          margin: "auto",
-                          textAlign: "center",
-                          color: BRAND.slate500,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: 12,
-                        }}
-                      >
-                        Preview coming soon — pick this archetype and the
-                        AI will draft a chart for your CE.
-                      </div>
-                    )}
-                  </div>
+                  />
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            {/* Main grid */}
+            <div
+              style={{
+                padding: 20,
+                paddingTop:
+                  isChangingType && visibleBestFits.length > 0 ? 10 : 20,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: 14,
+              }}
+            >
+              {visible.length === 0 && (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    textAlign: "center",
+                    padding: "40px 0",
+                    color: BRAND.slate500,
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  No archetypes match "{filter}".
+                </div>
+              )}
+              {(isChangingType ? visibleRest : visible).map((a) =>
+                renderCard(a, {
+                  dimmed: isChangingType && !bestFitTargets.has(a),
+                }),
+              )}
+            </div>
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

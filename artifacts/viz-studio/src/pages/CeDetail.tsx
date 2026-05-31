@@ -2526,6 +2526,7 @@ function ChartRow({
           }
         }}
         options={ARCHETYPE_OPTIONS}
+        sourceArchetype={spec.type}
       />
 
       <DialogPrimitive.Root
