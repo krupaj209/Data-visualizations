@@ -20,7 +20,6 @@ export const RegenerateCeInputPageType = {
   entrances: "entrances",
   history: "history",
   "map-floor-plan": "map-floor-plan",
-  "tickets-pricing": "tickets-pricing",
   "reviews-experiences": "reviews-experiences",
   "combo-deals": "combo-deals",
 } as const;

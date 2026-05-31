@@ -112,7 +112,6 @@ type PageTypeValue =
   | "entrances"
   | "history"
   | "map-floor-plan"
-  | "tickets-pricing"
   | "reviews-experiences"
   | "combo-deals";
 type PageFilterValue = "all" | PageTypeValue;
@@ -123,7 +122,6 @@ const PAGE_TYPE_LABELS: Record<PageTypeValue, string> = {
   entrances: "Entrances",
   history: "History",
   "map-floor-plan": "Map & floor plan",
-  "tickets-pricing": "Tickets & pricing",
   "reviews-experiences": "Reviews & experiences",
   "combo-deals": "Combo deals",
 };

@@ -202,20 +202,20 @@ test("assembleDeck: different pageType yields different decks for same CE", () =
     signals,
     pageType: "plan-your-visit",
   });
-  const ticketsDeck = assembleDeck({
+  const combosDeck = assembleDeck({
     ceName: "Colosseum",
     signals,
-    pageType: "tickets-pricing",
+    pageType: "combo-deals",
   });
   const planArchetypes = planDeck.selected.map((q) => q.archetype).sort().join(",");
-  const ticketsArchetypes = ticketsDeck.selected.map((q) => q.archetype).sort().join(",");
+  const combosArchetypes = combosDeck.selected.map((q) => q.archetype).sort().join(",");
   assert.notEqual(
     planArchetypes,
-    ticketsArchetypes,
-    "plan-your-visit and tickets-pricing should not produce identical archetype sets",
+    combosArchetypes,
+    "plan-your-visit and combo-deals should not produce identical archetype sets",
   );
   assert.equal(planDeck.pageType, "plan-your-visit");
-  assert.equal(ticketsDeck.pageType, "tickets-pricing");
+  assert.equal(combosDeck.pageType, "combo-deals");
 });
 
 test("assembleDeck: retireArchetypes is honoured (banned archetype never emitted)", () => {
@@ -262,12 +262,12 @@ test("assembleDeck: Thames-cruises category CE detects multiple sub-products + s
   const deck = assembleDeck({
     ceName: "Thames River Cruises",
     signals,
-    pageType: "tickets-pricing",
+    pageType: "combo-deals",
   });
-  const tpl = getPageTemplate("tickets-pricing");
+  const tpl = getPageTemplate("combo-deals");
   assert.ok(deck.selected.length >= tpl.minCharts,
-    `Thames tickets deck should hit min ${tpl.minCharts}, got ${deck.selected.length}`);
-  // tickets-pricing template requires `value` + `choice` bundles, so a category-CE
+    `Thames combo-deals deck should hit min ${tpl.minCharts}, got ${deck.selected.length}`);
+  // combo-deals template requires `choice` + `value` bundles, so a category-CE
   // with multiple sub-products MUST be able to fire the choice bundle.
   const choiceFired = deck.bundle_audit.some((b) => b.bundle_id === "choice" && b.fired);
   assert.ok(choiceFired, "choice bundle must fire for a category CE with multiple sub-products");

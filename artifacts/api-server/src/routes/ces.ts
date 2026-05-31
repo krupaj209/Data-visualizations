@@ -513,6 +513,13 @@ router.post("/ces/:slug/regenerate", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  if ((req.body as Record<string, unknown>)?.pageType === "tickets-pricing") {
+    res.status(400).json({
+      error:
+        "The 'tickets-pricing' page template has been retired. Pricing data goes stale too quickly to be reliably maintained. Use a different page template.",
+    });
+    return;
+  }
   const body = RegenerateCeBody.safeParse(req.body ?? {});
   if (!body.success) {
     res.status(400).json({ error: body.error.message });

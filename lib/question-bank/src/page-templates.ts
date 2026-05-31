@@ -18,7 +18,6 @@ export const PageType = z.enum([
   "entrances",
   "history",
   "map-floor-plan",
-  "tickets-pricing",
   "reviews-experiences",
   "combo-deals",
 ]);
@@ -128,19 +127,6 @@ export const PAGE_TEMPLATES: Record<PageType, PageTemplate> = {
     ],
     maxCharts: 4,
     minCharts: 2,
-  },
-  "tickets-pricing": {
-    id: "tickets-pricing",
-    label: "Tickets & pricing",
-    narrative: "Choose a tier with full transparency on what's included.",
-    slots: [
-      { bundleId: "value", required: true },
-      { bundleId: "choice", required: true },
-      { bundleId: "timing" },
-      { bundleId: "risk" },
-    ],
-    maxCharts: 4,
-    minCharts: 3,
   },
   "reviews-experiences": {
     id: "reviews-experiences",

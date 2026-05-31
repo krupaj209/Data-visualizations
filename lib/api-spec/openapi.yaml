@@ -2092,7 +2092,6 @@ components:
             - entrances
             - history
             - map-floor-plan
-            - tickets-pricing
             - reviews-experiences
             - combo-deals
           description: |
@@ -2292,7 +2291,6 @@ components:
             - entrances
             - history
             - map-floor-plan
-            - tickets-pricing
             - reviews-experiences
             - combo-deals
           description: Listing-page template the assembler should build the deck for. Defaults to plan-your-visit when omitted.

@@ -1163,7 +1163,6 @@ export const RegenerateCeBody = zod.object({
       "entrances",
       "history",
       "map-floor-plan",
-      "tickets-pricing",
       "reviews-experiences",
       "combo-deals",
     ])
@@ -1392,7 +1391,6 @@ export const GenerateFromResearchBody = zod.object({
       "entrances",
       "history",
       "map-floor-plan",
-      "tickets-pricing",
       "reviews-experiences",
       "combo-deals",
     ])

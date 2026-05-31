@@ -96,6 +96,13 @@ router.get("/research/subcategories", (_req, res): void => {
 });
 
 router.post("/research/generate", async (req, res): Promise<void> => {
+  if ((req.body as Record<string, unknown>)?.pageType === "tickets-pricing") {
+    res.status(400).json({
+      error:
+        "The 'tickets-pricing' page template has been retired. Pricing data goes stale too quickly to be reliably maintained. Use a different page template.",
+    });
+    return;
+  }
   const parsed = generateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
