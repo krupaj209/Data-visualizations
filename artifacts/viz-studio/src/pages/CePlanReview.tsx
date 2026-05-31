@@ -1,4 +1,5 @@
 import {
+  Component,
   useCallback,
   useEffect,
   useMemo,
@@ -20,6 +21,10 @@ import { useGetCe, getGetCeQueryKey } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
+import { ChartRenderer } from "@/components/charts";
+import { ARCHETYPE_SAMPLES } from "@/lib/archetype-samples";
+import { ArchetypeGalleryModal } from "@/components/ArchetypeGalleryModal";
+import type { ChartArchetypeId } from "@workspace/question-bank";
 
 /* -------------------------------------------------------------------------- */
 /* Plan shape (loose — fetched as raw JSON, mirrors CeVisualizationPlan)        */
@@ -172,6 +177,119 @@ function archetypeLabel(archetype: string): string {
   const meta = CHART_TYPE_META[archetype as keyof typeof CHART_TYPE_META];
   if (meta) return `${meta.emoji} ${meta.label}`;
   return archetype;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Archetype thumbnail (compact live render + click-to-gallery)               */
+/* -------------------------------------------------------------------------- */
+
+class ChartErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback ?? null;
+    return this.props.children;
+  }
+}
+
+function ArchetypeThumbnail({
+  archetype,
+  onClick,
+}: {
+  archetype: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const sample = ARCHETYPE_SAMPLES[archetype as ChartArchetypeId] ?? null;
+  if (!sample) return null;
+
+  return (
+    <button
+      type="button"
+      title="Click to explore this chart type"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(e);
+      }}
+      style={{
+        flexShrink: 0,
+        width: 200,
+        height: 120,
+        borderRadius: 10,
+        border: `1px solid ${BRAND.slate200}`,
+        overflow: "hidden",
+        background: BRAND.slate50,
+        padding: 0,
+        cursor: "pointer",
+        position: "relative",
+        display: "block",
+        transition: "box-shadow 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow =
+          `0 0 0 2px ${BRAND.purps}44`;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = "none";
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          overflow: "hidden",
+        }}
+      >
+        <ChartErrorBoundary
+          fallback={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: BRAND.slate500,
+                fontSize: 10,
+                fontWeight: 600,
+              }}
+            >
+              Preview unavailable
+            </div>
+          }
+        >
+          <ChartRenderer spec={sample} compact />
+        </ChartErrorBoundary>
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: "3px 7px",
+          background: "rgba(255,255,255,0.82)",
+          borderTop: `1px solid ${BRAND.slate100}`,
+          fontSize: 9,
+          fontWeight: 800,
+          color: BRAND.purps,
+          textAlign: "center",
+          letterSpacing: 0.3,
+        }}
+      >
+        Click to explore ↗
+      </div>
+    </button>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -729,6 +847,7 @@ function PlanCard({
   disabled?: boolean;
   onToggle?: () => void;
 }) {
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const evidenceSnippets = relevantEvidence(plan, item);
   const evidenceCount = evidenceSnippets.length;
   const sourceRefs = item.evidence_refs ?? [];
@@ -739,20 +858,29 @@ function PlanCard({
     dataNeeded.length > 0 ||
     Boolean(item.quality_score?.rationale);
   return (
-    <label
-      style={{
-        display: "flex",
-        gap: 12,
-        alignItems: "flex-start",
-        border: `1px solid ${checked ? BRAND.purpsSoft : BRAND.slate200}`,
-        background: checked ? "white" : BRAND.slate50,
-        borderRadius: 12,
-        padding: 14,
-        cursor: disabled ? "default" : "pointer",
-        opacity: checked ? 1 : 0.85,
-      }}
-    >
-      <div style={{ paddingTop: 2 }}>
+    <>
+      {galleryOpen && (
+        <ArchetypeGalleryModal
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+          onPick={() => setGalleryOpen(false)}
+          options={[item.archetype]}
+        />
+      )}
+      <label
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-start",
+          border: `1px solid ${checked ? BRAND.purpsSoft : BRAND.slate200}`,
+          background: checked ? "white" : BRAND.slate50,
+          borderRadius: 12,
+          padding: 14,
+          cursor: disabled ? "default" : "pointer",
+          opacity: checked ? 1 : 0.85,
+        }}
+      >
+        <div style={{ paddingTop: 2 }}>
         {mandatory ? (
           <span
             title="Always included"
@@ -963,7 +1091,12 @@ function PlanCard({
           </details>
         )}
       </div>
+      <ArchetypeThumbnail
+        archetype={item.archetype}
+        onClick={() => setGalleryOpen(true)}
+      />
     </label>
+    </>
   );
 }
 
