@@ -204,6 +204,153 @@ export function extractSignals(drdMarkdown: string | null | undefined): ContextS
 }
 
 /**
+ * Merge a patch of signals (e.g. from `bootstrapSignalsFromSubcategory`) onto
+ * a base signal record. Boolean signals are OR-ed (a subcategory bootstrap
+ * never suppresses a signal the DRD already found). Arrays are concatenated.
+ * The `typical_visit_minutes` uses the non-null value, preferring the base.
+ */
+export function mergeSignals(
+  base: ContextSignals,
+  patch: Partial<ContextSignals>,
+): ContextSignals {
+  const result = { ...base };
+  for (const key of Object.keys(patch) as (keyof ContextSignals)[]) {
+    const pv = patch[key];
+    if (pv === undefined) continue;
+    if (typeof pv === "boolean") {
+      (result as Record<string, unknown>)[key] =
+        (result[key] as boolean) || pv;
+    } else if (key === "sub_products" && Array.isArray(pv)) {
+      const existing = result.sub_products;
+      const merged = [...existing];
+      for (const s of pv as string[]) {
+        if (!merged.includes(s)) merged.push(s);
+      }
+      result.sub_products = merged;
+    } else if (key === "typical_visit_minutes") {
+      result.typical_visit_minutes =
+        result.typical_visit_minutes ?? (pv as ContextSignals["typical_visit_minutes"]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Subcategory-seeded signal bootstrap. Returns a partial ContextSignals record
+ * containing signals that are structurally true for a given subcategory — i.e.
+ * signals a writer would be surprised to see missing, regardless of what the
+ * DRD mentions. Merge these into the DRD-extracted signals via `mergeSignals`
+ * so bundle scoring works even when no DRD has been uploaded.
+ *
+ * Only covers the most common subcategories; unknown ids return an empty
+ * record so the assembler degrades gracefully.
+ */
+export function bootstrapSignalsFromSubcategory(
+  subcategoryId: string,
+): Partial<ContextSignals> {
+  const map: Record<string, Partial<ContextSignals>> = {
+    museums: {
+      has_historical_significance: true,
+      has_seasonal_variation: true,
+    },
+    landmarks: {
+      has_historical_significance: true,
+      has_long_queues: true,
+      has_seasonal_variation: true,
+    },
+    theme_parks: {
+      has_rides: true,
+      has_seasonal_variation: true,
+      has_long_queues: true,
+      has_multiple_sub_products: true,
+    },
+    water_parks: {
+      has_rides: true,
+      has_seasonal_variation: true,
+      has_long_queues: true,
+    },
+    zoos: {
+      has_wildlife_sighting: true,
+      has_seasonal_variation: true,
+    },
+    aquariums: {
+      has_seasonal_variation: true,
+    },
+    observation_decks: {
+      has_seasonal_variation: true,
+      has_skip_the_line: true,
+      has_timed_entry: true,
+    },
+    religious_sites: {
+      has_dress_code: true,
+      has_historical_significance: true,
+    },
+    guided_tours: {
+      has_guided_tours: true,
+    },
+    walking_tours: {
+      has_guided_tours: true,
+    },
+    day_trips: {
+      has_guided_tours: true,
+    },
+    multi_day_tours: {
+      has_guided_tours: true,
+    },
+    photography_tours: {
+      has_guided_tours: true,
+    },
+    sightseeing_cruises: {
+      has_weather_sensitivity: true,
+      has_seasonal_variation: true,
+    },
+    dinner_cruises: {
+      has_weather_sensitivity: true,
+      has_evening_program: true,
+    },
+    whale_watching: {
+      has_wildlife_sighting: true,
+      has_weather_sensitivity: true,
+      has_seasonal_variation: true,
+    },
+    safari: {
+      has_wildlife_sighting: true,
+      has_seasonal_variation: true,
+    },
+    desert_safari: {
+      has_weather_sensitivity: true,
+      has_evening_program: true,
+    },
+    skydiving: {
+      has_weather_sensitivity: true,
+    },
+    hot_air_balloon: {
+      has_weather_sensitivity: true,
+      has_seasonal_variation: true,
+    },
+    helicopter_tours: {
+      has_weather_sensitivity: true,
+    },
+    hiking_trails: {
+      has_weather_sensitivity: true,
+      has_seasonal_variation: true,
+    },
+    scuba_diving: {
+      has_weather_sensitivity: true,
+      has_seasonal_variation: true,
+    },
+    immersive_experiences: {
+      has_timed_entry: true,
+    },
+    hop_on_hop_off: {
+      has_multiple_entrances: true,
+      has_multiple_sub_products: true,
+    },
+  };
+  return map[subcategoryId] ?? {};
+}
+
+/**
  * Count how many of `required` and `prefers` signals are present in the
  * extracted signal record. Used by the assembler when scoring bundles.
  */

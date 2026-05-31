@@ -15,6 +15,7 @@ import { getPageTemplate, type PageType, DEFAULT_PAGE_TYPE } from "./page-templa
 import type { VisitorIntentId } from "./intents";
 import type { BankQuestionKind, ChartArchetypeId } from "./types";
 import { isImplementedArchetype } from "./archetypes";
+import { getMandatoryArchetypes } from "./bank";
 
 /* -------------------------------------------------------------------------- */
 /* Overrides                                                                  */
@@ -209,6 +210,13 @@ export interface AssembleInput {
   categoryOverrides?: OverrideAction[];
   /** CE-scope override actions, looked up by ce slug. Wins over category. */
   ceOverrides?: OverrideAction[];
+  /**
+   * Subcategory id used to look up mandatory archetypes from the question
+   * bank. When provided, mandatory archetypes are emitted first (before the
+   * normal slot loop), guaranteeing they appear in the deck regardless of
+   * signal coverage.
+   */
+  subcategoryId?: string;
 }
 
 export interface AssembledDeck {
@@ -312,6 +320,19 @@ function pickCandidate(
   return null;
 }
 
+/**
+ * Scan all bundles for a question template matching the given archetype.
+ * Used to give mandatory archetypes a meaningful question string.
+ */
+function findQuestionTemplate(archetype: ChartArchetypeId): string {
+  for (const bundle of Object.values(QUESTION_BUNDLES)) {
+    for (const c of bundle.candidates) {
+      if (c.archetype === archetype) return c.question_template;
+    }
+  }
+  return `What are the key patterns at {{ceName}}?`;
+}
+
 export function assembleDeck(input: AssembleInput): AssembledDeck {
   const pageType = input.pageType ?? DEFAULT_PAGE_TYPE;
   const template = getPageTemplate(pageType);
@@ -324,6 +345,56 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
   const selected: AssembledQuestion[] = [];
   const dropped: DroppedQuestion[] = [];
   const audit: AssembledDeck["bundle_audit"] = [];
+
+  // ── Mandatory archetypes pass ────────────────────────────────────────────
+  // These fill slots before bundle scoring runs, ensuring subcategory-level
+  // floor archetypes appear in the deck regardless of DRD signal coverage.
+  if (input.subcategoryId) {
+    const mandatories = getMandatoryArchetypes(input.subcategoryId);
+    for (const arch of mandatories) {
+      if (selected.length >= template.maxCharts) break;
+      if (retired.has(arch)) {
+        dropped.push({
+          question: findQuestionTemplate(arch).replace(/\{\{ceName\}\}/g, input.ceName),
+          reason: `mandatory_retired: ${arch} is in retireArchetypes — skipped even though mandatory for ${input.subcategoryId}`,
+        });
+        continue;
+      }
+      if (!isImplementedArchetype(arch)) {
+        dropped.push({
+          question: findQuestionTemplate(arch).replace(/\{\{ceName\}\}/g, input.ceName),
+          reason: `mandatory_not_implemented: ${arch} is mandatory for ${input.subcategoryId} but renderer not yet landed`,
+        });
+        continue;
+      }
+      if (usedArchetypes.has(arch)) continue;
+      const question = findQuestionTemplate(arch).replace(/\{\{ceName\}\}/g, input.ceName);
+      selected.push({
+        question,
+        archetype: arch,
+        rationale: `subcategory mandatory: "${arch}" always present for "${input.subcategoryId}"`,
+        kind: "standard",
+        bundle_id: "mandatory",
+        intent_id: "mandatory",
+        bundle_score: 10,
+        triggering_signals: ["subcategory_mandatory"],
+        topic_id: `mandatory:${arch}`,
+        override_source: "code",
+        override_id: undefined,
+        mandatory: true,
+      });
+      usedArchetypes.add(arch);
+      audit.push({
+        bundle_id: "narrative",
+        intent: "narrative",
+        fired: true,
+        score: 10,
+        triggering_signals: ["subcategory_mandatory"],
+        chosen_archetype: arch,
+        notes: [`mandatory archetype for subcategory "${input.subcategoryId}"`],
+      });
+    }
+  }
 
   for (const slot of template.slots) {
     if (selected.length >= template.maxCharts) break;

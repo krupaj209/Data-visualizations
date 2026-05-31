@@ -3,6 +3,8 @@ import {
   CHART_ARCHETYPES,
   assembleDeck,
   extractSignals,
+  bootstrapSignalsFromSubcategory,
+  mergeSignals,
   isImplementedArchetype,
   resolveSubcategoryMeta,
   DEFAULT_PAGE_TYPE,
@@ -42,7 +44,12 @@ export interface ResearchPipelineInput {
   /** Optional human label/description for unknown long-tail subcategories. */
   subcategoryLabel?: string;
   subcategoryDescription?: string;
-  drdMarkdown: string;
+  /**
+   * Deep Research Doc markdown. Optional — when absent the pipeline uses
+   * Gemini's `googleSearch` tool as the sole grounding source and
+   * bootstraps signals from the subcategory id.
+   */
+  drdMarkdown?: string;
   /**
    * Optional writer-supplied topics that should be turned into hero
    * questions in addition to the curated bank.
@@ -329,7 +336,7 @@ Rules:
 
 Deep Research Doc:
 """
-${truncate(input.drdMarkdown, 8000)}
+${truncate(input.drdMarkdown ?? "", 8000)}
 """`;
 
   try {
@@ -388,7 +395,12 @@ async function selectQuestions(
   );
 
   // (a) Deterministic signal extraction from the DRD. No LLM.
-  const signals = extractSignals(input.drdMarkdown);
+  // When no DRD is present, start from empty signals then layer in
+  // subcategory-seeded bootstrap signals so bundle scoring still fires
+  // the right charts for well-known subcategory types.
+  const drdSignals = extractSignals(input.drdMarkdown ?? "");
+  const bootstrap = bootstrapSignalsFromSubcategory(input.subcategoryId);
+  const signals = mergeSignals(drdSignals, bootstrap);
 
   // Build de-dup set from the existing deck so the assembler can prefer
   // a different archetype within the same bundle on regeneration.
@@ -407,6 +419,7 @@ async function selectQuestions(
     existingArchetypes,
     categoryOverrides: input.categoryOverrides,
     ceOverrides: input.ceOverrides,
+    subcategoryId: input.subcategoryId,
   });
 
   // Regeneration: drop exact-question repeats vs the prior deck so
@@ -446,7 +459,7 @@ async function selectQuestions(
 
   if (deck.selected.length === 0) {
     throw new Error(
-      "Intent-driven assembler kept zero charts. Check that the DRD has enough signal coverage for the page template.",
+      "Intent-driven assembler kept zero charts. Check the page template signal requirements or add mandatory archetypes for this subcategory.",
     );
   }
 
@@ -594,7 +607,7 @@ export async function generateOneChart(
 ): Promise<GeneratedChart> {
   const archetypeBlock = ARCHETYPE_PROMPT[archetype];
   const today = new Date().toISOString().slice(0, 10);
-  const drdBlock = truncate(input.drdMarkdown, 14000);
+  const drdBlock = truncate(input.drdMarkdown ?? "", 14000);
   const intelSlice = sliceIntelForArchetype(input.intel ?? null, archetype);
   const intelBlock =
     intelSlice.facts.length > 0
@@ -750,7 +763,7 @@ export async function generateCrowdTimingPair(
   const weeklyBlock = ARCHETYPE_PROMPT["weekly_pattern"];
   const hourlyBlock = ARCHETYPE_PROMPT["hourly_heatmap"];
   const today = new Date().toISOString().slice(0, 10);
-  const drdBlock = truncate(input.drdMarkdown, 14000);
+  const drdBlock = truncate(input.drdMarkdown ?? "", 14000);
 
   const researchPrompt = `Gather the live numeric facts needed to answer "when do the crowds show?" for ${input.ce.name} (${input.ce.city}, ${input.ce.country}). The findings will feed TWO charts that MUST be numerically consistent — a weekly pattern (Mon-Sun crowd levels) AND an hourly heatmap (24-hour crowd intensity per weekday).
 
@@ -1070,7 +1083,7 @@ ${truncate(webFindings, 4000)}
 
 Deep Research Doc:
 """
-${truncate(input.drdMarkdown, 12000)}
+${truncate(input.drdMarkdown ?? "", 12000)}
 """`;
 
   try {
@@ -1149,7 +1162,7 @@ Return JSON ONLY:
 
 Deep Research Doc:
 """
-${truncate(input.drdMarkdown, 14000)}
+${truncate(input.drdMarkdown ?? "", 14000)}
 """`;
 
   try {
@@ -1192,10 +1205,6 @@ ${truncate(input.drdMarkdown, 14000)}
 export async function runResearchPipeline(
   input: ResearchPipelineInput,
 ): Promise<ResearchPipelineResult> {
-  if (!input.drdMarkdown.trim()) {
-    throw new Error("DRD is empty — upload one before running the pipeline.");
-  }
-
   // Load DB-backed overrides once if not pre-supplied. Soft-fails: a
   // miss just means the pipeline runs with code defaults only. The
   // resolved actions are then forwarded into `assembleDeck` via

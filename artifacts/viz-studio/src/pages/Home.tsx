@@ -558,9 +558,10 @@ export default function Home() {
                         lineHeight: 1.5,
                       }}
                     >
-                      Paste the Deep Research Doc (markdown) or upload it as a
-                      PDF. The first generation pass will use it as ground
-                      truth instead of public web data.
+                      DRD optional — improves accuracy. Paste the Deep
+                      Research Doc (markdown) or upload it as a PDF to ground
+                      chart numbers in primary research. Without a DRD the
+                      pipeline uses live web search instead.
                     </div>
                     <textarea
                       value={drdMarkdown}

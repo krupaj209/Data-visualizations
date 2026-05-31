@@ -111,13 +111,9 @@ router.post("/research/generate", async (req, res): Promise<void> => {
     return;
   }
 
+  // DRD is optional — the pipeline uses Gemini web search as grounding when
+  // no DRD has been uploaded, and bootstraps signals from the subcategory id.
   const [drd] = await db.select().from(drdsTable).where(eq(drdsTable.ceSlug, slug));
-  if (!drd) {
-    res.status(412).json({
-      error: `No DRD uploaded for "${slug}". Upload one via POST /api/drds first.`,
-    });
-    return;
-  }
 
   // Resolve or bootstrap the CE row.
   let [ce] = await db.select().from(cesTable).where(eq(cesTable.slug, slug));
@@ -169,7 +165,7 @@ router.post("/research/generate", async (req, res): Promise<void> => {
       subcategoryId,
       subcategoryLabel: parsed.data.subcategoryLabel,
       subcategoryDescription: parsed.data.subcategoryDescription,
-      drdMarkdown: drd.markdown,
+      drdMarkdown: drd?.markdown,
       writerTopics: parsed.data.writerTopics,
       pageType: parsed.data.pageType,
     });

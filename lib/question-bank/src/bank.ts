@@ -9,6 +9,7 @@
  */
 
 import type {
+  ChartArchetypeId,
   SubcategoryFamily,
   SubcategoryId,
   SubcategoryMeta,
@@ -19,12 +20,38 @@ interface SubcategoryEntry {
   label: string;
   family?: SubcategoryFamily;
   description: string;
+  /**
+   * Archetypes that are structurally mandatory for this subcategory — always
+   * emitted regardless of DRD signal coverage, before the normal bundle-scoring
+   * pass. Filled sparingly; only add an archetype here when it would genuinely
+   * be absent (because a required signal is missing) even though every real CE
+   * in this subcategory should have it.
+   */
+  mandatory_archetypes?: ChartArchetypeId[];
 }
 
 const ENTRIES: SubcategoryEntry[] = [
-  { id: "landmarks", label: "Landmarks & monuments", family: "Tickets", description: "Iconic monuments, towers, and viewpoints visitors come to see." },
-  { id: "museums", label: "Museums & galleries", family: "Tickets", description: "Cultural institutions with collections, exhibitions, and timed tickets." },
-  { id: "theme_parks", label: "Theme parks", family: "Tickets", description: "Multi-ride amusement parks with all-day ticketing." },
+  {
+    id: "landmarks",
+    label: "Landmarks & monuments",
+    family: "Tickets",
+    description: "Iconic monuments, towers, and viewpoints visitors come to see.",
+    mandatory_archetypes: ["hourly_heatmap", "booking_window"],
+  },
+  {
+    id: "museums",
+    label: "Museums & galleries",
+    family: "Tickets",
+    description: "Cultural institutions with collections, exhibitions, and timed tickets.",
+    mandatory_archetypes: ["hourly_heatmap", "seasonal_curve"],
+  },
+  {
+    id: "theme_parks",
+    label: "Theme parks",
+    family: "Tickets",
+    description: "Multi-ride amusement parks with all-day ticketing.",
+    mandatory_archetypes: ["hourly_heatmap", "booking_window"],
+  },
   { id: "water_parks", label: "Water parks", family: "Tickets", description: "Slide-driven seasonal water parks." },
   { id: "zoos", label: "Zoos", family: "Tickets", description: "Walking zoos with timed feedings and exhibits." },
   { id: "aquariums", label: "Aquariums", family: "Tickets", description: "Indoor aquariums with timed shows." },
@@ -32,14 +59,26 @@ const ENTRIES: SubcategoryEntry[] = [
   { id: "city_cards", label: "City cards & passes", family: "Tickets", description: "Multi-attraction passes that bundle entry and transit." },
   { id: "religious_sites", label: "Religious sites", family: "Tickets", description: "Active places of worship with dress codes and access rules." },
   { id: "immersive_experiences", label: "Immersive experiences", family: "Tickets", description: "Projection rooms, VR, and walk-through immersive shows." },
-  { id: "guided_tours", label: "Guided tours", family: "Tours", description: "Expert-led group or small-group tours." },
+  {
+    id: "guided_tours",
+    label: "Guided tours",
+    family: "Tours",
+    description: "Expert-led group or small-group tours.",
+    mandatory_archetypes: ["booking_window"],
+  },
   { id: "day_trips", label: "Day trips", family: "Tours", description: "Full-day round-trip excursions out of a base city." },
   { id: "hop_on_hop_off", label: "Hop-on hop-off", family: "Tours", description: "Multi-stop sightseeing transport with reusable tickets." },
   { id: "walking_tours", label: "Walking tours", family: "Tours", description: "Themed neighborhood walks led by a local guide." },
   { id: "photography_tours", label: "Photography tours", family: "Tours", description: "Guided photo walks at golden hour or signature spots." },
   { id: "multi_day_tours", label: "Multi-day tours", family: "Tours", description: "Multi-day overland or coach tours." },
   { id: "port_of_call_tours", label: "Port-of-call tours", family: "Tours", description: "Shore excursions designed around cruise port arrival windows." },
-  { id: "sightseeing_cruises", label: "Sightseeing cruises", family: "Cruises", description: "On-water sightseeing across multiple operators and routes." },
+  {
+    id: "sightseeing_cruises",
+    label: "Sightseeing cruises",
+    family: "Cruises",
+    description: "On-water sightseeing across multiple operators and routes.",
+    mandatory_archetypes: ["seasonal_curve", "booking_window"],
+  },
   { id: "dinner_cruises", label: "Dinner cruises", family: "Cruises", description: "Sit-down meal cruises with a fixed itinerary." },
   { id: "whale_watching", label: "Whale watching", family: "Cruises", description: "Seasonal wildlife sighting trips, weather-dependent." },
   { id: "plays", label: "Plays & musicals", family: "Entertainment", description: "Live theater shows with assigned seating." },
@@ -95,6 +134,16 @@ export function listSubcategories(): SubcategoryMeta[] {
 
 export function isKnownSubcategory(id: string): id is SubcategoryId {
   return Object.prototype.hasOwnProperty.call(SUBCATEGORIES, id);
+}
+
+/**
+ * Return the mandatory archetypes declared for a subcategory. Returns an
+ * empty array for unknown subcategory ids or entries without mandatory
+ * archetypes — callers never need to guard for undefined.
+ */
+export function getMandatoryArchetypes(subcategoryId: string): ChartArchetypeId[] {
+  const entry = ENTRIES.find((e) => e.id === subcategoryId);
+  return entry?.mandatory_archetypes ?? [];
 }
 
 /**
