@@ -274,6 +274,28 @@ numbers.
   writerId?: string;
 }
 
+export interface VerifyAllResult {
+  /** Number of charts that were verified in this run. */
+  verified: number;
+  /** Number of charts already verified (skipped). */
+  skipped: number;
+  /** Number of charts where the verifier call failed. */
+  failed: number;
+  /** Human-readable note when the whole run was skipped (e.g. verifier not configured). */
+  reason?: string;
+}
+
+export interface RegenerateStaleResult {
+  /** Number of charts successfully regenerated. */
+  regenerated: number;
+  /** IDs of all charts that were identified as stale. */
+  stale_ids: number[];
+  /** Number of stale charts that failed to regenerate. */
+  failed: number;
+  /** IDs of charts that failed to regenerate. */
+  failed_ids: number[];
+}
+
 export interface PublishAllDraftsInput {
   writerId?: string;
 }

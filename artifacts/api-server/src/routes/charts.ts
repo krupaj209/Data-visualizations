@@ -475,6 +475,269 @@ router.post(
 );
 
 /* -------------------------------------------------------------------------- */
+/* POST /ces/:slug/verify-all — bulk-verify every unverified chart on the CE  */
+/* -------------------------------------------------------------------------- */
+
+router.post(
+  "/ces/:slug/verify-all",
+  async (req, res): Promise<void> => {
+    const slug = req.params["slug"];
+    if (!slug) {
+      res.status(400).json({ error: "slug is required" });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, slug));
+    if (!ce) {
+      res.status(404).json({ error: "CE not found" });
+      return;
+    }
+
+    if (LOCKED_CE_SLUGS.has(ce.slug)) {
+      res.status(409).json({
+        error:
+          "This CE has a hand-curated chart set; bulk operations are blocked.",
+      });
+      return;
+    }
+
+    if (!openai) {
+      res.json({
+        verified: 0,
+        skipped: 0,
+        failed: 0,
+        reason: "OpenAI verifier env vars are not configured.",
+      });
+      return;
+    }
+
+    const charts = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.ceId, ce.id));
+
+    const toVerify = charts.filter((c) => {
+      const prov = c.provenance as { verifier_notes?: string } | null | undefined;
+      return !prov?.verifier_notes;
+    });
+
+    if (toVerify.length === 0) {
+      res.json({ verified: 0, skipped: charts.length, failed: 0 });
+      return;
+    }
+
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+
+    const results = await Promise.allSettled(
+      toVerify.map(async (chart) => {
+        const provenance =
+          (chart.provenance as ChartProvenance | null) ?? {
+            status: "estimated" as const,
+            drd_snippets: [],
+            web_sources: [],
+            estimates: [],
+            verifier_notes: "",
+          };
+
+        const result = await verifyChartStructured(
+          {
+            ce: {
+              name: ce.name,
+              city: ce.city,
+              country: ce.country,
+              slug: ce.slug,
+            },
+            subcategoryId: ce.category,
+            drdMarkdown: drd?.markdown ?? "(no DRD uploaded)",
+          },
+          {
+            slug: chart.slug,
+            question: chart.question,
+            title: chart.title,
+            subtitle: chart.subtitle,
+            insight: chart.insight,
+            spec: chart.spec as unknown as ChartSpec,
+          },
+        );
+
+        const mergedProvenance: ChartProvenance = {
+          ...provenance,
+          verifier_notes: result.verifier_notes,
+        };
+
+        await db
+          .update(chartsTable)
+          .set({
+            provenance: mergedProvenance as unknown as Record<string, unknown>,
+          })
+          .where(eq(chartsTable.id, chart.id));
+
+        await db.insert(chartEditsTable).values({
+          chartId: chart.id,
+          writerId: "anonymous",
+          action: "verify",
+          before: null,
+          after: null,
+          note: result.verifier_notes,
+        });
+      }),
+    );
+
+    let verified = 0;
+    let failed = 0;
+    for (const r of results) {
+      if (r.status === "fulfilled") verified++;
+      else failed++;
+    }
+
+    res.json({ verified, skipped: charts.length - toVerify.length, failed });
+  },
+);
+
+/* -------------------------------------------------------------------------- */
+/* POST /ces/:slug/regenerate-stale — re-generate charts whose spec predates  */
+/* the CE's current DRD                                                        */
+/* -------------------------------------------------------------------------- */
+
+router.post(
+  "/ces/:slug/regenerate-stale",
+  async (req, res): Promise<void> => {
+    const slug = req.params["slug"];
+    if (!slug) {
+      res.status(400).json({ error: "slug is required" });
+      return;
+    }
+
+    if (LOCKED_CE_SLUGS.has(slug)) {
+      res.status(409).json({
+        error:
+          "This CE has a hand-curated chart set; bulk operations are blocked.",
+      });
+      return;
+    }
+
+    const [ce] = await db
+      .select()
+      .from(cesTable)
+      .where(eq(cesTable.slug, slug));
+    if (!ce) {
+      res.status(404).json({ error: "CE not found" });
+      return;
+    }
+
+    const [drd] = await db
+      .select()
+      .from(drdsTable)
+      .where(eq(drdsTable.ceSlug, ce.slug));
+    if (!drd) {
+      res.status(412).json({
+        error:
+          "No DRD uploaded for this CE. Upload a DRD first to identify stale charts.",
+      });
+      return;
+    }
+
+    const charts = await db
+      .select()
+      .from(chartsTable)
+      .where(eq(chartsTable.ceId, ce.id));
+
+    const staleCharts = charts.filter((c) => {
+      const prov = c.provenance as { generated_at?: string } | null | undefined;
+      const generatedAt = prov?.generated_at
+        ? new Date(prov.generated_at)
+        : c.createdAt;
+      return drd.updatedAt > generatedAt;
+    });
+
+    if (staleCharts.length === 0) {
+      res.json({ regenerated: 0, stale_ids: [], failed: 0, failed_ids: [] });
+      return;
+    }
+
+    let regenerated = 0;
+    let failed = 0;
+    const failedIds: number[] = [];
+
+    for (const chart of staleCharts) {
+      try {
+        const generated = await generateOneChart(
+          {
+            ce: {
+              name: ce.name,
+              city: ce.city,
+              country: ce.country,
+              slug: ce.slug,
+            },
+            subcategoryId: ce.category,
+            drdMarkdown: drd.markdown,
+          },
+          chart.question,
+          chart.chartType as ChartArchetypeId,
+        );
+
+        const priorProvenance =
+          (chart.provenance as ChartProvenance | null) ?? {
+            status: "estimated" as const,
+            drd_snippets: [],
+            web_sources: [],
+            estimates: [],
+            verifier_notes: "",
+          };
+
+        const nextProvenance: ChartProvenance = {
+          ...priorProvenance,
+          ...generated.provenance,
+          generated_at: new Date().toISOString(),
+        };
+
+        await db
+          .update(chartsTable)
+          .set({
+            spec: generated.spec.spec as unknown as Record<string, unknown>,
+            title: generated.spec.title,
+            subtitle: generated.spec.subtitle,
+            insight: generated.spec.insight,
+            provenance: nextProvenance as unknown as Record<string, unknown>,
+          })
+          .where(eq(chartsTable.id, chart.id));
+
+        await db.insert(chartEditsTable).values({
+          chartId: chart.id,
+          writerId: "anonymous",
+          action: "edit",
+          before: null,
+          after: null,
+          note: "regenerate-stale",
+        });
+
+        regenerated++;
+      } catch (err) {
+        req.log.error(
+          { err, chartId: chart.id },
+          "regenerate-stale failed for chart",
+        );
+        failed++;
+        failedIds.push(chart.id);
+      }
+    }
+
+    res.json({
+      regenerated,
+      stale_ids: staleCharts.map((c) => c.id),
+      failed,
+      failed_ids: failedIds,
+    });
+  },
+);
+
+/* -------------------------------------------------------------------------- */
 /* POST /charts/:id/fact-reviews — writer review on a single fact-table row   */
 /* DELETE /charts/:id/fact-reviews/:rowId — clear a writer's review decision  */
 /* -------------------------------------------------------------------------- */

@@ -2487,6 +2487,66 @@ export const PublishAllDraftsResponse = zod.object({
 });
 
 /**
+ * Runs the OpenAI verifier concurrently on all charts that do not yet
+have a `verifier_notes` entry in provenance.  Returns immediately when
+all jobs finish.  Blocked for locked/curated CEs (409).
+If the OpenAI integration is not configured, returns 200 with
+`verified: 0` and a human-readable `reason`.
+
+ * @summary Bulk-verify every unverified chart for a CE
+ */
+export const VerifyAllChartsParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const VerifyAllChartsResponse = zod.object({
+  verified: zod
+    .number()
+    .describe("Number of charts that were verified in this run."),
+  skipped: zod
+    .number()
+    .describe("Number of charts already verified (skipped)."),
+  failed: zod
+    .number()
+    .describe("Number of charts where the verifier call failed."),
+  reason: zod
+    .string()
+    .optional()
+    .describe(
+      "Human-readable note when the whole run was skipped (e.g. verifier not configured).",
+    ),
+});
+
+/**
+ * Identifies stale charts by comparing `provenance.generated_at` (falling
+back to `chart.createdAt`) against the DRD's `updatedAt`.  Regenerates
+each stale chart serially using the same per-archetype Gemini pipeline
+and stamps a fresh `generated_at` on provenance.
+Returns 412 when no DRD has been uploaded.
+Blocked for locked/curated CEs (409).
+
+ * @summary Regenerate charts whose spec predates the CE's current DRD
+ */
+export const RegenerateStaleChartsParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const RegenerateStaleChartsResponse = zod.object({
+  regenerated: zod
+    .number()
+    .describe("Number of charts successfully regenerated."),
+  stale_ids: zod
+    .array(zod.number())
+    .describe("IDs of all charts that were identified as stale."),
+  failed: zod
+    .number()
+    .describe("Number of stale charts that failed to regenerate."),
+  failed_ids: zod
+    .array(zod.number())
+    .describe("IDs of charts that failed to regenerate."),
+});
+
+/**
  * @summary Get the ideation chatbot transcript for a CE
  */
 export const GetIdeationParams = zod.object({

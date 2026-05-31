@@ -1286,6 +1286,91 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/verify-all:
+    post:
+      operationId: verifyAllCharts
+      tags: [charts]
+      summary: Bulk-verify every unverified chart for a CE
+      description: |
+        Runs the OpenAI verifier concurrently on all charts that do not yet
+        have a `verifier_notes` entry in provenance.  Returns immediately when
+        all jobs finish.  Blocked for locked/curated CEs (409).
+        If the OpenAI integration is not configured, returns 200 with
+        `verified: 0` and a human-readable `reason`.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bulk-verify summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyAllResult"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Locked CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /ces/{slug}/regenerate-stale:
+    post:
+      operationId: regenerateStaleCharts
+      tags: [charts]
+      summary: Regenerate charts whose spec predates the CE's current DRD
+      description: |
+        Identifies stale charts by comparing `provenance.generated_at` (falling
+        back to `chart.createdAt`) against the DRD's `updatedAt`.  Regenerates
+        each stale chart serially using the same per-archetype Gemini pipeline
+        and stamps a fresh `generated_at` on provenance.
+        Returns 412 when no DRD has been uploaded.
+        Blocked for locked/curated CEs (409).
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Regenerate-stale summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegenerateStaleResult"
+        "404":
+          description: CE not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Locked CE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "412":
+          description: No DRD uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: One or more charts failed to regenerate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /ces/{slug}/ideation:
     get:
       operationId: getIdeation
@@ -1832,6 +1917,49 @@ components:
         writerId:
           type: string
           maxLength: 120
+    VerifyAllResult:
+      type: object
+      properties:
+        verified:
+          type: integer
+          description: Number of charts that were verified in this run.
+        skipped:
+          type: integer
+          description: Number of charts already verified (skipped).
+        failed:
+          type: integer
+          description: Number of charts where the verifier call failed.
+        reason:
+          type: string
+          description: Human-readable note when the whole run was skipped (e.g. verifier not configured).
+      required:
+        - verified
+        - skipped
+        - failed
+    RegenerateStaleResult:
+      type: object
+      properties:
+        regenerated:
+          type: integer
+          description: Number of charts successfully regenerated.
+        stale_ids:
+          type: array
+          items:
+            type: integer
+          description: IDs of all charts that were identified as stale.
+        failed:
+          type: integer
+          description: Number of stale charts that failed to regenerate.
+        failed_ids:
+          type: array
+          items:
+            type: integer
+          description: IDs of charts that failed to regenerate.
+      required:
+        - regenerated
+        - stale_ids
+        - failed
+        - failed_ids
     PublishAllDraftsInput:
       type: object
       properties:

@@ -62,12 +62,14 @@ import type {
   RegenerateCeInput,
   RegenerateCeResult,
   RegenerateFeedbackInput,
+  RegenerateStaleResult,
   ResearchGenerateInput,
   ResearchGenerateResult,
   RestoreCe200,
   Subcategory,
   TopicChartInput,
   TriageFeedback,
+  VerifyAllResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -3594,6 +3596,187 @@ export const usePublishAllDrafts = <
   TContext
 > => {
   return useMutation(getPublishAllDraftsMutationOptions(options));
+};
+
+/**
+ * Runs the OpenAI verifier concurrently on all charts that do not yet
+have a `verifier_notes` entry in provenance.  Returns immediately when
+all jobs finish.  Blocked for locked/curated CEs (409).
+If the OpenAI integration is not configured, returns 200 with
+`verified: 0` and a human-readable `reason`.
+
+ * @summary Bulk-verify every unverified chart for a CE
+ */
+export const getVerifyAllChartsUrl = (slug: string) => {
+  return `/api/ces/${slug}/verify-all`;
+};
+
+export const verifyAllCharts = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<VerifyAllResult> => {
+  return customFetch<VerifyAllResult>(getVerifyAllChartsUrl(slug), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getVerifyAllChartsMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyAllCharts>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifyAllCharts>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["verifyAllCharts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifyAllCharts>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return verifyAllCharts(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifyAllChartsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifyAllCharts>>
+>;
+
+export type VerifyAllChartsMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Bulk-verify every unverified chart for a CE
+ */
+export const useVerifyAllCharts = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyAllCharts>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifyAllCharts>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getVerifyAllChartsMutationOptions(options));
+};
+
+/**
+ * Identifies stale charts by comparing `provenance.generated_at` (falling
+back to `chart.createdAt`) against the DRD's `updatedAt`.  Regenerates
+each stale chart serially using the same per-archetype Gemini pipeline
+and stamps a fresh `generated_at` on provenance.
+Returns 412 when no DRD has been uploaded.
+Blocked for locked/curated CEs (409).
+
+ * @summary Regenerate charts whose spec predates the CE's current DRD
+ */
+export const getRegenerateStaleChartsUrl = (slug: string) => {
+  return `/api/ces/${slug}/regenerate-stale`;
+};
+
+export const regenerateStaleCharts = async (
+  slug: string,
+  options?: RequestInit,
+): Promise<RegenerateStaleResult> => {
+  return customFetch<RegenerateStaleResult>(getRegenerateStaleChartsUrl(slug), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRegenerateStaleChartsMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateStaleCharts>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof regenerateStaleCharts>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  const mutationKey = ["regenerateStaleCharts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof regenerateStaleCharts>>,
+    { slug: string }
+  > = (props) => {
+    const { slug } = props ?? {};
+
+    return regenerateStaleCharts(slug, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegenerateStaleChartsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof regenerateStaleCharts>>
+>;
+
+export type RegenerateStaleChartsMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Regenerate charts whose spec predates the CE's current DRD
+ */
+export const useRegenerateStaleCharts = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof regenerateStaleCharts>>,
+    TError,
+    { slug: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof regenerateStaleCharts>>,
+  TError,
+  { slug: string },
+  TContext
+> => {
+  return useMutation(getRegenerateStaleChartsMutationOptions(options));
 };
 
 /**

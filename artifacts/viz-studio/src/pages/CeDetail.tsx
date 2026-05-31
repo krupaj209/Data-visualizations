@@ -3,11 +3,13 @@ import { Link, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   Code2,
   Copy,
   ExternalLink,
@@ -29,6 +31,7 @@ import {
   ThumbsUp,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 import {
   useGetCe,
@@ -38,6 +41,8 @@ import {
   usePublishChart,
   usePublishAllDrafts,
   useVerifyChart,
+  useVerifyAllCharts,
+  useRegenerateStaleCharts,
   useCreateChartFromTopic,
   useMergeChartSuggestion,
   useGetIdeation,
@@ -345,6 +350,8 @@ function CeDetailInner({
   editId,
 }: CeDetailInnerProps) {
   const publishAllMut = usePublishAllDrafts();
+  const verifyAllMut = useVerifyAllCharts();
+  const regenerateStaleMut = useRegenerateStaleCharts();
   // Lifted up so the ideation panel's "Use this idea" button can prefill the
   // new-chart form. The panel writes into this seed; the form reads it on
   // mount and clears it when the user submits or closes.
@@ -408,6 +415,17 @@ function CeDetailInner({
   const [showPublishDrawer, setShowPublishDrawer] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [activeChartId, setActiveChartId] = useState<number | null>(null);
+  const [showDeckActionsMenu, setShowDeckActionsMenu] = useState(false);
+  const [showRegenerateStaleModal, setShowRegenerateStaleModal] = useState(false);
+  const [deckActionNotification, setDeckActionNotification] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [kbHintDismissed, setKbHintDismissed] = useState<boolean>(() => {
+    try { return window.localStorage.getItem("viz-studio:kb-hint-dismissed") === "1"; } catch { return false; }
+  });
+
+
   const publishChartMut = usePublishChart();
   const [publishingSelected, setPublishingSelected] = useState(false);
 
@@ -439,6 +457,86 @@ function CeDetailInner({
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3500);
   }
+
+  function showNotification(type: "success" | "error", message: string) {
+    setDeckActionNotification({ type, message });
+    setTimeout(() => setDeckActionNotification(null), 4000);
+  }
+
+  async function handlePublishAllDrafts() {
+    setShowDeckActionsMenu(false);
+    try {
+      const result = await publishAllMut.mutateAsync({ slug, data: {} });
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      await qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+      const count = (result as { published?: number }).published ?? 0;
+      showNotification("success", `${count} chart${count !== 1 ? "s" : ""} published`);
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 3500);
+    } catch {
+      showNotification("error", "Publish all failed — try again");
+    }
+  }
+
+  async function handleVerifyAll() {
+    setShowDeckActionsMenu(false);
+    try {
+      const result = await verifyAllMut.mutateAsync({ slug });
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      const r = result as { verified?: number; skipped?: number; failed?: number; reason?: string };
+      if (r.reason) {
+        showNotification("error", r.reason);
+      } else if (r.failed && (r.failed ?? 0) > 0) {
+        showNotification("error", `Verified ${r.verified ?? 0} · ${r.failed} failed`);
+      } else {
+        showNotification("success", `${r.verified ?? 0} chart${(r.verified ?? 0) !== 1 ? "s" : ""} verified`);
+      }
+    } catch {
+      showNotification("error", "Verify all failed — try again");
+    }
+  }
+
+  async function handleRegenerateStaleConfirm() {
+    setShowRegenerateStaleModal(false);
+    try {
+      const result = await regenerateStaleMut.mutateAsync({ slug });
+      await qc.invalidateQueries({ queryKey: getGetCeQueryKey(slug) });
+      await qc.invalidateQueries({ queryKey: getListCesQueryKey() });
+      const r = result as { regenerated?: number; failed?: number };
+      if ((r.failed ?? 0) > 0) {
+        showNotification("error", `Regenerated ${r.regenerated ?? 0} · ${r.failed} failed`);
+      } else {
+        showNotification("success", `${r.regenerated ?? 0} stale chart${(r.regenerated ?? 0) !== 1 ? "s" : ""} regenerated`);
+      }
+    } catch {
+      showNotification("error", "Regenerate stale failed — try again");
+    }
+  }
+
+  const isLockedForBulk = LOCKED_CE_SLUGS_CLIENT.has(ce.slug);
+
+  const needsAttentionCount = charts.filter(
+    (c) => (c.openFeedbackCount ?? 0) > 0,
+  ).length;
+
+  const unverifiedCount = charts.filter((c) => {
+    const prov = c.provenance as { verifier_notes?: string } | null | undefined;
+    return !prov?.verifier_notes;
+  }).length;
+
+  const drdUpdatedAt = (ce as { drdUpdatedAt?: string | null }).drdUpdatedAt
+    ? new Date((ce as { drdUpdatedAt: string }).drdUpdatedAt)
+    : null;
+  const staleCharts = drdUpdatedAt
+    ? charts.filter((c) => {
+        const prov = c.provenance as { generated_at?: string } | null | undefined;
+        const generatedAt = prov?.generated_at
+          ? new Date(prov.generated_at)
+          : new Date(c.createdAt);
+        return drdUpdatedAt > generatedAt;
+      })
+    : [];
+  const staleCount = staleCharts.length;
 
   const pageFilteredCharts =
     pageType === "all"
@@ -592,8 +690,17 @@ function CeDetailInner({
                   color: BRAND.slate700,
                 }}
               >
-                {ce.city}, {ce.country} · {publishedCount} published
-                {draftCount > 0 ? ` · ${draftCount} draft` : ""}
+                {ce.city}, {ce.country}
+                {" · "}
+                <span style={{ color: publishedCount > 0 ? "#0E8F4E" : BRAND.slate700 }}>
+                  {publishedCount} published
+                </span>
+                {draftCount > 0 && (
+                  <span style={{ color: BRAND.slate700 }}> · {draftCount} draft</span>
+                )}
+                {needsAttentionCount > 0 && (
+                  <span style={{ color: "#C05621" }}> · {needsAttentionCount} needs attention</span>
+                )}
               </div>
             </div>
           </div>
@@ -639,34 +746,134 @@ function CeDetailInner({
             })}
           </div>
 
-          {draftCount > 0 && (
+          <div style={{ position: "relative" }}>
             <button
               type="button"
-              onClick={() => setShowPublishDrawer(true)}
-              disabled={publishAllMut.isPending}
-              title={`Publish all ${draftCount} draft chart(s) in one go`}
+              onClick={() => setShowDeckActionsMenu((v) => !v)}
+              disabled={
+                publishAllMut.isPending ||
+                verifyAllMut.isPending ||
+                regenerateStaleMut.isPending
+              }
               style={{
-                background: publishAllMut.isPending ? BRAND.slate100 : BRAND.bgMint,
-                color: "#0E8F4E",
-                border: `1px solid #7AD2A6`,
-                padding: "8px 14px",
+                background: "white",
+                color: BRAND.slate950,
+                border: `1px solid ${BRAND.slate200}`,
+                padding: "8px 12px",
                 borderRadius: 12,
                 fontWeight: 800,
                 fontSize: 12,
-                cursor: publishAllMut.isPending ? "wait" : "pointer",
+                cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
+                position: "relative",
               }}
             >
-              {publishAllMut.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
+              {publishAllMut.isPending || verifyAllMut.isPending || regenerateStaleMut.isPending ? (
+                <Loader2 size={13} className="animate-spin" />
               ) : (
-                <Eye size={14} />
+                <Zap size={13} />
               )}
-              Publish {draftCount}
+              Deck actions
+              <ChevronDown size={12} style={{ opacity: 0.6 }} />
+              {(draftCount > 0 || needsAttentionCount > 0 || staleCount > 0) && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -5,
+                    right: -5,
+                    background: BRAND.candy,
+                    color: "white",
+                    borderRadius: "50%",
+                    width: 16,
+                    height: 16,
+                    fontSize: 9,
+                    fontWeight: 900,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    lineHeight: 1,
+                  }}
+                >
+                  {draftCount + (unverifiedCount > 0 && !isLockedForBulk ? 1 : 0) + (staleCount > 0 && !isLockedForBulk ? 1 : 0)}
+                </span>
+              )}
             </button>
-          )}
+
+            {showDeckActionsMenu && (
+              <>
+                <div
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 49,
+                  }}
+                  onClick={() => setShowDeckActionsMenu(false)}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    zIndex: 50,
+                    background: "white",
+                    border: `1px solid ${BRAND.slate200}`,
+                    borderRadius: 14,
+                    boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                    minWidth: 220,
+                    overflow: "hidden",
+                    padding: "6px 0",
+                  }}
+                >
+                  <DeckActionMenuItem
+                    icon={<Eye size={14} />}
+                    label="Publish all drafts"
+                    badge={draftCount > 0 ? String(draftCount) : undefined}
+                    badgeColor="#0E8F4E"
+                    disabled={draftCount === 0 || publishAllMut.isPending}
+                    onClick={handlePublishAllDrafts}
+                  />
+                  <DeckActionMenuItem
+                    icon={<ShieldCheck size={14} />}
+                    label="Verify all"
+                    badge={unverifiedCount > 0 ? String(unverifiedCount) : undefined}
+                    badgeColor={BRAND.purps}
+                    disabled={unverifiedCount === 0 || isLockedForBulk || verifyAllMut.isPending}
+                    disabledReason={isLockedForBulk ? "Locked deck" : undefined}
+                    onClick={handleVerifyAll}
+                  />
+                  <div
+                    style={{
+                      height: 1,
+                      background: BRAND.slate100,
+                      margin: "5px 0",
+                    }}
+                  />
+                  <DeckActionMenuItem
+                    icon={<Clock size={14} />}
+                    label="Regenerate stale"
+                    badge={staleCount > 0 ? String(staleCount) : undefined}
+                    badgeColor="#C05621"
+                    disabled={staleCount === 0 || isLockedForBulk || !drdUpdatedAt || regenerateStaleMut.isPending}
+                    disabledReason={
+                      isLockedForBulk
+                        ? "Locked deck"
+                        : !drdUpdatedAt
+                          ? "No DRD uploaded"
+                          : staleCount === 0
+                            ? "All charts up to date"
+                            : undefined
+                    }
+                    onClick={() => {
+                      setShowDeckActionsMenu(false);
+                      setShowRegenerateStaleModal(true);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
 
           {isLocked ? (
             <span
@@ -958,7 +1165,321 @@ function CeDetailInner({
         />
       )}
 
+      {showRegenerateStaleModal && (
+        <RegenerateStaleModal
+          staleCharts={staleCharts}
+          drdUpdatedAt={drdUpdatedAt}
+          isPending={regenerateStaleMut.isPending}
+          onConfirm={handleRegenerateStaleConfirm}
+          onCancel={() => setShowRegenerateStaleModal(false)}
+        />
+      )}
+
+      {deckActionNotification && (
+        <DeckActionNotification
+          type={deckActionNotification.type}
+          message={deckActionNotification.message}
+          onDismiss={() => setDeckActionNotification(null)}
+        />
+      )}
+
+      {!kbHintDismissed && visibleCharts.length > 1 && (
+        <KeyboardHintTooltip
+          onDismiss={() => {
+            setKbHintDismissed(true);
+            try { window.localStorage.setItem("viz-studio:kb-hint-dismissed", "1"); } catch { /* ignore */ }
+          }}
+        />
+      )}
+
+
       <MiniMapRail charts={visibleCharts} activeChartId={activeChartId} />
+    </div>
+  );
+}
+
+function DeckActionMenuItem({
+  icon,
+  label,
+  badge,
+  badgeColor,
+  disabled,
+  disabledReason,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  badge?: string;
+  badgeColor?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={disabled && disabledReason ? disabledReason : undefined}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        padding: "9px 14px",
+        background: "none",
+        border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+        textAlign: "left",
+        fontFamily: "inherit",
+        fontSize: 13,
+        fontWeight: 700,
+        color: BRAND.slate950,
+        transition: "background 100ms",
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = BRAND.bgShell;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "none";
+      }}
+    >
+      <span style={{ color: badgeColor ?? BRAND.purps, flexShrink: 0 }}>{icon}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {badge && (
+        <span
+          style={{
+            background: badgeColor ? `${badgeColor}22` : `${BRAND.purps}22`,
+            color: badgeColor ?? BRAND.purps,
+            borderRadius: 6,
+            padding: "2px 6px",
+            fontSize: 11,
+            fontWeight: 900,
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function RegenerateStaleModal({
+  staleCharts,
+  drdUpdatedAt,
+  isPending,
+  onConfirm,
+  onCancel,
+}: {
+  staleCharts: { id: number; title: string; chartType: string }[];
+  drdUpdatedAt: Date | null;
+  isPending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(15,23,42,0.4)",
+        padding: 24,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        style={{
+          background: "white",
+          borderRadius: 20,
+          boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
+          width: "100%",
+          maxWidth: 440,
+          padding: 28,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 12,
+          }}
+        >
+          <Clock size={20} style={{ color: "#C05621" }} />
+          <h3
+            style={{
+              fontSize: 16,
+              fontWeight: 900,
+              color: BRAND.slate950,
+              margin: 0,
+            }}
+          >
+            Regenerate {staleCharts.length} stale chart{staleCharts.length !== 1 ? "s" : ""}
+          </h3>
+        </div>
+        <p
+          style={{
+            fontSize: 13,
+            color: BRAND.slate700,
+            marginBottom: 16,
+            lineHeight: 1.5,
+          }}
+        >
+          The DRD was updated
+          {drdUpdatedAt
+            ? ` on ${drdUpdatedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+            : ""}
+          . These charts predate that update and will be re-generated from the
+          latest DRD. The chart type and question are preserved; specs and copy
+          will be refreshed by Gemini.
+        </p>
+        <div
+          style={{
+            background: BRAND.bgShell,
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 20,
+            maxHeight: 180,
+            overflowY: "auto",
+          }}
+        >
+          {staleCharts.map((c) => (
+            <div
+              key={c.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 0",
+                fontSize: 12,
+                color: BRAND.slate950,
+                fontWeight: 600,
+              }}
+            >
+              <AlertCircle size={12} style={{ color: "#C05621", flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {c.title || `Chart #${c.id}`}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: BRAND.slate700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  flexShrink: 0,
+                }}
+              >
+                {c.chartType.replace(/_/g, " ")}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            style={{
+              background: "white",
+              color: BRAND.slate700,
+              border: `1px solid ${BRAND.slate200}`,
+              padding: "9px 18px",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            style={{
+              background: "#C05621",
+              color: "white",
+              border: "none",
+              padding: "9px 18px",
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: isPending ? "wait" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {isPending ? "Regenerating…" : `Regenerate ${staleCharts.length}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeckActionNotification({
+  type,
+  message,
+  onDismiss,
+}: {
+  type: "success" | "error";
+  message: string;
+  onDismiss: () => void;
+}) {
+  const isSuccess = type === "success";
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 28,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 70,
+        background: isSuccess ? "#052E16" : "#450A0A",
+        color: "white",
+        borderRadius: 12,
+        padding: "12px 18px",
+        fontSize: 13,
+        fontWeight: 700,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        boxShadow: "0 8px 24px rgba(15,23,42,0.22)",
+        maxWidth: 380,
+        pointerEvents: "auto",
+      }}
+    >
+      {isSuccess ? (
+        <Check size={15} style={{ color: "#4ADE80", flexShrink: 0 }} />
+      ) : (
+        <AlertCircle size={15} style={{ color: "#F87171", flexShrink: 0 }} />
+      )}
+      <span style={{ flex: 1 }}>{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        style={{
+          background: "none",
+          border: "none",
+          color: "rgba(255,255,255,0.6)",
+          cursor: "pointer",
+          padding: 0,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 }
