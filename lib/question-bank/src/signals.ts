@@ -6,6 +6,8 @@
  * canonical input to bundle scoring and page-template assembly.
  */
 
+import type { SubcategoryId } from "./types";
+
 export interface ContextSignals {
   has_seasonal_variation: boolean;
   has_skip_the_line: boolean;
@@ -25,6 +27,24 @@ export interface ContextSignals {
   has_historical_significance: boolean;
   has_dynamic_pricing: boolean;
   has_multiple_sub_products: boolean;
+
+  /* ---- Subcategory-structural signals (set by bootstrapSignalsFromSubcategory) ---- */
+
+  /** Theme parks and water parks — unlocks ride_wait_curve, opening_hour_rank, zone_wait_heatmap. */
+  has_ride_attractions: boolean;
+  /** Museums, aquariums, zoos with distinct named galleries — unlocks zone_crowd_heatmap, floor_plan_flow. */
+  has_named_gallery_zones: boolean;
+  /** Guided tours, walking tours, food tours, day trips — unlocks itinerary_flow and time_split. */
+  has_fixed_itinerary: boolean;
+  /** Zoos, aquariums, religious sites with timed feedings / shows — unlocks daily_programme. */
+  has_scheduled_shows: boolean;
+  /** Sightseeing / dinner cruises where departure slot determines the experience — unlocks optimal_departure. */
+  has_cruise_departure_slots: boolean;
+  /** Photography tours, helicopter tours, hot-air balloons — unlocks golden_hour_match. */
+  has_photography_windows: boolean;
+  /** Hop-on-hop-off and sightseeing cruises with multiple named routes — unlocks landmark_coverage, stop_frequency. */
+  has_multi_route_options: boolean;
+
   /** Names of distinct sub-products mentioned in the DRD (best-effort, deduped). */
   sub_products: string[];
   /** Typical visit duration in minutes (best-effort range). */
@@ -52,6 +72,13 @@ const EMPTY_SIGNALS: ContextSignals = {
   has_historical_significance: false,
   has_dynamic_pricing: false,
   has_multiple_sub_products: false,
+  has_ride_attractions: false,
+  has_named_gallery_zones: false,
+  has_fixed_itinerary: false,
+  has_scheduled_shows: false,
+  has_cruise_departure_slots: false,
+  has_photography_windows: false,
+  has_multi_route_options: false,
   sub_products: [],
   typical_visit_minutes: null,
   drd_has_low_confidence_sections: false,
@@ -195,6 +222,37 @@ export function extractSignals(drdMarkdown: string | null | undefined): ContextS
       /\b(dynamic pricing|surge pricing|price varies|fare varies|date[- ]based pricing|operator-specific (price|fare))\b/,
     ]),
     has_multiple_sub_products: subProducts.length >= 3,
+
+    // Subcategory-structural signals — also extractable from DRD text.
+    has_ride_attractions: hasAny(lower, [
+      /\b(roller ?coaster|thrill ride|ride wait|rope drop|land[s]?|themed land|fastpass|lightning lane)\b/,
+      /\b(height requirement|minimum height|must be at least \d+ cm)\b/,
+    ]),
+    has_named_gallery_zones: hasAny(lower, [
+      /\b(gallery|wing|exhibit hall|floor plan|room[- ]by[- ]room|named (gallery|exhibit|section))\b/,
+      /\b(\w+ gallery|\w+ wing|\w+ hall|\w+ exhibit)\b/,
+    ]),
+    has_fixed_itinerary: hasAny(lower, [
+      /\b(fixed (route|itinerary|schedule)|stop[- ]by[- ]stop|timed (stop|segment)|route overview|departs? (from|at))\b/,
+      /\b(walking (tour|route)|boat (tour|route)|bus (tour|route)|food (stop|tasting))\b/,
+    ]),
+    has_scheduled_shows: hasAny(lower, [
+      /\b(feeding (time|session|show)|animal show|dolphin show|keeper talk|timed feeding)\b/,
+      /\b(scheduled (show|performance|demonstration)|show schedule|daily (show|programme))\b/,
+    ]),
+    has_cruise_departure_slots: hasAny(lower, [
+      /\b(departure (slot|time|window)|cruise (departs?|schedule)|sailing (time|slot|schedule))\b/,
+      /\b(morning|afternoon|sunset|evening) (cruise|departure|sailing)\b/,
+    ]),
+    has_photography_windows: hasAny(lower, [
+      /\b(golden hour|blue hour|photography (tour|walk|spot)|photo spot|sunrise (slot|shoot))\b/,
+      /\b(best light|photographic|instagram(mable)?)\b/,
+    ]),
+    has_multi_route_options: hasAny(lower, [
+      /\b(multiple routes?|route [a-z]|red route|blue route|yellow route|hop[- ]on|loop route)\b/,
+      /\b(two? (routes?|circuits?|loops?)|classic route|extended route)\b/,
+    ]),
+
     sub_products: subProducts,
     typical_visit_minutes: extractDurationMinutes(text),
     drd_has_low_confidence_sections: hasAny(lower, [
@@ -366,4 +424,202 @@ export function countSignalMatches(
     preferredHits,
     allRequired: requiredHits === required.length,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Subcategory-signal bootstrap                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Maps a known subcategory id to the structural signals it implies by default,
+ * independent of any DRD content. Callers (e.g. the DRD-optional pipeline)
+ * should MERGE this result over an empty-signals base so DRD-extracted signals
+ * can still override or augment these defaults.
+ *
+ * Only boolean fields are returned; derived fields (sub_products, etc.) are
+ * always left to DRD extraction.
+ */
+export function bootstrapSignalsFromSubcategory(
+  subcategoryId: string,
+): Partial<ContextSignals> {
+  const s: Partial<ContextSignals> = {};
+
+  switch (subcategoryId as SubcategoryId) {
+    /* ---- Museums & galleries ---- */
+    case "museums":
+      s.has_named_gallery_zones = true;
+      s.has_timed_entry = true;
+      s.has_historical_significance = true;
+      break;
+
+    /* ---- Theme parks & water parks ---- */
+    case "theme_parks":
+    case "water_parks":
+      s.has_ride_attractions = true;
+      s.has_rides = true;
+      s.has_seasonal_variation = true;
+      s.has_long_queues = true;
+      s.has_skip_the_line = true;
+      break;
+
+    /* ---- Zoos & aquariums ---- */
+    case "zoos":
+    case "aquariums":
+      s.has_named_gallery_zones = true;
+      s.has_scheduled_shows = true;
+      s.has_wildlife_sighting = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    /* ---- Guided tours (walking, boat, bus) ---- */
+    case "guided_tours":
+    case "walking_tours":
+    case "food_tours":
+      s.has_fixed_itinerary = true;
+      s.has_guided_tours = true;
+      break;
+
+    /* ---- Day trips & port-of-call ---- */
+    case "day_trips":
+    case "port_of_call_tours":
+      s.has_fixed_itinerary = true;
+      s.has_multiple_sub_products = true;
+      break;
+
+    /* ---- Dinner cruises & sightseeing cruises ---- */
+    case "dinner_cruises":
+      s.has_cruise_departure_slots = true;
+      s.has_multiple_sub_products = true;
+      break;
+
+    case "sightseeing_cruises":
+      s.has_cruise_departure_slots = true;
+      s.has_multi_route_options = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    /* ---- Hop-on hop-off ---- */
+    case "hop_on_hop_off":
+      s.has_multi_route_options = true;
+      s.has_multiple_sub_products = true;
+      break;
+
+    /* ---- Photography tours ---- */
+    case "photography_tours":
+      s.has_photography_windows = true;
+      s.has_fixed_itinerary = true;
+      break;
+
+    /* ---- Historic sites & monuments / religious sites ---- */
+    case "landmarks":
+      s.has_historical_significance = true;
+      s.has_long_queues = true;
+      s.has_skip_the_line = true;
+      break;
+
+    case "religious_sites":
+      s.has_dress_code = true;
+      s.has_historical_significance = true;
+      s.has_scheduled_shows = true;
+      break;
+
+    case "observation_decks":
+      s.has_long_queues = true;
+      s.has_photography_windows = true;
+      break;
+
+    /* ---- Safari / whale watching ---- */
+    case "safari":
+      s.has_wildlife_sighting = true;
+      s.has_weather_sensitivity = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    case "whale_watching":
+      s.has_wildlife_sighting = true;
+      s.has_weather_sensitivity = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    /* ---- Weather-sensitive adventure ---- */
+    case "skydiving":
+    case "hot_air_balloon":
+      s.has_weather_sensitivity = true;
+      s.has_photography_windows = true;
+      break;
+
+    case "helicopter_tours":
+      s.has_photography_windows = true;
+      s.has_cruise_departure_slots = true;
+      break;
+
+    /* ---- Outdoor / seasonal sports ---- */
+    case "skiing":
+      s.has_seasonal_variation = true;
+      s.has_weather_sensitivity = true;
+      break;
+
+    case "scuba_diving":
+    case "surfing":
+    case "rafting":
+      s.has_weather_sensitivity = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    case "hiking_trails":
+      s.has_weather_sensitivity = true;
+      s.has_seasonal_variation = true;
+      s.has_fixed_itinerary = true;
+      break;
+
+    /* ---- City cards & combos ---- */
+    case "city_cards":
+    case "combos":
+      s.has_multiple_sub_products = true;
+      break;
+
+    /* ---- Spa & baths ---- */
+    case "spa":
+    case "baths":
+      s.has_multiple_sub_products = true;
+      break;
+
+    /* ---- Entertainment ---- */
+    case "plays":
+    case "rock_concerts":
+    case "live_sports":
+    case "formula_1":
+      s.has_multiple_sub_products = true;
+      s.has_seasonal_variation = true;
+      break;
+
+    /* ---- No structural defaults for these: ---- */
+    // desert_safari, go_karting, nightlife, immersive_experiences,
+    // cable_car_tours, multi_day_tours, wineries, cooking_classes,
+    // pub_crawls, airport_transfers, train_tickets, outdoor_activities
+    default:
+      break;
+  }
+
+  return s;
+}
+
+/**
+ * Merge subcategory-bootstrapped signals INTO a base signals record.
+ * Values from the base record win when already `true`; bootstrap fills the gaps.
+ * This means DRD extraction is always the primary source, and the subcategory
+ * bootstrap only sets signals the DRD couldn't fire.
+ */
+export function mergeSubcategorySignals(
+  base: ContextSignals,
+  subcategoryId: string,
+): ContextSignals {
+  const bootstrap = bootstrapSignalsFromSubcategory(subcategoryId);
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(bootstrap) as [keyof ContextSignals, unknown][]) {
+    if (typeof value === "boolean" && !merged[key]) {
+      (merged as Record<string, unknown>)[key] = value;
+    }
+  }
+  return merged;
 }

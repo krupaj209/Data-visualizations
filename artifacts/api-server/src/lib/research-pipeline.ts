@@ -3,8 +3,7 @@ import {
   CHART_ARCHETYPES,
   assembleDeck,
   extractSignals,
-  bootstrapSignalsFromSubcategory,
-  mergeSignals,
+  mergeSubcategorySignals,
   isImplementedArchetype,
   resolveSubcategoryMeta,
   DEFAULT_PAGE_TYPE,
@@ -395,12 +394,12 @@ async function selectQuestions(
   );
 
   // (a) Deterministic signal extraction from the DRD. No LLM.
-  // When no DRD is present, start from empty signals then layer in
-  // subcategory-seeded bootstrap signals so bundle scoring still fires
-  // the right charts for well-known subcategory types.
-  const drdSignals = extractSignals(input.drdMarkdown ?? "");
-  const bootstrap = bootstrapSignalsFromSubcategory(input.subcategoryId);
-  const signals = mergeSignals(drdSignals, bootstrap);
+  // Merge subcategory-structural defaults so cluster-specific candidates fire
+  // even when the DRD doesn't happen to mention the right keywords. DRD signals
+  // win (already-true values are never overwritten by the bootstrap).
+  // The ?? "" preserves optional-DRD support from Task #172.
+  const rawSignals = extractSignals(input.drdMarkdown ?? "");
+  const signals = mergeSubcategorySignals(rawSignals, input.subcategoryId);
 
   // Build de-dup set from the existing deck so the assembler can prefer
   // a different archetype within the same bundle on regeneration.

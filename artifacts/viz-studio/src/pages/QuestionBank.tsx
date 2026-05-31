@@ -4,6 +4,7 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
+  Download,
   Edit3,
   Loader2,
   Plus,
@@ -279,6 +280,20 @@ export default function QuestionBank() {
           </div>
           <div className="flex items-center gap-2">
             <WriterNameInput value={writerName} onChange={updateWriterName} />
+            <a
+              href="/api/research/question-bank/export"
+              download="question-bank.csv"
+              className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold"
+              style={{
+                borderColor: BRAND.purpsSoft,
+                color: BRAND.purps,
+                background: BRAND.purpsSoft,
+                textDecoration: "none",
+              }}
+            >
+              <Download size={12} />
+              Download CSV
+            </a>
             <Link
               to="/"
               className="rounded-xl border px-3 py-1.5 text-xs font-bold"

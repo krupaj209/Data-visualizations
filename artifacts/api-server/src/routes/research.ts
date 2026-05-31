@@ -9,7 +9,15 @@ import {
   type Ce,
   type Chart,
 } from "@workspace/db";
-import { RATIFIED_HEADOUT_SUBCATEGORY_IDS } from "@workspace/question-bank";
+import {
+  RATIFIED_HEADOUT_SUBCATEGORY_IDS,
+  QUESTION_BUNDLES,
+  CHART_ARCHETYPES,
+  PAGE_TEMPLATES,
+  SUBCATEGORY_IDS,
+  bootstrapSignalsFromSubcategory,
+  type BundleId,
+} from "@workspace/question-bank";
 import {
   listCategories as listHeadoutCategories,
   listSubcategories as listHeadoutSubcategories,
@@ -326,6 +334,149 @@ router.post("/research/generate-v2", async (req, res): Promise<void> => {
           : "Research pipeline v2 failed",
     });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Question bank CSV export                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Wrap a cell value in quotes when it contains commas, quotes, or newlines. */
+function csvCell(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/**
+ * Build an inverted index: signal key → subcategory ids that fire it.
+ * Computed once from bootstrapSignalsFromSubcategory so the export can derive
+ * which subcategories actually trigger each signal-gated candidate rather than
+ * relying on the archetype's broad `typical_subcategories` list.
+ */
+function buildSignalSubcatIndex(): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const subcatId of SUBCATEGORY_IDS) {
+    const bootstrapped = bootstrapSignalsFromSubcategory(subcatId);
+    for (const [signal, value] of Object.entries(bootstrapped)) {
+      if (value === true) {
+        if (!index.has(signal)) index.set(signal, []);
+        index.get(signal)!.push(subcatId);
+      }
+    }
+  }
+  return index;
+}
+
+/**
+ * Return the subcategory ids where a candidate with `requires` will actually
+ * fire: intersection of subcategories that bootstrap ALL required signals.
+ * Falls back to the archetype's `typical_subcategories` when `requires` is empty.
+ */
+function effectiveSubcatsForCandidate(
+  requires: string[],
+  archetypeTypical: string[],
+  signalIndex: Map<string, string[]>,
+): string[] {
+  if (requires.length === 0) return archetypeTypical;
+  // Intersection: subcategories that fire every required signal.
+  const sets = requires.map((sig) => new Set(signalIndex.get(sig) ?? []));
+  const first = sets[0];
+  if (!first) return archetypeTypical;
+  const result: string[] = [];
+  for (const subcat of first) {
+    if (sets.every((s) => s.has(subcat))) result.push(subcat);
+  }
+  // If the intersection is empty (no subcategory fires all required signals),
+  // fall back to the archetype's typical subcategories so the column isn't blank.
+  return result.length > 0 ? result : archetypeTypical;
+}
+
+/**
+ * GET /api/research/question-bank/export
+ *
+ * Returns the full question bank as a UTF-8 CSV file. One row per bundle
+ * candidate. Columns: subcategory, bundle, intent, archetype,
+ * question_template, required_signals, preferred_signals, mandatory, page_types.
+ *
+ * - `subcategory`  — subcategories where this candidate actually fires (via
+ *                    signal bootstrap intersection for gated candidates, or
+ *                    archetype typical_subcategories for ungated ones)
+ * - `mandatory`    — "yes" if the bundle slot is `required: true` in any page template
+ * - `page_types`   — comma-separated page template ids where this bundle appears
+ */
+router.get("/research/question-bank/export", (_req, res): void => {
+  // Build bundle → { pageTypes, hasMandatory } index from page templates.
+  const bundleInfo = new Map<BundleId, { pageTypes: string[]; hasMandatory: boolean }>();
+  for (const [ptId, template] of Object.entries(PAGE_TEMPLATES)) {
+    for (const slot of template.slots) {
+      if (!slot.bundleId) continue;
+      const bid = slot.bundleId as BundleId;
+      if (!bundleInfo.has(bid)) {
+        bundleInfo.set(bid, { pageTypes: [], hasMandatory: false });
+      }
+      const entry = bundleInfo.get(bid)!;
+      if (!entry.pageTypes.includes(ptId)) entry.pageTypes.push(ptId);
+      if (slot.required) entry.hasMandatory = true;
+    }
+  }
+
+  const signalSubcatIndex = buildSignalSubcatIndex();
+
+  const header = [
+    "subcategory",
+    "bundle",
+    "intent",
+    "archetype",
+    "question_template",
+    "required_signals",
+    "preferred_signals",
+    "mandatory",
+    "page_types",
+  ].join(",");
+
+  const rows: string[] = [header];
+
+  for (const bundle of Object.values(QUESTION_BUNDLES)) {
+    const info = bundleInfo.get(bundle.id as BundleId);
+    const mandatory = info?.hasMandatory ? "yes" : "no";
+    // page_types: comma-separated inside a quoted cell.
+    const pageTypes = csvCell(info?.pageTypes.join(",") ?? "");
+
+    for (const candidate of bundle.candidates) {
+      const archEntry = CHART_ARCHETYPES[candidate.archetype];
+      const effectiveSubcats = effectiveSubcatsForCandidate(
+        candidate.requires ?? [],
+        archEntry?.typical_subcategories ?? [],
+        signalSubcatIndex,
+      );
+      const subcats = csvCell(effectiveSubcats.join(","));
+      const requiredSigs = csvCell((candidate.requires ?? []).join(","));
+      const preferredSigs = csvCell((candidate.prefers ?? []).join(","));
+
+      rows.push(
+        [
+          subcats,
+          csvCell(bundle.id),
+          csvCell(bundle.intent),
+          csvCell(candidate.archetype),
+          csvCell(candidate.question_template),
+          requiredSigs,
+          preferredSigs,
+          mandatory,
+          pageTypes,
+        ].join(","),
+      );
+    }
+  }
+
+  const csv = rows.join("\r\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="question-bank.csv"',
+  );
+  res.send(csv);
 });
 
 export default router;

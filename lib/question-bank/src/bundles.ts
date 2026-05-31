@@ -8,6 +8,16 @@
  *
  * Bundles also carry a `question_template` string that the per-chart
  * generator uses verbatim (with {{ceName}} substitution).
+ *
+ * ## Subcategory-cluster ordering
+ *
+ * Within each bundle, cluster-specific candidates appear BEFORE generic ones.
+ * They are gated with `requires` signals that `bootstrapSignalsFromSubcategory`
+ * fires for the relevant cluster. This means:
+ *   - Theme park DRDs / subcategory-bootstrapped signals surface ride charts first.
+ *   - Museum DRDs surface gallery-zone charts first.
+ *   - Tour DRDs surface itinerary charts first.
+ *   - Generic signals fall through to the existing crowd / heatmap defaults.
  */
 
 import type { ChartArchetypeId } from "./types";
@@ -60,6 +70,31 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_seasonal_variation", "has_long_queues", "has_timed_entry"],
     candidates: [
+      // ---- Cluster: theme parks — ride-wait is the core timing question ----
+      {
+        archetype: "ride_wait_curve",
+        question_template:
+          "When is the wait shortest for the headline ride at {{ceName}}?",
+        requires: ["has_ride_attractions"],
+        kind: "signature",
+      },
+      // ---- Cluster: museums & galleries — gallery crowd by hour ----
+      {
+        archetype: "zone_crowd_heatmap",
+        question_template:
+          "When is each gallery at {{ceName}} at its quietest?",
+        requires: ["has_named_gallery_zones"],
+        kind: "signature",
+      },
+      // ---- Cluster: safari / whale watching — activity peaks ----
+      {
+        archetype: "activity_window",
+        question_template:
+          "What time of day is wildlife activity at its peak at {{ceName}}?",
+        requires: ["has_wildlife_sighting"],
+        kind: "signature",
+      },
+      // ---- Generic fallbacks ----
       {
         archetype: "hourly_heatmap",
         question_template:
@@ -93,6 +128,14 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
         requires: ["has_seasonal_variation"],
         kind: "standard",
       },
+      // ---- Cluster: theme parks — opening-hour ride ranking (fallback if ride_wait_curve used) ----
+      {
+        archetype: "opening_hour_rank",
+        question_template:
+          "Which rides at {{ceName}} should I sprint to at rope drop?",
+        requires: ["has_ride_attractions"],
+        kind: "signature",
+      },
     ],
   },
 
@@ -104,6 +147,23 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_guided_tours", "has_evening_program"],
     candidates: [
+      // ---- Cluster: guided tours, walking tours, day trips — itinerary breakdown ----
+      {
+        archetype: "itinerary_flow",
+        question_template:
+          "What's the stop-by-stop rhythm of a {{ceName}} tour?",
+        requires: ["has_fixed_itinerary"],
+        kind: "signature",
+      },
+      // ---- Cluster: zoos, aquariums, religious sites with scheduled shows ----
+      {
+        archetype: "daily_programme",
+        question_template:
+          "What timed shows and events should I plan around at {{ceName}}?",
+        requires: ["has_scheduled_shows"],
+        kind: "signature",
+      },
+      // ---- Generic fallbacks ----
       {
         archetype: "duration_stat",
         question_template:
@@ -140,6 +200,15 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_multiple_sub_products", "has_skip_the_line"],
     candidates: [
+      // ---- Cluster: hop-on-hop-off & multi-route cruises — which route covers what ----
+      {
+        archetype: "landmark_coverage",
+        question_template:
+          "Which {{ceName}} route covers the landmarks I actually want to see?",
+        requires: ["has_multi_route_options"],
+        kind: "signature",
+      },
+      // ---- Generic comparisons ----
       {
         archetype: "slot_compare",
         question_template:
@@ -235,6 +304,47 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_multiple_entrances"],
     candidates: [
+      // ---- Cluster: skip-the-line products — which entrance has the fast lane ----
+      {
+        archetype: "entrance_lanes",
+        question_template:
+          "Which lane at {{ceName}} has the skip-the-line access — and how much faster is it?",
+        requires: ["has_skip_the_line"],
+        kind: "signature",
+      },
+      // ---- Cluster: museums & galleries — internal navigation ----
+      {
+        archetype: "floor_plan_flow",
+        question_template:
+          "What's the smartest room-by-room flow once inside {{ceName}}?",
+        requires: ["has_named_gallery_zones"],
+        kind: "signature",
+      },
+      // ---- Cluster: theme parks — zone-by-hour wait navigation ----
+      {
+        archetype: "zone_wait_heatmap",
+        question_template:
+          "Which {{ceName}} zones are calm at which hours — so I can plan my route?",
+        requires: ["has_ride_attractions"],
+        kind: "signature",
+      },
+      // ---- Cluster: cruises & helicopter tours — best departure slot ----
+      {
+        archetype: "optimal_departure",
+        question_template:
+          "Which departure time from {{ceName}} delivers the best light and views?",
+        requires: ["has_cruise_departure_slots"],
+        kind: "signature",
+      },
+      // ---- Cluster: hop-on-hop-off — stop frequency ----
+      {
+        archetype: "stop_frequency",
+        question_template:
+          "How often do departures or stops run at {{ceName}}?",
+        requires: ["has_multi_route_options"],
+        kind: "signature",
+      },
+      // ---- Generic ----
       {
         archetype: "entrance_map",
         question_template:
@@ -321,6 +431,23 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_security_screening", "has_dress_code"],
     candidates: [
+      // ---- Cluster: historic sites & monuments — know the story before you arrive ----
+      {
+        archetype: "history_timeline",
+        question_template:
+          "What's the story of {{ceName}} — from founding to what visitors see today?",
+        requires: ["has_historical_significance"],
+        kind: "signature",
+      },
+      // ---- Cluster: photography tours & helicopter tours — golden hour alignment ----
+      {
+        archetype: "golden_hour_match",
+        question_template:
+          "Which {{ceName}} departure slot lines up with golden hour — by month?",
+        requires: ["has_photography_windows"],
+        kind: "signature",
+      },
+      // ---- Generic ----
       {
         archetype: "rules_checklist",
         question_template:
