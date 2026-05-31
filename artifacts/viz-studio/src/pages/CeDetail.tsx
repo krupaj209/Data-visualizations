@@ -90,6 +90,8 @@ import {
   type ChartFactStatus,
 } from "@/lib/chart-fact-table";
 import { toSentenceCase } from "@/lib/text";
+import { computeDeckHealth } from "@/lib/deck-health";
+import { DeckHealthBar } from "@/components/DeckHealthBar";
 import { SpecEditor } from "@/components/SpecEditor";
 import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
 import { QuestionsPanel } from "@/components/QuestionsPanel";
@@ -361,6 +363,8 @@ function CeDetailInner({
   const [pageType, setPageType] = useState<PageFilterValue>("all");
   const effectiveRegenPageType: PageTypeValue =
     pageType === "all" ? DEFAULT_PAGE_TYPE : pageType;
+
+  const health = useMemo(() => computeDeckHealth(charts), [charts]);
 
   // Custom drafts = writer-added charts (provenance.origin is set by the
   // POST /ces/:slug/charts topic flow). Pipeline-generated drafts never
@@ -805,6 +809,16 @@ function CeDetailInner({
               {ce.summary}
             </p>
           )}
+
+          <DeckHealthBar
+            health={health}
+            isLocked={LOCKED_CE_SLUGS_CLIENT.has(ce.slug)}
+            isGenerating={regenMut.isPending}
+            onScrollTo={(chartId) => {
+              setStatusFilter("all");
+              setTimeout(() => scrollToChart(chartId), 50);
+            }}
+          />
 
           <div className="flex items-center gap-2 mb-6 flex-wrap">
             <FilterPill
