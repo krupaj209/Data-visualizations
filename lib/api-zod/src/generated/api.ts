@@ -991,6 +991,12 @@ export const CreateCeBody = zod.object({
   city: zod.string(),
   country: zod.string(),
   category: zod.string().optional(),
+  skipGeneration: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, create the CE without auto-generating a starter chart deck. Used by the intel-first creation flow, where the writer assembles the deck on the review step from the DRD-grounded plan.",
+    ),
 });
 
 /**

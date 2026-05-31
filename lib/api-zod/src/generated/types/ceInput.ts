@@ -11,4 +11,6 @@ export interface CeInput {
   city: string;
   country: string;
   category?: string;
+  /** When true, create the CE without auto-generating a starter chart deck. Used by the intel-first creation flow, where the writer assembles the deck on the review step from the DRD-grounded plan. */
+  skipGeneration?: boolean;
 }

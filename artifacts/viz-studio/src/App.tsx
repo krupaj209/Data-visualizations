@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Home from "@/pages/Home";
 import CeDetail from "@/pages/CeDetail";
+import CePlanReview from "@/pages/CePlanReview";
 import Embed from "@/pages/Embed";
 import DeckEmbed from "@/pages/DeckEmbed";
 import StyleGuide from "@/pages/StyleGuide";
@@ -24,6 +25,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/ce/:slug/review" component={CePlanReview} />
       <Route path="/ce/:slug" component={CeDetail} />
       <Route path="/embed/:ceSlug/:pageType/:sectionId" component={DeckEmbed} />
       <Route path="/embed/:id" component={Embed} />

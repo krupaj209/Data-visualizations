@@ -265,12 +265,18 @@ export default function Home() {
       setError("Name, city, and country are required.");
       return;
     }
+    // CE Intel is always the first step for a NEW CE: create the CE without an
+    // auto-generated starter deck and route to the review step, where the deck
+    // is assembled from the plan (DRD-grounded when a DRD is attached, or a
+    // deterministic page-template deck when it isn't). A DRD is optional here.
+    const hasDrdMd = drdMarkdown.trim().length > 0;
     try {
       const result = await createMut.mutateAsync({
         data: {
           name: name.trim(),
           city: city.trim(),
           country: country.trim(),
+          skipGeneration: true,
         },
       });
       qc.invalidateQueries({ queryKey: getListCesQueryKey() });
@@ -278,7 +284,6 @@ export default function Home() {
       // Optional DRD upload — runs after CE creation succeeds. We don't
       // block navigation on its outcome: if the upload fails we surface
       // the error and the writer can retry from the CE detail page.
-      const hasDrdMd = drdMarkdown.trim().length > 0;
       if (drdPdf || hasDrdMd) {
         setDrdUploading(true);
         try {
@@ -324,7 +329,7 @@ export default function Home() {
       setDrdMarkdown("");
       setDrdPdf(null);
       setShowDrd(false);
-      navigate(`/ce/${result.ce.slug}`);
+      navigate(`/ce/${result.ce.slug}/review`);
     } catch (err) {
       const msg =
         err && typeof err === "object" && "data" in err

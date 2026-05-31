@@ -12,6 +12,7 @@ import {
 } from "../lib/ce-intelligence";
 import {
   buildCeVisualizationPlan,
+  buildDeterministicVisualizationPlan,
   scoreEditorialForIdea,
   type CeVisualizationPlan,
   type PlannerVisualization,
@@ -21,7 +22,7 @@ import {
   deriveMissingEvidenceQueries,
   type MissingEvidenceBucket,
 } from "../lib/editorial-verdict";
-import { CHART_ARCHETYPES } from "@workspace/question-bank";
+import { CHART_ARCHETYPES, PageType } from "@workspace/question-bank";
 import { ai } from "@workspace/integrations-gemini-ai";
 
 const router: IRouter = Router();
@@ -40,6 +41,13 @@ const planBody = z.object({
   subcategoryLabel: z.string().optional(),
   subcategoryDescription: z.string().optional(),
   includeLiveSearch: z.boolean().optional(),
+  pageType: PageType.optional(),
+  /**
+   * When true, a CE with no DRD and no CE Intelligence facts falls back to a
+   * deterministic page-template deck instead of returning 412. Used by the
+   * intel-first creation review step so a brand-new CE is still reviewable.
+   */
+  allowDeterministic: z.boolean().optional(),
 });
 
 const recheckGapBody = z.object({
@@ -156,6 +164,20 @@ router.post(
     const intel = await getCeIntelligence(ce.slug);
 
     if (!drd && (!intel || intel.facts.length === 0)) {
+      if (parsed.data.allowDeterministic) {
+        const plan = buildDeterministicVisualizationPlan({
+          ce: {
+            name: ce.name,
+            city: ce.city,
+            country: ce.country,
+            slug: ce.slug,
+          },
+          pageType: parsed.data.pageType,
+        });
+        await saveCeVisualizationPlan(ce.slug, plan);
+        res.json(plan);
+        return;
+      }
       res.status(412).json({
         error:
           "Upload a DRD or refresh CE Intelligence before planning visualizations.",
@@ -178,6 +200,7 @@ router.post(
         drdMarkdown: drd?.markdown ?? "",
         intel,
         includeLiveSearch: parsed.data.includeLiveSearch ?? true,
+        pageType: parsed.data.pageType,
       });
       await saveCeVisualizationPlan(ce.slug, plan);
       res.json(plan);

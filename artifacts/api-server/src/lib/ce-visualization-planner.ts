@@ -2,8 +2,12 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CHART_ARCHETYPES,
   QUESTION_BUNDLES,
+  DEFAULT_PAGE_TYPE,
+  assembleDeck,
+  extractSignals,
   isImplementedArchetype,
   type ChartArchetypeId,
+  type PageType,
 } from "@workspace/question-bank";
 import {
   formatIntelFactsForPrompt,
@@ -103,6 +107,13 @@ export interface PlannerVisualization {
     editorial_verdict?: import("./editorial-verdict").EditorialVerdict;
   };
   priority: number;
+  /**
+   * True when this visualization fills a template-forced or required slot for
+   * the target page (mandatory — always generated). False/undefined means it is
+   * an optional ("dynamic") chart the writer can toggle off on the intel-first
+   * review step. Derived deterministically from the assembler deck, not the LLM.
+   */
+  mandatory?: boolean;
   /** Set when this idea was originally rejected and promoted back into
    *  the recommended list by a targeted recheck. */
   promoted_from_rejected?: boolean;
@@ -141,6 +152,8 @@ interface PlannerInput {
   drdMarkdown: string;
   intel?: CeIntelligenceView | null;
   includeLiveSearch?: boolean;
+  /** Target listing-page template; controls which slots are mandatory. */
+  pageType?: PageType;
 }
 
 const EVIDENCE_LABELS: Record<string, string> = {
@@ -215,6 +228,71 @@ function normalizeStatus(v: unknown): PlannerEvidenceStatus {
     return v;
   }
   return "partial";
+}
+
+/**
+ * Build a map from each chart archetype to the set of ALL bundles that list it
+ * as a candidate. Used to decide whether an LLM-recommended visualization
+ * fulfils a mandatory (template-forced/required) slot, without depending on
+ * which exact archetype the deterministic deck happened to pick for that slot.
+ * An archetype can appear in multiple bundles, so we keep every bundle it
+ * belongs to — mapping to only the first would misclassify shared archetypes.
+ */
+function buildArchetypeBundleMap(): Map<ChartArchetypeId, Set<string>> {
+  const map = new Map<ChartArchetypeId, Set<string>>();
+  for (const bundle of Object.values(QUESTION_BUNDLES)) {
+    for (const candidate of bundle.candidates) {
+      let bundles = map.get(candidate.archetype);
+      if (!bundles) {
+        bundles = new Set<string>();
+        map.set(candidate.archetype, bundles);
+      }
+      bundles.add(bundle.id);
+    }
+  }
+  return map;
+}
+
+/**
+ * Returns a predicate that flags whether a recommended archetype is mandatory
+ * for the given CE + page. Mandatory = the archetype belongs to a bundle that
+ * fired in a `required` slot of the page template, or it is a forced-archetype
+ * slot (e.g. `history_timeline` on the history page). Fully deterministic.
+ */
+function buildMandatoryPredicate(
+  drdMarkdown: string,
+  ceName: string,
+  pageType: PageType,
+): (archetype: ChartArchetypeId) => boolean {
+  try {
+    const signals = extractSignals(drdMarkdown);
+    const deck = assembleDeck({ ceName, signals, pageType });
+    const mandatorySelected = deck.selected.filter((q) => q.mandatory);
+    const mandatoryBundleIds = new Set(
+      mandatorySelected.map((q) => q.bundle_id),
+    );
+    const mandatoryForcedArchetypes = new Set<ChartArchetypeId>(
+      mandatorySelected
+        .filter((q) => q.bundle_id === "narrative")
+        .map((q) => q.archetype as ChartArchetypeId),
+    );
+    const archetypeToBundles = buildArchetypeBundleMap();
+    return (archetype: ChartArchetypeId) => {
+      if (mandatoryForcedArchetypes.has(archetype)) return true;
+      const bundleIds = archetypeToBundles.get(archetype);
+      if (!bundleIds) return false;
+      for (const bundleId of bundleIds) {
+        if (mandatoryBundleIds.has(bundleId)) return true;
+      }
+      return false;
+    };
+  } catch (err) {
+    logger.warn(
+      { err, ceName, pageType },
+      "mandatory predicate assembly failed; treating all charts as dynamic",
+    );
+    return () => false;
+  }
 }
 
 function isArchetypeId(id: unknown): id is ChartArchetypeId {
@@ -520,6 +598,12 @@ Rules:
     });
   }
 
+  const isMandatoryArchetype = buildMandatoryPredicate(
+    input.drdMarkdown,
+    input.ce.name,
+    input.pageType ?? DEFAULT_PAGE_TYPE,
+  );
+
   const recommended: PlannerVisualization[] = [];
   const rejected: RejectedVisualization[] = [];
   for (const v of parsed.recommended_visualizations ?? []) {
@@ -568,6 +652,7 @@ Rules:
         ? v.evidence_refs.map((r) => String(r).slice(0, 160)).slice(0, 8)
         : [],
       quality_score: qualityScore,
+      mandatory: isMandatoryArchetype(v.archetype),
       priority: categoryCeMode
         ? categoryCePriority(v.archetype) * 10 + clampInt(v.priority ?? 1, 1, 9)
         : clampInt(v.priority ?? recommended.length + 1, 1, 99),
@@ -616,6 +701,66 @@ Rules:
         ...(n.source_url ? { source_url: String(n.source_url) } : {}),
       }))
       .slice(0, 12),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Build a fully deterministic visualization plan for a CE that has no DRD and
+ * no CE Intelligence facts yet. Used by the intel-first creation review step so
+ * a brand-new CE still lands on a reviewable deck (assembled from the page
+ * template) instead of failing — the writer can toggle optional charts and
+ * generate, then add a DRD later to ground them with evidence.
+ *
+ * No LLM is called. The deck comes straight from `assembleDeck`, so mandatory
+ * (template-forced / required-slot) flags are authoritative. Evidence-derived
+ * fields (evidence_refs, quality scores) are intentionally empty/neutral —
+ * there is no research to cite yet.
+ */
+export function buildDeterministicVisualizationPlan(input: {
+  ce: { name: string; city: string; country: string; slug: string };
+  pageType?: PageType;
+}): CeVisualizationPlan {
+  const pageType = input.pageType ?? DEFAULT_PAGE_TYPE;
+  const signals = extractSignals("");
+  const deck = assembleDeck({ ceName: input.ce.name, signals, pageType });
+  const detailedInventory = buildStructuredEvidenceInventory({
+    drdMarkdown: "",
+    intel: null,
+  });
+
+  const recommended: PlannerVisualization[] = deck.selected.map((q, idx) => ({
+    question: q.question,
+    archetype: q.archetype,
+    why_it_matters: q.rationale,
+    data_needed: [],
+    evidence_refs: [],
+    quality_score: {
+      traveler_usefulness: 60,
+      evidence_strength: 0,
+      uniqueness: 60,
+      visual_fit: 70,
+      ce_specificity: 40,
+      cms_value: 60,
+      verifier_risk: 60,
+      overall: 50,
+      label: "needs_evidence",
+      rationale:
+        "No research doc yet — add a DRD to ground this chart with evidence.",
+    },
+    mandatory: q.mandatory,
+    priority: idx + 1,
+  }));
+
+  return {
+    ceSlug: input.ce.slug,
+    summary: `Starter deck for ${input.ce.name} assembled from the "${pageType}" page template. Add a Deep Research Doc to ground these charts with evidence.`,
+    evidence_inventory: [],
+    evidence_inventory_detailed: detailedInventory,
+    traveler_questions: [],
+    recommended_visualizations: recommended,
+    rejected_visualizations: [],
+    live_search_notes: [],
     generatedAt: new Date().toISOString(),
   };
 }

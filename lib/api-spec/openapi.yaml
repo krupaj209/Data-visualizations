@@ -2641,6 +2641,12 @@ components:
           type: string
         category:
           type: string
+        skipGeneration:
+          type: boolean
+          description: >-
+            When true, create the CE without auto-generating a starter chart
+            deck. Used by the intel-first creation flow, where the writer
+            assembles the deck on the review step from the DRD-grounded plan.
       required:
         - name
         - city

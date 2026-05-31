@@ -173,6 +173,12 @@ export interface AssembledQuestion {
   override_source: OverrideSource;
   /** DB id of the override row that shaped this candidate, when applicable. */
   override_id?: number;
+  /**
+   * True when this chart fills a template-forced or `required` slot
+   * (mandatory — always part of the deck). False for optional bundle slots
+   * (dynamic — the writer can opt out on the intel-first review step).
+   */
+  mandatory: boolean;
 }
 
 export interface DroppedQuestion {
@@ -351,6 +357,7 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
         topic_id: `${pageType}:narrative`,
         override_source: "code",
         override_id: undefined,
+        mandatory: true,
       });
       usedArchetypes.add(arch);
       audit.push({
@@ -440,6 +447,7 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
       topic_id: bundle.id,
       override_source: picked.candidate.__source,
       override_id: picked.candidate.__overrideId,
+      mandatory: slot.required === true,
     });
     usedArchetypes.add(picked.candidate.archetype);
     usedBundles.add(bundle.id);

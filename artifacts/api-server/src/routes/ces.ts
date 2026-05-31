@@ -276,6 +276,41 @@ router.post("/ces", async (req, res): Promise<void> => {
     return;
   }
 
+  // Intel-first creation: when the caller asks to skip generation, persist the
+  // CE only — no Gemini call at all. The writer assembles the deck on the review
+  // step (CePlanReview) from the deterministic/DRD-grounded plan. summary/emoji
+  // fall back to their DB defaults ("" / 📍) and can be enriched later. This
+  // keeps creation fast and immune to chart-generation AI failures.
+  if (parsed.data.skipGeneration) {
+    try {
+      const [insertedCe] = await db
+        .insert(cesTable)
+        .values({
+          slug,
+          name: parsed.data.name,
+          city: parsed.data.city,
+          country: parsed.data.country,
+          category: parsed.data.category ?? "attraction",
+          status: "ready",
+        })
+        .returning();
+      if (!insertedCe) throw new Error("Failed to insert CE");
+      res.status(201).json({
+        ce: serializeCe(insertedCe, 0),
+        charts: [],
+      });
+    } catch (err) {
+      req.log.error({ err }, "Failed to persist CE");
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Failed to persist CE: ${err.message}`
+            : "Failed to persist CE",
+      });
+    }
+    return;
+  }
+
   let payload;
   try {
     payload = await generateCePayload({

@@ -1,0 +1,1 @@
+- [Intel-first CE creation](intel-first-ce-creation.md) — new-CE-with-DRD lands on a plan-review step; mandatory vs optional charts derived from assembler bundle membership, not exact archetype.
