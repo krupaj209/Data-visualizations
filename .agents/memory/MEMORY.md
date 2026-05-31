@@ -1,1 +1,2 @@
 - [Intel-first CE creation](intel-first-ce-creation.md) — new-CE-with-DRD lands on a plan-review step; mandatory vs optional charts derived from assembler bundle membership, not exact archetype.
+- [Signal extraction + assembler improvements](signal-assembler-improvements.md) — entrance_lanes ordering fix, has_multiple_sub_products defaults, LLM prepass pattern, viz-briefs/honest-gaps wiring.

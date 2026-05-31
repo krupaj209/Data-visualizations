@@ -4334,6 +4334,42 @@ function ProvenanceDisclosure({
             </div>
           </ProvenanceSection>
         )}
+
+        {(provenance.drd_declared_gaps ?? []).length > 0 && (
+          <ProvenanceSection title="DRD data gaps">
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {(provenance.drd_declared_gaps ?? []).map((gap, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                  }}
+                >
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 2,
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      background: "#FFF4DD",
+                      color: "#A65A00",
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Gap
+                  </span>
+                  <span style={provenanceTextStyle}>{gap}</span>
+                </div>
+              ))}
+            </div>
+          </ProvenanceSection>
+        )}
       </div>
     </details>
   );

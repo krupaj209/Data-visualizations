@@ -3,6 +3,9 @@ import {
   CHART_ARCHETYPES,
   assembleDeck,
   extractSignals,
+  extractVizBriefs,
+  extractHonestGaps,
+  scoreGapArchetypeMatch,
   mergeSubcategorySignals,
   isImplementedArchetype,
   resolveSubcategoryMeta,
@@ -17,6 +20,7 @@ import {
   type OverrideSource,
   type PageType,
 } from "@workspace/question-bank";
+import { llmSignalPrePass } from "./llm-signal-prepass";
 import { aiChartSchema, type AiChart } from "./chart-spec";
 import { loadOverridesFor } from "./question-overrides";
 import { ARCHETYPE_PROMPT } from "./chart-archetype-prompts";
@@ -160,6 +164,13 @@ export interface ChartProvenance {
    * with legacy rows that predate Task #111.
    */
   generated_at?: string;
+  /**
+   * Declared data gaps from the DRD's "Honest Gaps" / Part 1J section that
+   * overlap with this chart's data domain. Surfaced as amber warning pills
+   * in the Evidence & Sources disclosure so writers know the DRD author
+   * explicitly flagged uncertainty in this area.
+   */
+  drd_declared_gaps?: string[];
 }
 
 export interface GeneratedChart {
@@ -278,6 +289,8 @@ interface QuestionSelection {
   signals: ContextSignals;
   page_type: PageType;
   bundle_audit: AssembledDeck["bundle_audit"];
+  /** Honest Gaps extracted from DRD Part 1J — propagated to chart provenance. */
+  honest_gaps: { text: string; keywords: string[] }[];
 }
 
 function normalizeQuestionKey(question: string): string {
@@ -398,8 +411,32 @@ async function selectQuestions(
   // even when the DRD doesn't happen to mention the right keywords. DRD signals
   // win (already-true values are never overwritten by the bootstrap).
   // The ?? "" preserves optional-DRD support from Task #172.
-  const rawSignals = extractSignals(input.drdMarkdown ?? "");
-  const signals = mergeSubcategorySignals(rawSignals, input.subcategoryId);
+  const drdContent = input.drdMarkdown ?? "";
+  const rawSignals = extractSignals(drdContent);
+
+  // (a2) Optional LLM signal pre-pass — detects nuanced phrasing the regex
+  // extractor misses (e.g. "elevator queue", "summit closed due to weather").
+  // Gate: ENABLE_LLM_SIGNAL_PREPASS=true. OR-merged so the LLM only adds,
+  // never removes, signals the regex already set.
+  const llmSignals = await llmSignalPrePass(drdContent, ai, MODEL);
+  const mergedRawSignals: ContextSignals = { ...rawSignals };
+  // OR-merge: LLM additions only — never overwrite truthy regex signals.
+  // Double-cast lets us write into boolean fields by key without TS complaining
+  // that the index signature is missing. Only boolean=true values get written.
+  const mergedMutable = mergedRawSignals as unknown as Record<string, boolean>;
+  for (const key of Object.keys(llmSignals) as (keyof ContextSignals)[]) {
+    const llmVal = llmSignals[key];
+    if (typeof llmVal === "boolean" && llmVal && !mergedRawSignals[key]) {
+      mergedMutable[key] = true;
+    }
+  }
+
+  const signals = mergeSubcategorySignals(mergedRawSignals, input.subcategoryId);
+
+  // (a3) Extract DRD viz-intelligence section (Part 1H) so the assembler can
+  // boost explicitly-recommended archetypes to the front of each bundle slot.
+  const vizBriefs = extractVizBriefs(drdContent);
+  const vizBriefArchetypes: ChartArchetypeId[] = vizBriefs.map((b) => b.archetype_hint);
 
   // Build de-dup set from the existing deck so the assembler can prefer
   // a different archetype within the same bundle on regeneration.
@@ -408,6 +445,23 @@ async function selectQuestions(
     .filter((a): a is ChartArchetypeId => !!a);
 
   const pageType = input.pageType ?? DEFAULT_PAGE_TYPE;
+
+  if (vizBriefArchetypes.length > 0) {
+    logger.info(
+      { slug: input.ce.slug, vizBriefArchetypes },
+      "Research pipeline: DRD viz-brief hints found — boosting in assembler",
+    );
+  }
+
+  // (a4) Extract honest gaps from the DRD (Part 1J). These are propagated
+  // onto each chart's provenance after generation via keyword-overlap matching.
+  const honestGaps = extractHonestGaps(drdContent);
+  if (honestGaps.length > 0) {
+    logger.info(
+      { slug: input.ce.slug, gapCount: honestGaps.length },
+      "Research pipeline: DRD honest gaps found — will tag relevant charts",
+    );
+  }
 
   // (b) Walk the page template, score bundles, pick archetypes.
   const deck = assembleDeck({
@@ -419,6 +473,7 @@ async function selectQuestions(
     categoryOverrides: input.categoryOverrides,
     ceOverrides: input.ceOverrides,
     subcategoryId: input.subcategoryId,
+    vizBriefArchetypes,
   });
 
   // Regeneration: drop exact-question repeats vs the prior deck so
@@ -478,6 +533,7 @@ async function selectQuestions(
     signals,
     page_type: pageType,
     bundle_audit: deck.bundle_audit,
+    honest_gaps: honestGaps,
   };
 }
 
@@ -1241,8 +1297,15 @@ export async function runResearchPipeline(
   const buildProvenance = (
     sel: AssembledQuestion,
     verified: ChartProvenance,
-  ): ChartProvenance =>
-    buildChartProvenance(sel, verified, selection.page_type);
+  ): ChartProvenance => {
+    const base = buildChartProvenance(sel, verified, selection.page_type);
+    // Attach any DRD honest-gaps that overlap with this chart's data domain
+    // so writers can see the DRD author's declared uncertainty in Evidence & Sources.
+    const declaredGaps = selection.honest_gaps
+      .filter((g) => scoreGapArchetypeMatch(g, sel.archetype) > 0)
+      .map((g) => g.text);
+    return declaredGaps.length > 0 ? { ...base, drd_declared_gaps: declaredGaps } : base;
+  };
 
   /* ------- Grouped generation for the timing pair (weekly + hourly) ------- */
   // If the assembler happened to keep BOTH weekly_pattern AND hourly_heatmap

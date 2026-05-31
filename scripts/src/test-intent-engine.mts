@@ -14,6 +14,9 @@ import assert from "node:assert/strict";
 import {
   assembleDeck,
   extractSignals,
+  extractVizBriefs,
+  extractHonestGaps,
+  scoreGapArchetypeMatch,
   getPageTemplate,
   PAGE_TEMPLATES,
   QUESTION_BUNDLES,
@@ -434,6 +437,110 @@ test("Task #163: assembler never emits queue_compare for any page template", () 
         );
       }
     }
+  }
+});
+
+// ── Task #222: New tests ────────────────────────────────────────────────────
+
+test("Task #222: extractSignals detects nuanced queue/weather language", () => {
+  const nuancedQueueDrd = `
+# Eiffel Tower — Paris
+
+A monument that attracts enormous crowds. Visitors should expect to wait at
+the security queue before entering. The elevator queue can reach 45 minutes
+at peak times. Can wait up to 2 hours without fast-track access.
+
+## Conditions
+Summit closes because of weather. The observation deck is subject to conditions
+and shuts in high winds. Weather permitting, the summit is accessible year-round.
+`;
+  const signals = extractSignals(nuancedQueueDrd);
+  assert.equal(
+    signals.has_long_queues,
+    true,
+    "should detect has_long_queues from 'security queue', 'elevator queue', 'can wait up to'",
+  );
+  assert.equal(
+    signals.has_weather_sensitivity,
+    true,
+    "should detect has_weather_sensitivity from 'closes because of weather', 'high winds', 'weather permitting'",
+  );
+});
+
+test("Task #222: assembleDeck honours DRD viz-brief archetype hints (vizBriefArchetypes boost)", () => {
+  // A DRD that signals timing via the viz-brief section.
+  // We want booking_window to win the risk/choice slot even though it's
+  // not the first candidate in that bundle order.
+  const signals = extractSignals(COLOSSEUM_DRD);
+  // Without viz-brief, record what archetype wins the choice bundle.
+  const deckWithout = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+  });
+
+  // Now inject a viz-brief hint for booking_window — it should be boosted.
+  const deckWithVizBrief = assembleDeck({
+    ceName: "Colosseum",
+    signals,
+    pageType: "plan-your-visit",
+    vizBriefArchetypes: ["booking_window"],
+  });
+
+  // booking_window must appear in the deck when hinted.
+  const hasBw = deckWithVizBrief.selected.some((s) => s.archetype === "booking_window");
+  assert.ok(
+    hasBw,
+    "viz-brief hint for booking_window should result in booking_window being selected",
+  );
+
+  // The rationale for the boosted chart should reference the viz-brief.
+  const bwChart = deckWithVizBrief.selected.find((s) => s.archetype === "booking_window");
+  if (bwChart) {
+    assert.match(
+      bwChart.rationale,
+      /viz-brief/i,
+      "rationale should mention that the viz-brief recommendation was honoured",
+    );
+  }
+
+  void deckWithout; // used only to confirm the contrast is meaningful
+});
+
+test("Task #222: extractHonestGaps + scoreGapArchetypeMatch tags relevant charts", () => {
+  const drdWithGaps = `
+# Kunsthistorisches Museum — Vienna
+
+## Overview
+Major art museum. Skip-the-line tickets available.
+
+## Honest Gaps
+- No reliable hourly crowd data is publicly available for this museum
+- Queue wait times vary widely and could not be confidently verified from open sources
+- Booking window sellout rates are not publicly disclosed by the operator
+`;
+  const gaps = extractHonestGaps(drdWithGaps);
+  assert.ok(gaps.length >= 2, `expected at least 2 honest gaps, got ${gaps.length}`);
+
+  // The crowd/queue gap should score highly against hourly_heatmap
+  const crowdGap = gaps.find((g) => g.text.toLowerCase().includes("hourly") || g.text.toLowerCase().includes("crowd"));
+  assert.ok(crowdGap, "should extract a gap about hourly crowd data");
+  if (crowdGap) {
+    const heatmapScore = scoreGapArchetypeMatch(crowdGap, "hourly_heatmap");
+    assert.ok(heatmapScore > 0, "hourly crowd gap should score > 0 against hourly_heatmap");
+
+    const seasonalScore = scoreGapArchetypeMatch(crowdGap, "seasonal_curve");
+    assert.ok(
+      heatmapScore >= seasonalScore,
+      "hourly gap should score at least as high on hourly_heatmap as on seasonal_curve",
+    );
+  }
+
+  // The booking-window gap should score against booking_window archetype
+  const bwGap = gaps.find((g) => /booking|sellout/i.test(g.text));
+  if (bwGap) {
+    const bwScore = scoreGapArchetypeMatch(bwGap, "booking_window");
+    assert.ok(bwScore > 0, "booking gap should score > 0 against booking_window archetype");
   }
 });
 

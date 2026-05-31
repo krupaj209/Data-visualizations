@@ -6,3 +6,5 @@ export * from "./signals";
 export * from "./bundles";
 export * from "./page-templates";
 export * from "./assembler";
+export * from "./viz-briefs";
+export * from "./honest-gaps";

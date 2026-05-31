@@ -175,6 +175,13 @@ export function extractSignals(drdMarkdown: string | null | undefined): ContextS
       /\b(long|huge|massive|notorious) (queue|line|wait)s?\b/,
       /\bwait(ing)? times? of (\d{2,3}|hours?)\b/,
       /\b(\d{2,3})[ -]?minute (queue|wait)\b/,
+      // Nuanced queue language — "security queue", "elevator queue", "internal queue"
+      /\b(security|elevator|internal|main|entry|ticket|bag) queue\b/,
+      // "queues form", "queue can reach", "queues at the"
+      /\bqueue[s]?\s+(form|can|build|reach|at|during|for|is|are)\b/,
+      // "expect to wait", "visitors wait", "can wait up to"
+      /\b(expect|visitors?|tourists?|guests?) (to\s+)?wait\b/,
+      /\bcan wait (up to|over|more than)\b/,
     ]),
     has_timed_entry: hasAny(lower, [
       /\btimed[- ]entry\b/,
@@ -214,6 +221,14 @@ export function extractSignals(drdMarkdown: string | null | undefined): ContextS
     ]),
     has_weather_sensitivity: hasAny(lower, [
       /\b(weather[- ]dependent|cancel(led|lation)? (due to|in) (rain|wind|weather)|rough seas|outdoor activity|sea state)\b/,
+      // "Summit closes because of weather", "closed in high winds", "closes in fog"
+      /\b(summit|closes?|closure|closed|shut) (because of|due to|in|during|by) (weather|wind|rain|fog|mist|storm)\b/,
+      // "weather (can|may|will) affect", "weather permitting"
+      /\bweather (can|may|will|could) (affect|cancel|close|prevent|impact)\b/,
+      /\bweather permitting\b/,
+      // "high wind closure", "subject to weather"
+      /\b(high|strong|gusty) wind[s]?\b/,
+      /\bsubject to (weather|conditions?)\b/,
     ]),
     has_evening_program: hasAny(lower, [
       /\b(night tour|evening (visit|program)|after[- ]hours|sunset (cruise|tour|slot)|illuminat(ed|ion))\b/,
@@ -413,6 +428,11 @@ export function bootstrapSignalsFromSubcategory(
       s.has_historical_significance = true;
       s.has_long_queues = true;
       s.has_skip_the_line = true;
+      // Every commercial landmark sells multiple product tiers by definition
+      // (e.g. standard, fast-track, guided, summit-access). Firing this by
+      // default ensures the choice bundle fires without relying on DRD bullet
+      // formatting.
+      s.has_multiple_sub_products = true;
       break;
 
     case "religious_sites":
@@ -424,6 +444,8 @@ export function bootstrapSignalsFromSubcategory(
     case "observation_decks":
       s.has_long_queues = true;
       s.has_photography_windows = true;
+      // Observation decks invariably offer standard + premium + guided tiers.
+      s.has_multiple_sub_products = true;
       break;
 
     /* ---- Safari / whale watching ---- */

@@ -217,6 +217,14 @@ export interface AssembleInput {
    * signal coverage.
    */
   subcategoryId?: string;
+  /**
+   * Archetypes explicitly recommended by the DRD's Visualization Intelligence
+   * section (Part 1H). When a bundle candidate's archetype appears here AND
+   * its signal gates pass, it wins the slot over any other viable candidate
+   * in that bundle — giving the DRD author's intent priority over ordering
+   * defaults. Does not bypass retired/unimplemented gates.
+   */
+  vizBriefArchetypes?: ChartArchetypeId[];
 }
 
 export interface AssembledDeck {
@@ -266,8 +274,76 @@ function pickCandidate(
   preferUnused: Set<ChartArchetypeId>,
   dropped: DroppedQuestion[],
   ceName: string,
+  vizBriefSet?: Set<ChartArchetypeId>,
 ): { candidate: AnnotatedCandidate; reason: string } | null {
   const viable = candidates.filter((c) => !c.__muted);
+
+  /**
+   * Inner helper: try a single candidate, recording a drop reason on failure
+   * and returning null so the caller can continue to the next.
+   * Does NOT push a drop reason when the archetype was already seen in an
+   * earlier pass (tracked via `seenInEarlierPass`).
+   */
+  function tryCandidate(
+    c: AnnotatedCandidate,
+    seenSet: Set<ChartArchetypeId>,
+    reasonPrefix: string,
+  ): { candidate: AnnotatedCandidate; reason: string } | null {
+    if (seenSet.has(c.archetype)) return null;
+    seenSet.add(c.archetype);
+    if (retired.has(c.archetype)) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `retired_archetype: ${c.archetype} was suppressed for this run`,
+      });
+      return null;
+    }
+    if (!isImplementedArchetype(c.archetype)) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `viz_not_yet_built: archetype "${c.archetype}" reserved but renderer not landed`,
+      });
+      return null;
+    }
+    const requires = c.requires ?? [];
+    const missing = requires.filter((s) => !signals[s]);
+    if (missing.length > 0) {
+      dropped.push({
+        question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
+        reason: `signal_missing: archetype "${c.archetype}" needs ${missing.join(", ")}`,
+      });
+      return null;
+    }
+    return {
+      candidate: c,
+      reason: `${reasonPrefix}: ${[
+        ...(c.prefers ?? []).filter((s) => signals[s]),
+        ...(c.requires ?? []),
+      ].join(", ") || "no specific signal — bundle default"}`,
+    };
+  }
+
+  const seenInEarlierPass = new Set<ChartArchetypeId>();
+
+  // ── Viz-brief priority pass ──────────────────────────────────────────────
+  // When the DRD's Visualization Intelligence section (Part 1H) explicitly
+  // recommends an archetype, give it first pick within this bundle. All
+  // normal gates (retired, unimplemented, signal) still apply.
+  if (vizBriefSet && vizBriefSet.size > 0) {
+    const vizBriefCandidates = viable.filter(
+      (c) => vizBriefSet.has(c.archetype) && !usedArchetypes.has(c.archetype),
+    );
+    for (const c of vizBriefCandidates) {
+      const result = tryCandidate(
+        c,
+        seenInEarlierPass,
+        `bundle "${bundle.id}" boosted by DRD viz-brief recommendation`,
+      );
+      if (result) return result;
+    }
+  }
+
+  // ── Normal passes ────────────────────────────────────────────────────────
   // First pass: prefer candidates whose archetype isn't already in the deck
   // AND isn't in the "existingArchetypes" set from a prior draft.
   const passes: AnnotatedCandidate[][] = [
@@ -280,41 +356,14 @@ function pickCandidate(
   // Previously this broke out of the loop whenever the first pass was
   // non-empty, which silently dropped viable fallback candidates when every
   // entry in the preferred-pass was retired / unimplemented / signal-gated.
-  const seenInEarlierPass = new Set<ChartArchetypeId>();
   for (const pass of passes) {
     for (const c of pass) {
-      if (seenInEarlierPass.has(c.archetype)) continue;
-      seenInEarlierPass.add(c.archetype);
-      if (retired.has(c.archetype)) {
-        dropped.push({
-          question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
-          reason: `retired_archetype: ${c.archetype} was suppressed for this run`,
-        });
-        continue;
-      }
-      if (!isImplementedArchetype(c.archetype)) {
-        dropped.push({
-          question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
-          reason: `viz_not_yet_built: archetype "${c.archetype}" reserved but renderer not landed`,
-        });
-        continue;
-      }
-      const requires = c.requires ?? [];
-      const missing = requires.filter((s) => !signals[s]);
-      if (missing.length > 0) {
-        dropped.push({
-          question: c.question_template.replace(/\{\{ceName\}\}/g, ceName),
-          reason: `signal_missing: archetype "${c.archetype}" needs ${missing.join(", ")}`,
-        });
-        continue;
-      }
-      return {
-        candidate: c,
-        reason: `bundle "${bundle.id}" selected via signals: ${[
-          ...(c.prefers ?? []).filter((s) => signals[s]),
-          ...(c.requires ?? []),
-        ].join(", ") || "no specific signal — bundle default"}`,
-      };
+      const result = tryCandidate(
+        c,
+        seenInEarlierPass,
+        `bundle "${bundle.id}" selected via signals`,
+      );
+      if (result) return result;
     }
   }
   return null;
@@ -479,6 +528,9 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
       continue;
     }
 
+    const vizBriefSet = input.vizBriefArchetypes
+      ? new Set(input.vizBriefArchetypes)
+      : undefined;
     const picked = pickCandidate(
       bundle,
       merged.candidates,
@@ -488,6 +540,7 @@ export function assembleDeck(input: AssembleInput): AssembledDeck {
       existing,
       dropped,
       input.ceName,
+      vizBriefSet,
     );
     if (!picked) {
       audit.push({

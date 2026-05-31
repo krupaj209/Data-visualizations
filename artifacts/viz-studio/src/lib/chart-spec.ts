@@ -1157,6 +1157,14 @@ export interface ChartProvenanceLite {
    *  generated this chart's spec. Surfaced in the editorial overlay
    *  freshness badge. Optional for legacy rows. */
   generated_at?: string;
+  /**
+   * Task #222 — Declared data gaps from the DRD's "Honest Gaps" / Part 1J
+   * section that overlap with this chart's data domain. Present when the
+   * pipeline detected that the DRD author flagged uncertainty in the same
+   * area this chart visualises. Rendered as amber warning pills in the
+   * Evidence & Sources disclosure.
+   */
+  drd_declared_gaps?: string[];
 }
 
 const EVIDENCE_KIND_VALUES: readonly EvidenceKind[] = [

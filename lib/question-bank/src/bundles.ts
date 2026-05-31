@@ -312,20 +312,24 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_multiple_entrances"],
     candidates: [
+      // ---- Cluster: skip-the-line products — which entrance has the fast lane ----
+      // NOTE: entrance_lanes is intentionally placed BEFORE highlight_rank.
+      // When has_skip_the_line fires (landmarks bootstrap), the most urgent
+      // logistical question is "which queue do I join?", not "which highlights
+      // do I see?". highlight_rank falls back only when STL is absent.
+      {
+        archetype: "entrance_lanes",
+        question_template:
+          "Which lane at {{ceName}} has the skip-the-line access — and how much faster is it?",
+        requires: ["has_skip_the_line"],
+        kind: "signature",
+      },
       // ---- Cluster: museums, zoos, landmarks — famous highlights worth prioritising ----
       {
         archetype: "highlight_rank",
         question_template:
           "Which highlights at {{ceName}} are the absolute must-sees?",
         requires: ["has_famous_highlights"],
-        kind: "signature",
-      },
-      // ---- Cluster: skip-the-line products — which entrance has the fast lane ----
-      {
-        archetype: "entrance_lanes",
-        question_template:
-          "Which lane at {{ceName}} has the skip-the-line access — and how much faster is it?",
-        requires: ["has_skip_the_line"],
         kind: "signature",
       },
       // ---- Cluster: museums & galleries — internal navigation ----
