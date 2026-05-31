@@ -5,6 +5,7 @@ import { uffizi } from "./data/uffizi";
 import { duomo } from "./data/duomo";
 import { colosseum } from "./data/colosseum";
 import { vaticanMuseums } from "./data/vatican-museums";
+import { thamesCruise } from "./data/thames-cruise";
 import type { CuratedCe } from "./types";
 
 export type { CuratedCe };
@@ -15,6 +16,7 @@ export const CURATED_CES: CuratedCe[] = [
   duomo,
   colosseum,
   vaticanMuseums,
+  thamesCruise,
 ];
 
 export interface SeedResult {

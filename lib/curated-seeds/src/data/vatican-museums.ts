@@ -447,5 +447,151 @@ export const vaticanMuseums: CuratedCe = {
           "Art lovers and architecture buffs win the most; families should pick the early-access slot for a focused Sistine + sculpture combo.",
       },
     },
+    // --- Modern timing charts (embed-safe, compact-aware). ---
+    // NOTE: Two legacy-type Vatican charts that previously lived in the dev DB
+    // were intentionally NOT curated here: `vatican-zone-waits` (compare_zones)
+    // and `vatican-ticket-options` (ticket_ladder). Those chart types predate
+    // the curated cluster, have no compact support, and are outside the CMS
+    // embed contract. If a writer later wants zone-wait or ticket guidance on
+    // live, rebuild it in a supported, embed-safe chart type.
+    {
+      slug: "vatican-hourly-crowds",
+      question: "What time of day is best to avoid the biggest crowds?",
+      title: "Beat The Crowds",
+      subtitle:
+        "Estimated crowd levels inside the museums by hour and day of the week.",
+      insight:
+        "For the quietest visit, book the first slot of the day or enter after 3 PM when tour groups have left.",
+      chart_type: "hourly_heatmap",
+      spec: {
+        type: "hourly_heatmap",
+        open_hour: 8,
+        close_hour: 19,
+        rows: [
+          {
+            day: "mon",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 40, 60, 80, 90, 95, 90, 80, 60, 50, 40, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "tue",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 35, 55, 75, 85, 90, 85, 75, 50, 40, 30, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "wed",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 50, 70, 80, 75, 85, 90, 80, 65, 55, 45, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "thu",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 35, 55, 75, 85, 90, 85, 75, 50, 40, 30, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "fri",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 45, 65, 85, 95, 98, 95, 85, 65, 55, 45, 0,
+              0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "sat",
+            closed: false,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 60, 80, 95, 100, 100, 95, 90, 75, 65, 55,
+              0, 0, 0, 0, 0, 0,
+            ],
+          },
+          {
+            day: "sun",
+            closed: true,
+            hours: [
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0,
+            ],
+          },
+        ],
+        best_window: {
+          day: "tue",
+          label: "Quietest Window",
+          start_hour: 15,
+          end_hour: 17,
+        },
+      },
+    },
+    {
+      slug: "vatican-booking-advice",
+      question: "How far in advance should I book my Vatican tickets?",
+      title: "When To Book",
+      subtitle:
+        "Share of tickets booked a certain number of days before the visit date.",
+      insight:
+        "Book at least 60 days in advance for peak season to secure your preferred date and time.",
+      chart_type: "booking_window",
+      spec: {
+        type: "booking_window",
+        curve: [
+          { days_before: 120, share: 5 },
+          { days_before: 90, share: 15 },
+          { days_before: 60, share: 25 },
+          { days_before: 45, share: 20 },
+          { days_before: 30, share: 15 },
+          { days_before: 14, share: 10 },
+          { days_before: 7, share: 5 },
+          { days_before: 2, share: 0 },
+        ],
+        sweet_spot: {
+          label: "Best availability and choice of times.",
+          days_before_min: 45,
+          days_before_max: 90,
+        },
+        sold_out_risk: {
+          message: "High risk of selling out for popular times within 3 weeks.",
+          threshold_days: 21,
+        },
+      },
+    },
+    {
+      slug: "vatican-best-season",
+      question: "What is the best month to visit the Vatican?",
+      title: "Best Time Of Year",
+      subtitle: "A month-by-month guide to crowds and typical conditions.",
+      insight:
+        "For pleasant weather and slightly more manageable crowds, plan your visit for May or September.",
+      chart_type: "seasonal_curve",
+      spec: {
+        type: "seasonal_curve",
+        months: [
+          { month: "jan", score: 40, status: "quiet", note: "Cool weather, fewer crowds." },
+          { month: "feb", score: 35, status: "quiet", note: "Lent can affect opening hours." },
+          { month: "mar", score: 60, status: "moderate", note: "Crowds build towards Easter." },
+          { month: "apr", score: 80, status: "busy", note: "Pleasant weather, post-Easter rush." },
+          { month: "may", score: 85, status: "busy", note: "Beautiful weather, very popular." },
+          { month: "jun", score: 95, status: "peak", note: "Summer peak season begins." },
+          { month: "jul", score: 90, status: "peak", note: "Very hot and crowded." },
+          { month: "aug", score: 100, status: "peak", note: "Hottest and busiest month." },
+          { month: "sep", score: 88, status: "busy", note: "Great weather, still very busy." },
+          { month: "oct", score: 82, status: "busy", note: "Cooler weather, popular shoulder month." },
+          { month: "nov", score: 50, status: "moderate", note: "Crowds drop off significantly." },
+          { month: "dec", score: 65, status: "busy", note: "Festive season brings holiday crowds." },
+        ],
+        best_months: ["May", "September"],
+        worst_months: ["August"],
+      },
+    },
   ],
 };

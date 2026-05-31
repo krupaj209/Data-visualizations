@@ -10,6 +10,7 @@ export const LOCKED_CE_SLUGS: ReadonlySet<string> = new Set([
   "duomo-di-firenze",
   "colosseum",
   "vatican-museums",
+  "thames-cruise",
 ]);
 
 export function isLockedCe(slug: string): boolean {
