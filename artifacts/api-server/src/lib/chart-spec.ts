@@ -1647,6 +1647,32 @@ export const accessibilityGuideSpec = z.object({
   callout: z.string().max(200).optional(),
 });
 
+/* -------------------------------------------------------------------------- *
+ * highlight_rank — ranks artworks / rides / exhibits by visitor priority     *
+ * -------------------------------------------------------------------------- */
+
+export const highlightRankSpec = z.object({
+  type: z.literal("highlight_rank"),
+  /** Noun describing what's being ranked, e.g. "Artwork" or "Ride". ≤40 chars. */
+  subject_label: z.string().max(40),
+  /** Label for the score axis, e.g. "Visitor priority". ≤60 chars. */
+  score_label: z.string().max(60),
+  /** 3–10 items ranked by score, highest first. */
+  items: z
+    .array(
+      z.object({
+        name: z.string().max(60),
+        score: z.number().min(0).max(100),
+        badge: z.string().max(40).optional(),
+        /** True for the single most iconic item; only one may be true. */
+        highlight: z.boolean().optional(),
+      }),
+    )
+    .min(3)
+    .max(10),
+  insight: z.string().max(160).optional(),
+});
+
 
 const baseChartSpecSchema = z.discriminatedUnion("type", [
   weeklyPatternSpec,
@@ -1697,6 +1723,7 @@ const baseChartSpecSchema = z.discriminatedUnion("type", [
   transitOptionsSpec,
   timeValueMatrixSpec,
   accessibilityGuideSpec,
+  highlightRankSpec,
 ]);
 
 export const chartSpecSchema = baseChartSpecSchema.superRefine((val, ctx) => {
@@ -2268,4 +2295,5 @@ export const CHART_TYPES = [
   "transit_options",
   "time_value_matrix",
   "accessibility_guide",
+  "highlight_rank",
 ] as const;

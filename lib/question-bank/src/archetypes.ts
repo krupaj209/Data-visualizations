@@ -828,6 +828,28 @@ export const CHART_ARCHETYPES: Record<ChartArchetypeId, ChartArchetype> = {
     interactive: false,
     implemented: true,
   },
+
+  highlight_rank: {
+    id: "highlight_rank",
+    label: "Highlight rank",
+    answers:
+      "Which artworks / rides / exhibits at this venue are the absolute must-sees?",
+    data_shape: [
+      "3-10 named items ranked by visitor priority score (0-100), sorted highest-first",
+      "Optional badge per item (≤3 words, e.g. 'Most Instagrammed', 'Hidden gem')",
+      "Optional highlight flag on the #1 most iconic item",
+      "Optional one-sentence insight",
+    ],
+    typical_subcategories: [
+      "museums",
+      "zoos",
+      "aquariums",
+      "theme_parks",
+      "landmarks",
+    ],
+    interactive: false,
+    implemented: true,
+  },
 };
 
 export const CHART_ARCHETYPE_IDS = Object.keys(

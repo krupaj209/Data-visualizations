@@ -501,6 +501,21 @@ export const ARCHETYPE_SAMPLES: Partial<Record<ChartArchetypeId, ChartSpec>> = {
     insight: "Afternoon feeding sessions at 1pm and 2:30pm see the highest activity.",
   },
 
+  highlight_rank: {
+    type: "highlight_rank",
+    subject_label: "Artwork",
+    score_label: "Visitor priority",
+    items: [
+      { name: "Mona Lisa", score: 98, badge: "Most Instagrammed", highlight: true },
+      { name: "Venus de Milo", score: 91, badge: "Iconic sculpture" },
+      { name: "Winged Victory of Samothrace", score: 87 },
+      { name: "The Raft of the Medusa", score: 76 },
+      { name: "Code of Hammurabi", score: 65, badge: "Hidden gem" },
+      { name: "The Wedding at Cana", score: 58 },
+    ],
+    insight: "Head straight to the Denon Wing on arrival — it houses three of the top four must-sees.",
+  },
+
   opening_hour_rank: {
     type: "opening_hour_rank",
     subject_label: "Ride",

@@ -744,6 +744,26 @@ export interface SlotCompareSpec {
   insight?: string;
 }
 
+/** Ranked horizontal bars of artworks / rides / exhibits by visitor priority score. */
+export interface HighlightRankSpec {
+  type: "highlight_rank";
+  /** Noun describing what's being ranked, e.g. "Artwork". */
+  subject_label: string;
+  /** Label for the score axis, e.g. "Visitor priority". */
+  score_label: string;
+  /** 3–10 items. Renderer sorts highest-score-first. */
+  items: {
+    name: string;
+    /** 0–100 visitor priority score. */
+    score: number;
+    /** Short badge text, e.g. "Most Instagrammed". ≤3 words. */
+    badge?: string;
+    /** True for the single most iconic item; adds a purps highlight ring. */
+    highlight?: boolean;
+  }[];
+  insight?: string;
+}
+
 export type ChartSpec =
   | WeeklyPatternSpec
   | HourlyHeatmapSpec
@@ -792,7 +812,8 @@ export type ChartSpec =
   | RulesChecklistSpec
   | TransitOptionsSpec
   | TimeValueMatrixSpec
-  | AccessibilityGuideSpec;
+  | AccessibilityGuideSpec
+  | HighlightRankSpec;
 
 /* ========================================================================== */
 /* Task #92 page-type chart specs                                              */

@@ -51,6 +51,8 @@ export interface ContextSignals {
   typical_visit_minutes: { min: number; max: number } | null;
   /** Whether the DRD self-rates major sections as Low confidence / honest gaps. */
   drd_has_low_confidence_sections: boolean;
+  /** Venues with named artworks, iconic attractions, or headline exhibits visitors should not miss. */
+  has_famous_highlights: boolean;
 }
 
 const EMPTY_SIGNALS: ContextSignals = {
@@ -82,6 +84,7 @@ const EMPTY_SIGNALS: ContextSignals = {
   sub_products: [],
   typical_visit_minutes: null,
   drd_has_low_confidence_sections: false,
+  has_famous_highlights: false,
 };
 
 function hasAny(text: string, patterns: RegExp[]): boolean {
@@ -258,6 +261,16 @@ export function extractSignals(drdMarkdown: string | null | undefined): ContextS
     drd_has_low_confidence_sections: hasAny(lower, [
       /\b(low confidence|honest gap|anecdotal|insufficient evidence|no data|unknown)\b/,
     ]),
+    has_famous_highlights:
+      hasAny(lower, [
+        /\b(mona lisa|venus de milo|winged victory|nike of samothrace)\b/,
+        /\b(must[- ]see|masterpiece|don't miss|do not miss|highlight|iconic|star attraction)\b/,
+        /\b(most visited|most popular exhibit|signature ride|must[- ]do|must[- ]visit)\b/,
+      ]) ||
+      // Named-artwork pattern: requires title-case so matched against original text.
+      /[A-Z][a-z]+ [A-Z][a-z]+ (?:painting|sculpture|artwork|fresco|tapestry|mural|relief|mosaic)/.test(
+        text,
+      ),
   };
 }
 

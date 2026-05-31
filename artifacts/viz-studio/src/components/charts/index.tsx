@@ -52,6 +52,7 @@ import { RulesChecklistChart } from "./RulesChecklistChart";
 import { TransitOptionsChart } from "./TransitOptionsChart";
 import { TimeValueMatrixChart } from "./TimeValueMatrixChart";
 import { AccessibilityGuideChart } from "./AccessibilityGuideChart";
+import { HighlightRankChart } from "./HighlightRankChart";
 import { BRAND } from "@/lib/brand";
 import { toSentenceCase } from "@/lib/text";
 import {
@@ -434,6 +435,10 @@ export function ChartRenderer({
           context={context}
           compact={compact}
         />
+      );
+    case "highlight_rank":
+      return (
+        <HighlightRankChart spec={spec} context={context} compact={compact} />
       );
     default: {
       const exhaustive: never = spec;

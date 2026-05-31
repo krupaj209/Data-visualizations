@@ -52,4 +52,5 @@ export const CHART_TYPE_META: Record<
   transit_options: { label: "Transit options", emoji: "🚇" },
   time_value_matrix: { label: "Time-value matrix", emoji: "⏳" },
   accessibility_guide: { label: "Accessibility guide", emoji: "♿" },
+  highlight_rank: { label: "Highlight rank", emoji: "⭐" },
 };

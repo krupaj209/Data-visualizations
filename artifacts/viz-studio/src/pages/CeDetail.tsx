@@ -102,6 +102,7 @@ import {
 import { toSentenceCase } from "@/lib/text";
 import { computeDeckHealth } from "@/lib/deck-health";
 import { DeckHealthBar } from "@/components/DeckHealthBar";
+import { KeyboardHintTooltip } from "@/components/KeyboardHintTooltip";
 import { SpecEditor } from "@/components/SpecEditor";
 import { IntelPanel, ChartCitations } from "@/components/IntelPanel";
 import { QuestionsPanel } from "@/components/QuestionsPanel";
@@ -195,6 +196,7 @@ const CHART_FRAME: Record<
   transit_options: { aspectRatio: "16 / 9", minHeight: 280 },
   time_value_matrix: { aspectRatio: "16 / 9", minHeight: 320 },
   accessibility_guide: { aspectRatio: "16 / 9", minHeight: 300 },
+  highlight_rank: { aspectRatio: "16 / 9", minHeight: 280, maxHeight: 400 },
   conditions_calendar: {
     aspectRatio: "12 / 5",
     minHeight: 280,

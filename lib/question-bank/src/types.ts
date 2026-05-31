@@ -47,7 +47,8 @@ export type ChartArchetypeId =
   | "rules_checklist"
   | "transit_options"
   | "time_value_matrix"
-  | "accessibility_guide";
+  | "accessibility_guide"
+  | "highlight_rank";
 
 export interface ChartArchetype {
   id: ChartArchetypeId;

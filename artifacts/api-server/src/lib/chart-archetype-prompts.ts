@@ -372,6 +372,14 @@ SOURCING: route names, time ranges, costs, and frequency MUST be grounded from t
 Use when the visitor's decision is "which combination of time budget AND ticket tier gives the best payoff" — e.g. half-day basic vs full-day skip-the-line vs two-day pass. Distinct from ticket_access_matrix (tier × feature inclusion) and slot_compare (slot timing). Each scenario combines a time budget AND a ticket/access choice. Each dimensions[].scores MUST have exactly one int per scenario (0 = poor fit, 100 = ideal). summary.best_value_scenario MUST equal one scenarios[].id — schema validation will fail otherwise.
 SOURCING: time_label and price_label MUST be grounded from operator pricing / typical-visit narratives. Scores are inherently editorial — they should be defensible from DRD evidence (typical visit-duration, ticket inclusions, named-payoff descriptions) or grounded operator copy. Tag every score you estimated in provenance.estimates with spec.dimensions[i].scores[j]. Don't invent price points; quote the operator's published price or drop the price_label.`,
 
+  highlight_rank: `{ "type": "highlight_rank",
+  "subject_label": "<noun for items, e.g. Artwork | Ride | Exhibit | Animal>",
+  "score_label": "<axis label, e.g. Visitor priority | Must-see score>",
+  "items": [ { "name": "<item name, ≤60 chars>", "score": <0-100 int>, "badge"?: "<≤3-word pill, e.g. Most Instagrammed | Hidden gem | Fan favourite>", "highlight"?: <true for the single most iconic item only> }, ... 5-8 items ],
+  "insight"?: "<one-line visitor takeaway, ≤160 chars>" }
+Pick 5-8 items grounded in web sources (visitor reviews, official 'highlights' lists, TripAdvisor 'top things to do', official visitor guides). score = 0-100 popularity/must-see index (NOT wait time; higher = more iconic/popular). Assign highlight:true to AT MOST ONE item — the single most iconic highlight. Badge text MUST be ≤3 words; only include when the source supports the label (e.g. TripAdvisor award, official ranking, well-known press description). Sort items highest score first in the output.
+SOURCING: scores must be estimated from real visitor evidence — official 'top highlights' lists, visitor review volume, 'must-see' designations in visitor guides, or recognisable global fame (e.g. Mona Lisa = 100, lesser galleries = 55). Tag every score in provenance.estimates with its evidence basis. If the DRD or googleSearch can't surface at least 3 named highlights with differentiable visitor interest, DROP the chart rather than fabricate a ranking.`,
+
   accessibility_guide: `{ "type": "accessibility_guide",
   "headline"?: "<short header, ≤80 chars>",
   "features": [ { "label": "Step-free access to main galleries", "category": "<mobility|sensory|cognitive|services|facilities>", "availability": "<full|partial|none|on_request>", "detail"?: "..." }, ... 4-12 items ],

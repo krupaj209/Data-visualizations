@@ -136,6 +136,14 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
         requires: ["has_ride_attractions"],
         kind: "signature",
       },
+      // ---- Cluster: theme parks — overall popularity rank (orthogonal to wait time) ----
+      {
+        archetype: "highlight_rank",
+        question_template:
+          "Which rides at {{ceName}} are the most popular overall?",
+        requires: ["has_ride_attractions"],
+        kind: "signature",
+      },
     ],
   },
 
@@ -304,6 +312,14 @@ export const QUESTION_BUNDLES: Record<BundleId, QuestionBundle> = {
     required_signals: [],
     preferred_signals: ["has_multiple_entrances"],
     candidates: [
+      // ---- Cluster: museums, zoos, landmarks — famous highlights worth prioritising ----
+      {
+        archetype: "highlight_rank",
+        question_template:
+          "Which highlights at {{ceName}} are the absolute must-sees?",
+        requires: ["has_famous_highlights"],
+        kind: "signature",
+      },
       // ---- Cluster: skip-the-line products — which entrance has the fast lane ----
       {
         archetype: "entrance_lanes",
