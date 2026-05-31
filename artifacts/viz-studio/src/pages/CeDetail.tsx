@@ -948,20 +948,30 @@ function CeDetailInner({
               />
               <button
                 type="button"
-                onClick={() => setShowRegenFeedback(true)}
+                onClick={() => {
+                  if (!drdUpdatedAt) {
+                    setSidebarTab("intel");
+                    setShowSidebar(true);
+                    return;
+                  }
+                  setShowRegenFeedback(true);
+                }}
                 disabled={regenMut.isPending}
+                title={!drdUpdatedAt ? "Upload a Deep Research Doc first" : undefined}
+                aria-disabled={!drdUpdatedAt || regenMut.isPending}
                 style={{
-                  background: regenMut.isPending ? BRAND.slate100 : "white",
-                  color: BRAND.slate950,
+                  background: (regenMut.isPending || !drdUpdatedAt) ? BRAND.slate100 : "white",
+                  color: !drdUpdatedAt ? BRAND.slate500 : BRAND.slate950,
                   border: `1px solid ${BRAND.slate200}`,
                   padding: "8px 14px",
                   borderRadius: 12,
                   fontWeight: 800,
                   fontSize: 12,
-                  cursor: regenMut.isPending ? "wait" : "pointer",
+                  cursor: regenMut.isPending ? "wait" : !drdUpdatedAt ? "not-allowed" : "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
+                  opacity: !drdUpdatedAt ? 0.55 : 1,
                 }}
               >
                 {regenMut.isPending ? (
