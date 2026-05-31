@@ -57,6 +57,7 @@ import {
   type IdeationMessage,
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
+import { CE_DETAIL_SHORTCUTS } from "@/lib/keyboard-shortcuts";
 import {
   getPresentationOptions,
   normalizePresentation,
@@ -69,6 +70,8 @@ import {
   type DensityId,
 } from "@/lib/presentation";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
+import { HelpPopover, KeyCap } from "@/components/HelpPopover";
+import { ShortcutToast } from "@/components/ShortcutToast";
 import { ChartRenderer } from "@/components/charts";
 import { CHART_TYPE_META } from "@/components/charts/meta";
 import { FeedbackButton } from "@/components/FeedbackButton";
@@ -403,10 +406,6 @@ function CeDetailInner({
   const [showPublishDrawer, setShowPublishDrawer] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [activeChartId, setActiveChartId] = useState<number | null>(null);
-  const [kbHintDismissed, setKbHintDismissed] = useState<boolean>(() => {
-    try { return window.localStorage.getItem("viz-studio:kb-hint-dismissed") === "1"; } catch { return false; }
-  });
-
   const publishChartMut = usePublishChart();
   const [publishingSelected, setPublishingSelected] = useState(false);
 
@@ -456,16 +455,34 @@ function CeDetailInner({
   const isPageFiltered = pageType !== "all";
   const hasAnyChartsForCe = charts.length > 0;
 
-  // Keyboard navigation — J/K navigate; P publishes current; E expands/collapses; F opens feedback
+  // Keyboard navigation driven by KEYBOARD_SHORTCUTS (lib/keyboard-shortcuts.ts).
+  // Keys: J → next, K → prev, P → publish, E → expand, F → feedback.
+  // Add or rename shortcuts in keyboard-shortcuts.ts and handler updates automatically.
   const activeIndexRef = useRef(0);
   useEffect(() => {
+    // Build a key→action map from the shared shortcut registry.
+    const ACTION_FOR_KEY: Record<string, string> = {
+      j: "navigate-next",
+      k: "navigate-prev",
+    };
+    for (const sc of CE_DETAIL_SHORTCUTS) {
+      const k = sc.key.toLowerCase();
+      if (k === "j" || k === "k") continue; // handled specially above
+      if (sc.label === "Publish") ACTION_FOR_KEY[k] = "publish";
+      else if (sc.label === "Expand") ACTION_FOR_KEY[k] = "expand";
+      else if (sc.label === "Flag") ACTION_FOR_KEY[k] = "feedback";
+    }
+
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key === "j") {
-        e.preventDefault();
+      const action = ACTION_FOR_KEY[key];
+      if (!action) return;
+      e.preventDefault();
+
+      if (action === "navigate-next") {
         const next = Math.min(activeIndexRef.current + 1, visibleCharts.length - 1);
         activeIndexRef.current = next;
         const chart = visibleCharts[next];
@@ -473,8 +490,7 @@ function CeDetailInner({
           document.getElementById(`chart-${chart.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
           setActiveChartId(chart.id);
         }
-      } else if (key === "k") {
-        e.preventDefault();
+      } else if (action === "navigate-prev") {
         const prev = Math.max(activeIndexRef.current - 1, 0);
         activeIndexRef.current = prev;
         const chart = visibleCharts[prev];
@@ -482,18 +498,9 @@ function CeDetailInner({
           document.getElementById(`chart-${chart.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
           setActiveChartId(chart.id);
         }
-      } else if (key === "p") {
-        e.preventDefault();
+      } else {
         const chart = visibleCharts[activeIndexRef.current];
-        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "publish" } }));
-      } else if (key === "e") {
-        e.preventDefault();
-        const chart = visibleCharts[activeIndexRef.current];
-        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "expand" } }));
-      } else if (key === "f") {
-        e.preventDefault();
-        const chart = visibleCharts[activeIndexRef.current];
-        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action: "feedback" } }));
+        if (chart) window.dispatchEvent(new CustomEvent("viz-chart-action", { detail: { chartId: chart.id, action } }));
       }
     }
     document.addEventListener("keydown", onKey);
@@ -718,6 +725,10 @@ function CeDetailInner({
                   </option>
                 ))}
               </select>
+              <HelpPopover
+                label="Page template"
+                content="Each listing-page template (Plan your visit, History, Skip the line…) pulls a different mix of charts. Picking one here filters the chart list and targets Regenerate to rebuild only that page's deck."
+              />
               <button
                 type="button"
                 onClick={() => setShowRegenFeedback(true)}
@@ -743,6 +754,10 @@ function CeDetailInner({
                 )}
                 Regenerate
               </button>
+              <HelpPopover
+                label="Regenerate"
+                content="Calls Gemini with the CE's Deep Research Doc (DRD) and the selected page template. Draft charts are replaced; published charts are preserved. Add a note telling the AI what to improve before submitting."
+              />
             </div>
           )}
         </div>
@@ -764,6 +779,9 @@ function CeDetailInner({
           regenStats={regenStats}
         />
       )}
+
+      <ShortcutToast />
+      <ChartHoverTip />
 
       <main
         className="max-w-[1500px] mx-auto px-6 py-8"
@@ -925,15 +943,6 @@ function CeDetailInner({
           isPending={publishingSelected}
           onConfirmSelected={handlePublishSelected}
           onClose={() => setShowPublishDrawer(false)}
-        />
-      )}
-
-      {!kbHintDismissed && visibleCharts.length > 1 && (
-        <KeyboardHintTooltip
-          onDismiss={() => {
-            setKbHintDismissed(true);
-            try { window.localStorage.setItem("viz-studio:kb-hint-dismissed", "1"); } catch { /* ignore */ }
-          }}
         />
       )}
 
@@ -1127,6 +1136,7 @@ function ChartRow({
   return (
     <section
       id={`chart-${chart.id}`}
+      data-chart-card
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -1235,6 +1245,9 @@ function ChartRow({
                 <EyeOff size={12} />
               )}
               {isDraft ? "Approve" : "Unpublish"}
+              {isDraft && (
+                <KeyCap style={{ marginLeft: 2, opacity: 0.55, fontSize: 9 }}>P</KeyCap>
+              )}
             </button>
             <button
               type="button"
@@ -1244,6 +1257,7 @@ function ChartRow({
             >
               <Pencil size={12} />
               Edit
+              <KeyCap style={{ marginLeft: 2, opacity: 0.55, fontSize: 9 }}>E</KeyCap>
             </button>
             <button
               type="button"
@@ -1293,6 +1307,9 @@ function ChartRow({
               </span>
             )}
             <ConfidencePill overlay={editorialOverlay} />
+            <HelpPopover
+              content="Confidence reflects how well-grounded the chart data is. High = sourced from the DRD or verified web sources. Medium = partially inferred. Low = mostly estimated — review before publishing."
+            />
           </div>
           <h3
             className="text-lg"
@@ -2908,40 +2925,59 @@ function ProvenanceDisclosure({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           Evidence & estimates
           {provenance.bundle_id && (
-            <span
-              title={
-                provenance.intent_id
-                  ? `Intent: ${provenance.intent_id}` +
-                    (provenance.page_type ? ` · Page: ${provenance.page_type}` : "")
-                  : "Assembler bundle"
-              }
-              style={{
-                borderRadius: 999,
-                padding: "2px 7px",
-                background: "#EEF0FF",
-                color: BRAND.purps,
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              {provenance.bundle_id}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: "2px 7px",
+                  background: "#EEF0FF",
+                  color: BRAND.purps,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {provenance.bundle_id}
+              </span>
+              <HelpPopover
+                content={[
+                  `Bundle: ${provenance.bundle_id}`,
+                  provenance.intent_id ? `Intent: ${provenance.intent_id}` : null,
+                  provenance.page_type ? `Page template: ${provenance.page_type}` : null,
+                  "This chart was chosen deterministically by the question-bank assembler. The bundle groups related visitor questions; the intent is the visitor goal this chart answers.",
+                ].filter(Boolean).join(" · ")}
+              />
             </span>
           )}
+          <HelpPopover
+            label="Evidence & estimates"
+            content="Shows what the AI used to build this chart: DRD facts, web sources, and any fields it had to estimate. 'Estimated' (pink) means numeric values were inferred — treat them as directional, not authoritative."
+          />
         </span>
-        <span
-          style={{
-            borderRadius: 999,
-            padding: "3px 8px",
-            background: isEstimated ? BRAND.candySoft : BRAND.bgMint,
-            color: isEstimated ? BRAND.candy : "#0E8F4E",
-            fontSize: 10,
-            fontWeight: 800,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {statusCopy}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{
+              borderRadius: 999,
+              padding: "3px 8px",
+              background: isEstimated ? BRAND.candySoft : BRAND.bgMint,
+              color: isEstimated ? BRAND.candy : "#0E8F4E",
+              fontSize: 10,
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {statusCopy}
+          </span>
+          <HelpPopover
+            content={
+              status === "drd_grounded"
+                ? "DRD grounded — data values come directly from the CE's Deep Research Doc. High reliability."
+                : status === "web_grounded"
+                  ? "Source grounded — data backed by web sources found at generation time. Spot-check before publishing."
+                  : "Estimated — numeric values were inferred by the AI without a clear source. Treat as directional; verify before publishing."
+            }
+          />
         </span>
       </summary>
 
@@ -3236,17 +3272,28 @@ function VerifierVerdict({ notes }: { notes: string | undefined }) {
   // raw detail tucked into a `title` tooltip so it stays accessible without
   // cluttering the row.
   if (parsed.kind === "ok") {
-    return <div>{pill}</div>;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {pill}
+        <HelpPopover content="An independent AI (GPT) re-read the DRD and found no issues with this chart's data claims." />
+      </div>
+    );
   }
   if (parsed.kind === "skipped" || parsed.kind === "failed") {
     return (
-      <div title={parsed.rawMessage || undefined}>{pill}</div>
+      <div title={parsed.rawMessage || undefined} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {pill}
+        <HelpPopover content={parsed.kind === "skipped" ? "Fact-checking was skipped — OpenAI credentials are not configured. Ask an admin to set AI_INTEGRATIONS_OPENAI_* env vars." : "The fact-checker encountered an error. The chart data is unverified."} />
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-2">
-      {pill}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {pill}
+        <HelpPopover content="An AI fact-checker found potential issues with this chart's claims. Review the notes below and fix or approve before publishing." />
+      </div>
       {parsed.issues.length > 0 && (
         <VerifierBulletList items={parsed.issues} tone="issues" />
       )}
@@ -6545,6 +6592,7 @@ function ChartActionsMenu({
         }}
       >
         <MoreHorizontal size={14} />
+        <KeyCap style={{ marginLeft: 2, opacity: 0.55, fontSize: 9 }}>F</KeyCap>
         {openFeedbackCount > 0 && (
           <span
             aria-label={`${openFeedbackCount} open feedback`}
@@ -6644,24 +6692,34 @@ function ChartActionsMenu({
               </span>
             )}
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            style={itemStyle}
-            onClick={() => copy(fullUrl, "url")}
-          >
-            {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
-            {copied === "url" ? "Copied URL" : "Copy embed URL"}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            style={itemStyle}
-            onClick={() => copy(iframe, "iframe")}
-          >
-            {copied === "iframe" ? <Check size={14} /> : <Code2 size={14} />}
-            {copied === "iframe" ? "Copied iframe" : "Copy iframe"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <button
+              type="button"
+              role="menuitem"
+              style={{ ...itemStyle, flex: 1 }}
+              onClick={() => copy(fullUrl, "url")}
+            >
+              {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
+              {copied === "url" ? "Copied URL" : "Copy embed URL"}
+            </button>
+            <HelpPopover
+              content="Paste this URL into a browser to preview the chart. For the CMS use the iframe snippet below — it keeps the chart fluid at any iframe size. URL params: ?palette= for colour scheme, ?compact=1 to force compact chrome, ?density= for comfortable/compact, ?emphasis=<id> to highlight a cell."
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <button
+              type="button"
+              role="menuitem"
+              style={{ ...itemStyle, flex: 1 }}
+              onClick={() => copy(iframe, "iframe")}
+            >
+              {copied === "iframe" ? <Check size={14} /> : <Code2 size={14} />}
+              {copied === "iframe" ? "Copied iframe" : "Copy iframe"}
+            </button>
+            <HelpPopover
+              content="Drop this <iframe> tag into the CMS listing page. No width/height needed — the chart fills whatever size the iframe is. Frameborder=0 is already set."
+            />
+          </div>
           <div
             style={{
               height: 1,
@@ -7845,64 +7903,86 @@ function PublishDrawer({
   );
 }
 
-function KeyboardHintTooltip({ onDismiss }: { onDismiss: () => void }) {
-  const kbdStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.18)",
-    borderRadius: 4,
-    padding: "1px 6px",
-    fontFamily: "monospace",
-    fontWeight: 800,
-    fontSize: 12,
-  };
-  const shortcuts: Array<[string, string]> = [
-    ["J / K", "navigate"],
-    ["P", "publish"],
-    ["E", "expand"],
-    ["F", "feedback"],
-  ];
+/**
+ * One-per-session pulsing keyboard shortcut hint that appears when the user
+ * first hovers over any chart card. Stored in sessionStorage so it shows once
+ * per browser session and never again.
+ */
+function ChartHoverTip() {
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const KEY = "viz-studio:hover-tip-seen";
+    try {
+      if (sessionStorage.getItem(KEY) === "1") return;
+    } catch { /* ignore */ }
+
+    function onFirstHover(e: Event) {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest("[data-chart-card]")) return;
+      try { sessionStorage.setItem(KEY, "1"); } catch { /* ignore */ }
+      document.removeEventListener("mouseover", onFirstHover, true);
+      setVisible(true);
+      timerRef.current = setTimeout(() => setVisible(false), 4000);
+    }
+
+    document.addEventListener("mouseover", onFirstHover, true);
+    return () => {
+      document.removeEventListener("mouseover", onFirstHover, true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  if (!visible) return null;
   return (
     <div
       style={{
         position: "fixed",
-        bottom: 24,
+        bottom: 28,
         left: "50%",
         transform: "translateX(-50%)",
         background: BRAND.slate950,
         color: "white",
         borderRadius: 12,
-        padding: "10px 18px",
-        fontSize: 12,
+        padding: "9px 16px",
+        fontSize: 11,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
-        gap: 16,
-        zIndex: 100,
-        boxShadow: "0 4px 20px rgba(15,23,42,0.25)",
+        gap: 12,
+        zIndex: 90,
+        boxShadow: "0 4px 20px rgba(15,23,42,0.28)",
         whiteSpace: "nowrap",
+        animation: "hoverTipFade 0.3s ease",
+        pointerEvents: "none",
       }}
     >
-      {shortcuts.map(([key, label]) => (
+      {(
+        [
+          ["J / K", "navigate"],
+          ["P", "publish"],
+          ["E", "expand"],
+          ["F", "feedback"],
+        ] as [string, string][]
+      ).map(([key, label]) => (
         <span key={key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <kbd style={kbdStyle}>{key}</kbd>
-          <span style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{label}</span>
+          <span
+            style={{
+              background: "rgba(255,255,255,0.15)",
+              borderRadius: 4,
+              padding: "1px 6px",
+              fontFamily: "monospace",
+              fontWeight: 800,
+              fontSize: 11,
+            }}
+          >
+            {key}
+          </span>
+          <span style={{ color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>{label}</span>
         </span>
       ))}
-      <button
-        type="button"
-        onClick={onDismiss}
-        style={{
-          background: "none",
-          border: "none",
-          color: "rgba(255,255,255,0.5)",
-          cursor: "pointer",
-          padding: 0,
-          fontSize: 14,
-          lineHeight: 1,
-          marginLeft: 4,
-        }}
-      >
-        ✕
-      </button>
+      <style>{`@keyframes hoverTipFade { from { opacity: 0; transform: translateX(-50%) translateY(6px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
     </div>
   );
 }

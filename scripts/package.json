@@ -14,6 +14,7 @@
     "test-overrides-merge": "tsx ./src/test-overrides-merge.mts",
     "test-overrides-api": "node ./src/test-overrides-api.mjs",
     "reset-dev-db-to-curated": "tsx ./src/reset-dev-db-to-curated.mts",
+    "post-merge-setup": "tsx ./src/post-merge-setup.mts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

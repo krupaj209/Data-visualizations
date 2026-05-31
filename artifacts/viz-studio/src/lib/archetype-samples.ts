@@ -293,4 +293,314 @@ export const ARCHETYPE_SAMPLES: Partial<Record<ChartArchetypeId, ChartSpec>> = {
     cheapest_months: ["January", "February", "November"],
     priciest_months: ["July", "August"],
   },
+
+  history_timeline: {
+    type: "history_timeline",
+    span_label: "500 BC – present",
+    events: [
+      {
+        date_label: "500 BC",
+        sort_year: -500,
+        title: "First settlement",
+        era: "origins",
+        description: "A hilltop gathering place for seasonal festivals draws traders and travellers from across the region.",
+      },
+      {
+        date_label: "AD 80",
+        sort_year: 80,
+        title: "Monument built",
+        era: "construction",
+        description: "Civic authorities commission a permanent amphitheatre; local stone quarried over eight years.",
+        metric_value: "50,000",
+        metric_label: "seats",
+      },
+      {
+        date_label: "AD 200",
+        sort_year: 200,
+        title: "Golden age",
+        era: "spectacle",
+        description: "Annual festival crowds peak; the venue hosts the empire's most celebrated games and ceremonies.",
+        metric_value: "2M",
+        metric_label: "visitors / yr",
+      },
+      {
+        date_label: "AD 470",
+        sort_year: 470,
+        title: "Decline sets in",
+        era: "decline",
+        description: "Political instability cuts civic investment; maintenance lapses and the outer colonnade crumbles.",
+      },
+      {
+        date_label: "1200",
+        sort_year: 1200,
+        title: "Fortified & reused",
+        era: "reuse",
+        description: "A local dynasty converts the abandoned structure; a chapel is installed inside the vaults.",
+      },
+      {
+        date_label: "1820",
+        sort_year: 1820,
+        title: "Scholarly restoration",
+        era: "restoration",
+        description: "Archaeologists document the ruins and lobby parliament for public funding; excavation begins.",
+      },
+      {
+        date_label: "Today",
+        sort_year: 2024,
+        title: "Modern landmark",
+        era: "modern",
+        description: "Listed as a UNESCO World Heritage Site and receiving over two million visitors a year.",
+        metric_value: "2M+",
+        metric_label: "visitors / yr",
+      },
+    ],
+    highlight_event: "Golden age",
+    callout: "From ancient gathering place to modern UNESCO landmark — two and a half millennia in seven events.",
+  },
+
+  time_split: {
+    type: "time_split",
+    total_min: 150,
+    total_label: "Typical visit",
+    segments: [
+      { label: "Entry & orientation", minutes: 20, accent: "slate", note: "Bag check + map." },
+      { label: "Main highlights", minutes: 70, accent: "candy", note: "Can't-skip core." },
+      { label: "Deeper exploration", minutes: 40, accent: "purps", optional: true, note: "Skip if tight on time." },
+      { label: "Gift shop & exit", minutes: 20, accent: "okay", optional: true },
+    ],
+    callout: "Allow 2.5 hours for the full experience; the core highlights fit in 90 minutes.",
+  },
+
+  daily_pattern: {
+    type: "daily_pattern",
+    points: [
+      { time: "9:00", crowd: 1 },
+      { time: "10:00", crowd: 3 },
+      { time: "11:00", crowd: 7 },
+      { time: "12:30", crowd: 10 },
+      { time: "14:00", crowd: 9 },
+      { time: "15:30", crowd: 7 },
+      { time: "16:30", crowd: 4 },
+      { time: "17:30", crowd: 2 },
+      { time: "18:00", crowd: 1 },
+    ],
+    zones: [
+      { label: "Best", tone: "best", start: "9:00", end: "10:30" },
+      { label: "Peak", tone: "peak", start: "10:30", end: "16:00" },
+      { label: "2nd best", tone: "second_best", start: "16:00", end: "18:00" },
+    ],
+    caption: { opens: "9:00am", last_entry: "5:30pm" },
+  },
+
+  slot_compare: {
+    type: "slot_compare",
+    slots: [
+      { name: "Early morning", time_window: "8:00–10:00", accent: "purps", recommended: true },
+      { name: "Midday", time_window: "11:00–14:00", accent: "candy", recommended: false },
+    ],
+    dimensions: [
+      { label: "Quiet crowds", scores: [85, 30] },
+      { label: "Photo light", scores: [90, 55] },
+      { label: "Short queues", scores: [80, 28] },
+      { label: "Ticket availability", scores: [58, 92] },
+    ],
+    insight: "Early morning wins on crowds and photography; midday has more ticket availability.",
+  },
+
+  daily_programme: {
+    type: "daily_programme",
+    open_time: "9:00",
+    close_time: "18:00",
+    events: [
+      { name: "Morning keeper feeding", start_time: "9:30", duration_min: 30, location: "Main enclosure", popularity: 90, icon: "feeding", note: "First slot — quieter crowds" },
+      { name: "Morning show", start_time: "11:00", duration_min: 45, location: "Arena", popularity: 95, icon: "show", note: "Book in advance" },
+      { name: "Behind the scenes", start_time: "13:30", duration_min: 60, location: "Staff area", popularity: 70, icon: "tour" },
+      { name: "Expert talk", start_time: "15:00", duration_min: 30, location: "Education centre", popularity: 60, icon: "talk" },
+      { name: "Afternoon feeding", start_time: "16:30", duration_min: 30, location: "Main enclosure", popularity: 85, icon: "feeding" },
+    ],
+    highlight_event: "Morning show",
+  },
+
+  sighting_probability: {
+    type: "sighting_probability",
+    display: "single",
+    series: [
+      {
+        name: "Humpback whale",
+        accent: "purps",
+        monthly: [20, 25, 40, 65, 80, 90, 95, 92, 75, 55, 35, 22],
+      },
+    ],
+    best_months: ["June", "July", "August"],
+    worst_months: ["January", "December"],
+  },
+
+  departure_reliability: {
+    type: "departure_reliability",
+    months: [
+      { month: "jan", pct_ran: 72, note: "Winter storms" },
+      { month: "feb", pct_ran: 78 },
+      { month: "mar", pct_ran: 85 },
+      { month: "apr", pct_ran: 91 },
+      { month: "may", pct_ran: 96 },
+      { month: "jun", pct_ran: 98 },
+      { month: "jul", pct_ran: 98 },
+      { month: "aug", pct_ran: 99 },
+      { month: "sep", pct_ran: 97 },
+      { month: "oct", pct_ran: 93 },
+      { month: "nov", pct_ran: 84 },
+      { month: "dec", pct_ran: 75, note: "Holiday weather" },
+    ],
+    target_pct: 90,
+    best_months: ["August", "July"],
+    worst_months: ["January", "December"],
+  },
+
+  ride_wait_curve: {
+    type: "ride_wait_curve",
+    subject: "Flagship coaster",
+    y_label: "Wait (min)",
+    unit: "min",
+    open_hour: 9,
+    close_hour: 20,
+    hours: [
+      { hour: 0, value: 0 }, { hour: 1, value: 0 }, { hour: 2, value: 0 }, { hour: 3, value: 0 },
+      { hour: 4, value: 0 }, { hour: 5, value: 0 }, { hour: 6, value: 0 }, { hour: 7, value: 0 },
+      { hour: 8, value: 0 }, { hour: 9, value: 8 }, { hour: 10, value: 22 }, { hour: 11, value: 45 },
+      { hour: 12, value: 60 }, { hour: 13, value: 65 }, { hour: 14, value: 62 }, { hour: 15, value: 55 },
+      { hour: 16, value: 42 }, { hour: 17, value: 35 }, { hour: 18, value: 28 }, { hour: 19, value: 15 },
+      { hour: 20, value: 0 }, { hour: 21, value: 0 }, { hour: 22, value: 0 }, { hour: 23, value: 0 },
+    ],
+    zones: [
+      { label: "Short wait", tone: "best", start_hour: 9, end_hour: 11 },
+      { label: "Peak wait", tone: "peak", start_hour: 11, end_hour: 16 },
+      { label: "Easing off", tone: "second_best", start_hour: 16, end_hour: 20 },
+    ],
+    insight: "Head here first at opening — waits double by 11am.",
+  },
+
+  activity_window: {
+    type: "activity_window",
+    subject: "Dolphin feeding bay",
+    y_label: "Activity level",
+    unit: "",
+    open_hour: 8,
+    close_hour: 17,
+    hours: [
+      { hour: 0, value: 0 }, { hour: 1, value: 0 }, { hour: 2, value: 0 }, { hour: 3, value: 0 },
+      { hour: 4, value: 0 }, { hour: 5, value: 0 }, { hour: 6, value: 0 }, { hour: 7, value: 0 },
+      { hour: 8, value: 35 }, { hour: 9, value: 65 }, { hour: 10, value: 80 }, { hour: 11, value: 70 },
+      { hour: 12, value: 55 }, { hour: 13, value: 88 }, { hour: 14, value: 100 }, { hour: 15, value: 85 },
+      { hour: 16, value: 60 }, { hour: 17, value: 0 }, { hour: 18, value: 0 }, { hour: 19, value: 0 },
+      { hour: 20, value: 0 }, { hour: 21, value: 0 }, { hour: 22, value: 0 }, { hour: 23, value: 0 },
+    ],
+    zones: [
+      { label: "Morning sessions", tone: "second_best", start_hour: 8, end_hour: 12 },
+      { label: "Afternoon peak", tone: "peak", start_hour: 13, end_hour: 16 },
+    ],
+    insight: "Afternoon feeding sessions at 1pm and 2:30pm see the highest activity.",
+  },
+
+  opening_hour_rank: {
+    type: "opening_hour_rank",
+    subject_label: "Ride",
+    unit: "min",
+    hour_label: "Wait at 9am opening",
+    bands: { green_max: 15, amber_max: 35 },
+    subjects: [
+      { name: "Flagship coaster", wait_minutes: 5, note: "Go here first" },
+      { name: "Dark ride", wait_minutes: 12 },
+      { name: "Sky tower", wait_minutes: 8 },
+      { name: "Water rapids", wait_minutes: 25 },
+      { name: "Family ride", wait_minutes: 35 },
+      { name: "Thrill drop", wait_minutes: 55, note: "Most popular" },
+    ],
+    insight: "Get to the thrill drop immediately after opening — it's the fastest to peak.",
+  },
+
+  savings_breakdown: {
+    type: "savings_breakdown",
+    currency: "EUR",
+    card_price: 59,
+    card_label: "City Card (48 hr)",
+    attractions: [
+      { name: "National Museum", standalone_price: 18, usage_rate: 95 },
+      { name: "Historic Baths", standalone_price: 14, usage_rate: 80 },
+      { name: "Castle tour", standalone_price: 12, usage_rate: 70 },
+      { name: "Gallery of Modern Art", standalone_price: 10, usage_rate: 55 },
+    ],
+  },
+
+  golden_hour_match: {
+    type: "golden_hour_match",
+    location_label: "Summit viewpoint",
+    slots: [
+      { label: "Sunrise 5:30–7:30" },
+      { label: "Sunset 18:00–20:00" },
+    ],
+    months: [
+      { month: "jan", cells: [{ aligned: false, sub_rating: 30 }, { aligned: true, sub_rating: 65 }] },
+      { month: "feb", cells: [{ aligned: true, sub_rating: 55 }, { aligned: true, sub_rating: 72 }] },
+      { month: "mar", cells: [{ aligned: true, sub_rating: 70 }, { aligned: true, sub_rating: 80 }] },
+      { month: "apr", cells: [{ aligned: true, sub_rating: 85 }, { aligned: true, sub_rating: 88 }] },
+      { month: "may", cells: [{ aligned: true, sub_rating: 90 }, { aligned: true, sub_rating: 85 }] },
+      { month: "jun", cells: [{ aligned: true, sub_rating: 95 }, { aligned: false, sub_rating: 40 }] },
+      { month: "jul", cells: [{ aligned: true, sub_rating: 92 }, { aligned: false, sub_rating: 35 }] },
+      { month: "aug", cells: [{ aligned: true, sub_rating: 88 }, { aligned: false, sub_rating: 45 }] },
+      { month: "sep", cells: [{ aligned: true, sub_rating: 82 }, { aligned: true, sub_rating: 78 }] },
+      { month: "oct", cells: [{ aligned: false, sub_rating: 60 }, { aligned: true, sub_rating: 82 }] },
+      { month: "nov", cells: [{ aligned: false, sub_rating: 30 }, { aligned: true, sub_rating: 68 }] },
+      { month: "dec", cells: [{ aligned: false, sub_rating: 20 }, { aligned: true, sub_rating: 60 }] },
+    ],
+    helper: "Summer sunrises and spring/autumn sunsets offer the best golden-hour light.",
+  },
+
+  zone_crowd_heatmap: {
+    type: "zone_crowd_heatmap",
+    open_hour: 9,
+    close_hour: 18,
+    zones: [
+      {
+        name: "Egyptian Gallery",
+        emoji: "🏺",
+        hours: [0,0,0,0,0,0,0,0,0,25,55,80,85,75,60,50,38,25,0,0,0,0,0,0],
+      },
+      {
+        name: "Greek Sculpture",
+        emoji: "🏛️",
+        hours: [0,0,0,0,0,0,0,0,0,20,40,65,75,70,55,45,32,18,0,0,0,0,0,0],
+      },
+      {
+        name: "Medieval Hall",
+        emoji: "⚔️",
+        hours: [0,0,0,0,0,0,0,0,0,15,30,50,60,55,45,38,25,15,0,0,0,0,0,0],
+      },
+    ],
+    best_window: { label: "Medieval Hall · 9–10am", zone: "Medieval Hall", start_hour: 9, end_hour: 10 },
+  },
+
+  zone_wait_heatmap: {
+    type: "zone_wait_heatmap",
+    open_hour: 9,
+    close_hour: 20,
+    unit: "min",
+    zones: [
+      {
+        name: "Thrill section",
+        emoji: "🎢",
+        hours: [0,0,0,0,0,0,0,0,0,5,25,55,70,65,60,50,40,30,20,10,0,0,0,0],
+      },
+      {
+        name: "Family zone",
+        emoji: "🎠",
+        hours: [0,0,0,0,0,0,0,0,0,8,20,40,50,48,42,35,28,22,15,8,0,0,0,0],
+      },
+      {
+        name: "Water rides",
+        emoji: "💦",
+        hours: [0,0,0,0,0,0,0,0,0,0,15,35,55,60,55,45,35,25,15,5,0,0,0,0],
+      },
+    ],
+    best_window: { label: "Family zone · 9am", zone: "Family zone", start_hour: 9, end_hour: 10 },
+  },
 };

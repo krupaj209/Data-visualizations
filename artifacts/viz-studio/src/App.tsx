@@ -9,6 +9,7 @@ import StyleGuide from "@/pages/StyleGuide";
 import Triage from "@/pages/Triage";
 import TriageQuestions from "@/pages/TriageQuestions";
 import QuestionBank from "@/pages/QuestionBank";
+import Guide from "@/pages/Guide";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/triage" component={Triage} />
       <Route path="/question-bank" component={QuestionBank} />
       <Route path="/style" component={StyleGuide} />
+      <Route path="/guide" component={Guide} />
       <Route component={NotFound} />
     </Switch>
   );

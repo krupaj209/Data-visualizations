@@ -9,6 +9,7 @@ import {
   Edit3,
   ExternalLink,
   FileText,
+  LifeBuoy,
   Loader2,
   Palette,
   Plus,
@@ -27,6 +28,7 @@ import {
 } from "@workspace/api-client-react";
 import { BRAND } from "@/lib/brand";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
+import { SpotlightTour } from "@/components/SpotlightTour";
 
 const QUICK_PICKS = [
   { name: "Vatican Museums", city: "Vatican City", country: "Vatican City" },
@@ -276,7 +278,6 @@ export default function Home() {
           name: name.trim(),
           city: city.trim(),
           country: country.trim(),
-          skipGeneration: true,
         },
       });
       qc.invalidateQueries({ queryKey: getListCesQueryKey() });
@@ -384,54 +385,73 @@ export default function Home() {
               AI-generated visuals for listing pages
             </div>
           </div>
-          <Link
-            href="/question-bank"
-            className="inline-flex items-center gap-1.5"
-            style={{
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-              padding: "6px 11px",
-              borderRadius: 999,
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "-0.005em",
-              textDecoration: "none",
-            }}
-          >
-            <BookOpen size={13} strokeWidth={2.5} />
-            Question bank
-          </Link>
-          <Link
-            href="/style"
-            className="inline-flex items-center gap-1.5"
-            style={{
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-              padding: "6px 11px",
-              borderRadius: 999,
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "-0.005em",
-              textDecoration: "none",
-            }}
-          >
-            <Palette size={13} strokeWidth={2.5} />
-            Style guide
-          </Link>
-          <span
-            style={{
-              background: BRAND.purpsSoft,
-              color: BRAND.purps,
-              padding: "5px 10px",
-              borderRadius: 999,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Internal
-          </span>
+          <div className="flex items-center gap-2" data-tour="main-nav">
+            <Link
+              href="/guide"
+              className="inline-flex items-center gap-1.5"
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+                padding: "6px 11px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "-0.005em",
+                textDecoration: "none",
+              }}
+            >
+              <LifeBuoy size={13} strokeWidth={2.5} />
+              Guide
+            </Link>
+            <Link
+              href="/question-bank"
+              className="inline-flex items-center gap-1.5"
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+                padding: "6px 11px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "-0.005em",
+                textDecoration: "none",
+              }}
+            >
+              <BookOpen size={13} strokeWidth={2.5} />
+              Question bank
+            </Link>
+            <Link
+              href="/style"
+              className="inline-flex items-center gap-1.5"
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+                padding: "6px 11px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "-0.005em",
+                textDecoration: "none",
+              }}
+            >
+              <Palette size={13} strokeWidth={2.5} />
+              Style guide
+            </Link>
+            <span
+              style={{
+                background: BRAND.purpsSoft,
+                color: BRAND.purps,
+                padding: "5px 10px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              Internal
+            </span>
+          </div>
         </div>
       </header>
 
@@ -440,6 +460,7 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-6 py-10 grid lg:grid-cols-[420px_1fr] gap-10">
         {/* CREATE PANEL */}
         <section
+          data-tour="create-panel"
           className="lg:sticky lg:top-24 self-start"
           style={{ height: "fit-content" }}
         >
@@ -1019,7 +1040,7 @@ export default function Home() {
           ) : filteredCes.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4" data-tour="ce-library">
               {filteredCes.map((ce) => (
                 <CeCard
                   key={ce.id}
@@ -1064,6 +1085,7 @@ export default function Home() {
         </section>
         </div>
       </main>
+      <SpotlightTour />
     </div>
   );
 }

@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { EVIDENCE_TYPE_LABELS, EVIDENCE_TYPE_DESCRIPTIONS } from "@/lib/evidence-type-labels";
+import { HelpPopover } from "@/components/HelpPopover";
 import {
   Loader2,
   RefreshCw,
@@ -100,22 +102,6 @@ const BUCKET_LABELS: Record<string, string> = {
   co_bookings: "Nearby & co-booked venues",
   sentiment: "Sentiment themes",
   ops_notes: "Operational notes",
-};
-
-// Mirror of EVIDENCE_TYPE_LABELS in artifacts/api-server/src/lib/ce-intelligence.ts —
-// kept inline (not exported across packages) because the API contract surfaces
-// `evidence_type` as a free-form string. Update both sides if you add a type.
-const EVIDENCE_TYPE_LABELS: Record<string, string> = {
-  authoritative_fact: "Authoritative fact",
-  visitor_tip: "Visitor tip",
-  wait_anecdote: "Wait anecdote",
-  sentiment_theme: "Sentiment theme",
-  trip_report: "Trip report",
-  product_offering: "Product offering",
-  price_point: "Price point",
-  bundle_pattern: "Bundle pattern",
-  operational_change: "Operational change",
-  other: "Other",
 };
 
 function evidenceTypeSummary(facts: CeIntelligenceFact[]): string {
@@ -1998,16 +1984,20 @@ function FactListItem({
           {SOURCE_LABELS[fact.source] ?? fact.source}
         </span>
         {fact.evidence_type && (
-          <span
-            title={`Evidence type: ${EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}`}
-            style={{
-              background: BRAND.bgMint,
-              color: BRAND.okayInk,
-              padding: "1px 6px",
-              borderRadius: 999,
-            }}
-          >
-            {EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+            <span
+              style={{
+                background: BRAND.bgMint,
+                color: BRAND.okayInk,
+                padding: "1px 6px",
+                borderRadius: 999,
+              }}
+            >
+              {EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}
+            </span>
+            <HelpPopover
+              content={EVIDENCE_TYPE_DESCRIPTIONS[fact.evidence_type] ?? `Evidence type: ${EVIDENCE_TYPE_LABELS[fact.evidence_type] ?? fact.evidence_type}`}
+            />
           </span>
         )}
         <span>conf {fact.confidence}</span>
@@ -3500,6 +3490,12 @@ function judgementTone(
   return { bg: BRAND.slate100, fg: BRAND.slate700, symbol: "~" };
 }
 
+const VERDICT_HELP: Record<string, string> = {
+  ship: "Ship — this idea scored ≥4 'yes' across all 5 editorial criteria with no 'no'. Safe to generate a chart for it.",
+  hold: "Hold — promising but missing evidence on at least one criterion. Use 'Recheck gap' to search for missing data before generating.",
+  cut: "Cut — failed a must-pass criterion (useful or ce_specific). Not worth generating a chart for this idea.",
+};
+
 function EditorialVerdictPill({
   verdict,
   compact = false,
@@ -3510,19 +3506,22 @@ function EditorialVerdictPill({
   if (!verdict) return null;
   const tone = verdictTone(verdict);
   return (
-    <span
-      style={{
-        borderRadius: 999,
-        padding: compact ? "2px 7px" : "3px 9px",
-        background: tone.bg,
-        color: tone.fg,
-        fontSize: compact ? 9 : 10,
-        fontWeight: 900,
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
-      }}
-    >
-      {tone.label}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span
+        style={{
+          borderRadius: 999,
+          padding: compact ? "2px 7px" : "3px 9px",
+          background: tone.bg,
+          color: tone.fg,
+          fontSize: compact ? 9 : 10,
+          fontWeight: 900,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {tone.label}
+      </span>
+      <HelpPopover content={VERDICT_HELP[verdict] ?? `Editorial verdict: ${verdict}`} />
     </span>
   );
 }
@@ -3552,22 +3551,25 @@ function EditorialVerdictStrip({
         return (
           <span
             key={key}
-            title={tooltip}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              borderRadius: 999,
-              padding: "2px 7px",
-              background: tone.bg,
-              color: tone.fg,
-              fontSize: 10,
-              fontWeight: 800,
-              cursor: "help",
-            }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
           >
-            <span style={{ fontWeight: 900 }}>{tone.symbol}</span>
-            {EDITORIAL_LABELS[key]}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                borderRadius: 999,
+                padding: "2px 7px",
+                background: tone.bg,
+                color: tone.fg,
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              <span style={{ fontWeight: 900 }}>{tone.symbol}</span>
+              {EDITORIAL_LABELS[key]}
+            </span>
+            <HelpPopover content={tooltip} />
           </span>
         );
       })}
