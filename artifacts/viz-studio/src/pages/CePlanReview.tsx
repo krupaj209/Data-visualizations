@@ -10,6 +10,7 @@ import {
 import { Link, useLocation, useParams } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Loader2,
@@ -23,7 +24,7 @@ import { CHART_TYPE_META } from "@/components/charts/meta";
 import { HeadoutLogo } from "@/components/HeadoutLogo";
 import { ChartRenderer } from "@/components/charts";
 import { ARCHETYPE_SAMPLES } from "@/lib/archetype-samples";
-import { ArchetypeGalleryModal } from "@/components/ArchetypeGalleryModal";
+import { ArchetypeDetailPanel } from "@/components/ArchetypeDetailPanel";
 import type { ChartArchetypeId } from "@workspace/question-bank";
 
 /* -------------------------------------------------------------------------- */
@@ -50,6 +51,8 @@ interface PlanVisualization {
   };
   priority?: number;
   mandatory?: boolean;
+  triggering_signals?: string[];
+  bundle_score?: number;
 }
 
 interface ReviewPlan {
@@ -78,6 +81,7 @@ interface ReviewPlan {
 /* -------------------------------------------------------------------------- */
 
 const CATEGORIES_FOR_ARCHETYPE: Record<string, string[]> = {
+  /* ---- original types ---- */
   ticket_ladder: ["tickets", "prices", "restrictions"],
   route_profile: ["routes_stops", "durations", "opening_hours"],
   history_timeline: ["historical_events", "restrictions"],
@@ -94,6 +98,48 @@ const CATEGORIES_FOR_ARCHETYPE: Record<string, string[]> = {
   stat_grid: ["tickets", "opening_hours", "durations"],
   co_bookings: ["nearby_pairings"],
   donut_breakdown: ["tickets", "nearby_pairings"],
+  tribune_density: ["crowd_claims", "opening_hours"],
+  /* ---- v3 / task-67 promoted archetypes ---- */
+  ticket_access_matrix: ["tickets", "prices", "restrictions"],
+  duration_budget: ["durations", "routes_stops"],
+  landmark_coverage: ["routes_stops", "comparison_dimensions", "nearby_pairings"],
+  itinerary_flow: ["routes_stops", "durations"],
+  best_for_matrix: ["comparison_dimensions", "visitor_sentiment", "crowd_claims"],
+  season_weather_fit: ["seasonality", "crowd_claims"],
+  /* ---- prep / logistics archetypes ---- */
+  rules_checklist: ["restrictions", "accessibility"],
+  transit_options: ["routes_stops", "opening_hours"],
+  accessibility_guide: ["accessibility", "restrictions"],
+  floor_plan_flow: ["routes_stops", "crowd_claims"],
+  entrance_map: ["wait_times", "opening_hours", "tickets"],
+  highlight_rank: ["crowd_claims", "visitor_sentiment", "nearby_pairings"],
+  /* ---- theme-park cluster ---- */
+  ride_wait_curve: ["crowd_claims", "wait_times", "opening_hours"],
+  opening_hour_rank: ["crowd_claims", "opening_hours", "wait_times"],
+  zone_wait_heatmap: ["wait_times", "crowd_claims"],
+  zone_crowd_heatmap: ["crowd_claims", "opening_hours"],
+  zone_wait_compare: ["wait_times", "crowd_claims", "comparison_dimensions"],
+  /* ---- tour / cruise cluster ---- */
+  time_split: ["durations", "routes_stops"],
+  slot_compare: ["crowd_claims", "opening_hours", "comparison_dimensions"],
+  daily_programme: ["opening_hours", "crowd_claims"],
+  stop_frequency: ["routes_stops", "opening_hours"],
+  optimal_departure: ["opening_hours", "crowd_claims", "seasonality"],
+  /* ---- wildlife / nature cluster ---- */
+  sighting_probability: ["seasonality", "crowd_claims"],
+  activity_window: ["crowd_claims", "opening_hours", "seasonality"],
+  departure_reliability: ["seasonality", "opening_hours"],
+  conditions_calendar: ["seasonality", "crowd_claims"],
+  /* ---- value / pricing cluster ---- */
+  price_curve: ["prices", "seasonality", "tickets"],
+  savings_breakdown: ["prices", "tickets", "nearby_pairings"],
+  time_value_matrix: ["durations", "tickets", "prices", "comparison_dimensions"],
+  /* ---- photography / events cluster ---- */
+  golden_hour_match: ["opening_hours", "seasonality"],
+  return_buffer_rank: ["durations", "routes_stops", "opening_hours"],
+  seat_value_map: ["tickets", "prices", "comparison_dimensions"],
+  /* ---- booking / risk ---- */
+  booking_window: ["tickets", "prices", "crowd_claims"],
 };
 
 function relevantEvidence(plan: ReviewPlan, item: PlanVisualization): string[] {
@@ -313,11 +359,22 @@ export default function CePlanReview() {
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<GenProgress | null>(null);
   const startedRef = useRef(false);
+  /** ISO timestamp of when the plan was last fetched. */
+  const [planFetchedAt, setPlanFetchedAt] = useState<string | null>(null);
+  /** ISO timestamp of when the DRD was last updated (null = no DRD). */
+  const [drdUpdatedAt, setDrdUpdatedAt] = useState<string | null>(null);
+
+  /** True when a DRD exists and was updated after the plan was last fetched. */
+  const planIsStale = useMemo(() => {
+    if (!drdUpdatedAt || !planFetchedAt) return false;
+    return new Date(drdUpdatedAt) > new Date(planFetchedAt);
+  }, [drdUpdatedAt, planFetchedAt]);
 
   const runPlan = useCallback(async () => {
     if (!slug) return;
     setPlanLoading(true);
     setPlanError(null);
+    const fetchedAt = new Date().toISOString();
     try {
       const res = await fetch(`/api/ce-intelligence/${slug}/plan`, {
         method: "POST",
@@ -335,6 +392,7 @@ export default function CePlanReview() {
         throw new Error(json?.error ?? `Planner failed (${res.status})`);
       }
       setPlan(json);
+      setPlanFetchedAt(fetchedAt);
       // Default selection: mandatory locked on, dynamic on (planner's
       // recommended selection).
       const next: Record<string, boolean> = {};
@@ -350,6 +408,28 @@ export default function CePlanReview() {
       setPlanLoading(false);
     }
   }, [slug]);
+
+  /** Poll DRD metadata every 30 s to detect staleness while the page is open. */
+  useEffect(() => {
+    if (!slug) return;
+    const fetchDrdMeta = () => {
+      void fetch(`/api/drds/${slug}`)
+        .then((r) => (r.ok ? (r.json() as Promise<{ updatedAt: string }>) : null))
+        .then((data) => {
+          if (data?.updatedAt) setDrdUpdatedAt(data.updatedAt);
+        })
+        .catch(() => { /* silent — DRD check is best-effort */ });
+    };
+    fetchDrdMeta();
+    const id = setInterval(fetchDrdMeta, 30_000);
+    return () => clearInterval(id);
+  }, [slug]);
+
+  /** Auto-refresh the plan when the DRD has been updated after the plan was fetched. */
+  useEffect(() => {
+    if (!planIsStale || planLoading || generating) return;
+    void runPlan();
+  }, [planIsStale, planLoading, generating, runPlan]);
 
   // Auto-trigger the plan once on mount.
   useEffect(() => {
@@ -595,6 +675,52 @@ export default function CePlanReview() {
           >
             <Loader2 size={18} className="animate-spin" />
             Reading the research doc and assembling the deck…
+          </div>
+        )}
+
+        {planIsStale && !planLoading && (
+          <div
+            style={{
+              border: `1px solid ${BRAND.holaSoft}`,
+              background: BRAND.holaSoft,
+              color: BRAND.hola,
+              borderRadius: 12,
+              padding: "12px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <AlertTriangle size={15} />
+              Your research doc was updated after this plan was built — snippets
+              may be outdated.
+            </span>
+            <button
+              onClick={() => void runPlan()}
+              disabled={planLoading}
+              style={{
+                border: "none",
+                borderRadius: 8,
+                padding: "6px 10px",
+                background: "white",
+                color: BRAND.hola,
+                fontSize: 12,
+                fontWeight: 850,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <RefreshCw size={13} />
+              Refresh plan
+            </button>
           </div>
         )}
 
@@ -847,7 +973,7 @@ function PlanCard({
   disabled?: boolean;
   onToggle?: () => void;
 }) {
-  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const evidenceSnippets = relevantEvidence(plan, item);
   const evidenceCount = evidenceSnippets.length;
   const sourceRefs = item.evidence_refs ?? [];
@@ -859,14 +985,15 @@ function PlanCard({
     Boolean(item.quality_score?.rationale);
   return (
     <>
-      {galleryOpen && (
-        <ArchetypeGalleryModal
-          open={galleryOpen}
-          onClose={() => setGalleryOpen(false)}
-          onPick={() => setGalleryOpen(false)}
-          options={[item.archetype]}
-        />
-      )}
+      <ArchetypeDetailPanel
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        item={item}
+        isSelected={checked}
+        mandatory={mandatory}
+        onKeep={onToggle && !checked ? onToggle : undefined}
+        onRemove={onToggle && checked ? onToggle : undefined}
+      />
       <label
         style={{
           display: "flex",
@@ -917,6 +1044,11 @@ function PlanCard({
           }}
         >
           <span
+            role="button"
+            tabIndex={0}
+            title="Click to explore this chart type"
+            onClick={() => setDetailOpen(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDetailOpen(true); }}
             style={{
               borderRadius: 999,
               padding: "3px 8px",
@@ -924,6 +1056,7 @@ function PlanCard({
               color: BRAND.purps,
               fontSize: 10,
               fontWeight: 850,
+              cursor: "pointer",
             }}
           >
             {archetypeLabel(item.archetype)}
@@ -1093,7 +1226,7 @@ function PlanCard({
       </div>
       <ArchetypeThumbnail
         archetype={item.archetype}
-        onClick={() => setGalleryOpen(true)}
+        onClick={() => setDetailOpen(true)}
       />
     </label>
     </>

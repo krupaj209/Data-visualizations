@@ -114,6 +114,17 @@ export interface PlannerVisualization {
    * review step. Derived deterministically from the assembler deck, not the LLM.
    */
   mandatory?: boolean;
+  /**
+   * Assembler signals that caused this archetype to fire (e.g. "has_long_queues",
+   * "page_template_forced"). Populated from the deterministic deck — undefined for
+   * archetypes the assembler did not select (LLM-only suggestions).
+   */
+  triggering_signals?: string[];
+  /**
+   * Assembler bundle score for the matched slot (higher = better signal match).
+   * Undefined for LLM-only suggestions.
+   */
+  bundle_score?: number;
   /** Set when this idea was originally rejected and promoted back into
    *  the recommended list by a targeted recheck. */
   promoted_from_rejected?: boolean;
@@ -254,16 +265,21 @@ function buildArchetypeBundleMap(): Map<ChartArchetypeId, Set<string>> {
 }
 
 /**
- * Returns a predicate that flags whether a recommended archetype is mandatory
- * for the given CE + page. Mandatory = the archetype belongs to a bundle that
- * fired in a `required` slot of the page template, or it is a forced-archetype
- * slot (e.g. `history_timeline` on the history page). Fully deterministic.
+ * Run the deterministic assembler once and return both:
+ * - `isMandatory`: predicate — true when an archetype fills a mandatory slot
+ *   (template-forced or required-bundle) for the given CE + page.
+ * - `annotations`: per-archetype metadata (triggering_signals + bundle_score)
+ *   from the first assembled candidate for each archetype. Attached to LLM
+ *   recommendations so the plan review UI can show "why it was selected".
  */
-function buildMandatoryPredicate(
+function buildAssemblerData(
   drdMarkdown: string,
   ceName: string,
   pageType: PageType,
-): (archetype: ChartArchetypeId) => boolean {
+): {
+  isMandatory: (archetype: ChartArchetypeId) => boolean;
+  annotations: Map<string, { triggering_signals: string[]; bundle_score: number }>;
+} {
   try {
     const signals = extractSignals(drdMarkdown);
     const deck = assembleDeck({ ceName, signals, pageType });
@@ -277,7 +293,7 @@ function buildMandatoryPredicate(
         .map((q) => q.archetype as ChartArchetypeId),
     );
     const archetypeToBundles = buildArchetypeBundleMap();
-    return (archetype: ChartArchetypeId) => {
+    const isMandatory = (archetype: ChartArchetypeId): boolean => {
       if (mandatoryForcedArchetypes.has(archetype)) return true;
       const bundleIds = archetypeToBundles.get(archetype);
       if (!bundleIds) return false;
@@ -286,12 +302,26 @@ function buildMandatoryPredicate(
       }
       return false;
     };
+    // First assembled candidate per archetype wins.
+    const annotations = new Map<
+      string,
+      { triggering_signals: string[]; bundle_score: number }
+    >();
+    for (const q of deck.selected) {
+      if (!annotations.has(q.archetype)) {
+        annotations.set(q.archetype, {
+          triggering_signals: q.triggering_signals,
+          bundle_score: q.bundle_score,
+        });
+      }
+    }
+    return { isMandatory, annotations };
   } catch (err) {
     logger.warn(
       { err, ceName, pageType },
-      "mandatory predicate assembly failed; treating all charts as dynamic",
+      "assembler data build failed; mandatory + signals unavailable",
     );
-    return () => false;
+    return { isMandatory: () => false, annotations: new Map() };
   }
 }
 
@@ -598,11 +628,12 @@ Rules:
     });
   }
 
-  const isMandatoryArchetype = buildMandatoryPredicate(
-    input.drdMarkdown,
-    input.ce.name,
-    input.pageType ?? DEFAULT_PAGE_TYPE,
-  );
+  const { isMandatory: isMandatoryArchetype, annotations: assemblerAnnotations } =
+    buildAssemblerData(
+      input.drdMarkdown,
+      input.ce.name,
+      input.pageType ?? DEFAULT_PAGE_TYPE,
+    );
 
   const recommended: PlannerVisualization[] = [];
   const rejected: RejectedVisualization[] = [];
@@ -653,6 +684,8 @@ Rules:
         : [],
       quality_score: qualityScore,
       mandatory: isMandatoryArchetype(v.archetype),
+      triggering_signals: assemblerAnnotations.get(v.archetype)?.triggering_signals,
+      bundle_score: assemblerAnnotations.get(v.archetype)?.bundle_score,
       priority: categoryCeMode
         ? categoryCePriority(v.archetype) * 10 + clampInt(v.priority ?? 1, 1, 9)
         : clampInt(v.priority ?? recommended.length + 1, 1, 99),
@@ -749,6 +782,8 @@ export function buildDeterministicVisualizationPlan(input: {
         "No research doc yet — add a DRD to ground this chart with evidence.",
     },
     mandatory: q.mandatory,
+    triggering_signals: q.triggering_signals,
+    bundle_score: q.bundle_score,
     priority: idx + 1,
   }));
 
